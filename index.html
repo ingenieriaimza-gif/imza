@@ -1010,6 +1010,18 @@ function getLocalData(){
 
 function pushToCloud(){
   if(_applyingCloudData) return Promise.resolve();
+  // PROTECTION: never push without users
+  if(!S.users||!S.users.length){
+    // Try to restore users from backup
+    var bk=localStorage.getItem('cp4_users_backup');
+    if(bk){ try{ S.users=JSON.parse(bk); }catch(e){} }
+    if(!S.users||!S.users.length){
+      console.warn('pushToCloud blocked: no users');
+      return Promise.resolve();
+    }
+  }
+  // Always backup users before pushing
+  localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
   var toSave=getLocalData();
   var device=detectDevice();
   var now=new Date().toISOString();
@@ -4075,11 +4087,13 @@ function dUser(uid){
   if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permisos para eliminar','err');return;}
   var u=(S.users||[]).find(function(x){ return x.id===uid; });
   if(!u) return;
+  // Never allow deleting the main admin
+  if((u.email||'').toLowerCase()==='ingenieriaimza@gmail.com'){toast('No se puede eliminar al administrador principal','err');return;}
   confirmShow('¿Eliminar usuario?','"'+u.nombre+'" será eliminado.',function(){
     S.users=S.users.filter(function(x){ return x.id!==uid; });
     recordDeleted('user',uid);
     save();
-    pushToCloud(); // Push immediately so deleted user can't log in on other devices
+    pushToCloud();
     rUsersConfig(); toast('Usuario eliminado','ok');
   },'Eliminar','var(--red)','Cancelar');
 }
