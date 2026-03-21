@@ -1164,6 +1164,35 @@ function syncNow(){
 }
 
 // Listen for online/offline events and update UI automatically
+// ── iOS: sync when app comes back to foreground ──────────────────────────────
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState==='visible'&&_currentUser){
+    // App came back to foreground — sync immediately
+    pullFromCloud().then(function(updated){
+      if(updated){ rAll(); }
+      updateSyncUI(true);
+    });
+  }
+});
+
+// iOS Safari: also handle pageshow (back/forward cache)
+window.addEventListener('pageshow', function(e){
+  if(e.persisted&&_currentUser){
+    pullFromCloud().then(function(updated){
+      if(updated){ rAll(); }
+    });
+  }
+});
+
+// iOS: sync when user focuses the window
+window.addEventListener('focus', function(){
+  if(_currentUser){
+    pullFromCloud().then(function(updated){
+      if(updated){ rAll(); }
+    });
+  }
+});
+
 window.addEventListener('online', function(){
   updateSyncDot(true);
   toast('✓ Conexión restaurada — sincronizando...','ok');
