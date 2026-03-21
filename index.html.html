@@ -3506,7 +3506,7 @@ function sendMagicLink(){
   getSbClient().auth.signInWithOtp({
     email:email,
     options:{
-      emailRedirectTo:'https://tangerine-nasturtium-d4ae1d.netlify.app',
+      emailRedirectTo:'https://gregarious-trifle-532fd3.netlify.app',
       shouldCreateUser:false
     }
   }).then(function(res){
@@ -3632,7 +3632,7 @@ function sendMagicLink(){
     },
     body:JSON.stringify({
       email:email,
-      options:{emailRedirectTo:'https://tangerine-nasturtium-d4ae1d.netlify.app'}
+      options:{emailRedirectTo:'https://gregarious-trifle-532fd3.netlify.app'}
     })
   }).then(function(res){
     if(res.ok){
@@ -3746,7 +3746,7 @@ function sendMagicLink(){
   fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/magiclink',{
     method:'POST',
     headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Content-Type':'application/json'},
-    body:JSON.stringify({email:email, redirect_to:'https://tangerine-nasturtium-d4ae1d.netlify.app'})
+    body:JSON.stringify({email:email, redirect_to:'https://gregarious-trifle-532fd3.netlify.app'})
   }).then(function(res){
     if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; }
     if(res.ok||res.status===200||res.status===204){
