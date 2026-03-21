@@ -4010,14 +4010,16 @@ function applyRoleRestrictions(){
   if(calBtn) calBtn.style.display='flex';
 
   rUsersConfig();
-  // Todos los usuarios: sync automático cada 3 segundos
+  // Sync automático cada 2 segundos para todos los usuarios
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   _visorInterval=setInterval(function(){
-    if(!navigator.onLine) return;
+    if(!navigator.onLine||!_currentUser) return;
     pullFromCloud().then(function(updated){ if(updated){ rAll(); } });
-  }, 3000);
-  // También iniciar WebSocket Realtime para actualizaciones instantáneas
+  }, 2000);
+  // WebSocket Realtime para actualizaciones instantáneas
   startRealtime();
+  // Force immediate sync on app start
+  pullFromCloud().then(function(updated){ if(updated){ rAll(); } });
 }
 
 var _visorInterval=null;
