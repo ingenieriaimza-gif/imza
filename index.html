@@ -1020,10 +1020,13 @@ function pushToCloud(){
   }).then(function(rows){
     if(rows&&rows[0]&&rows[0].updated_at){
       var t=rows[0].updated_at;
-      localStorage.setItem('cp4_last_pull',String(new Date(t).getTime()));
-      // Update sync info so Config shows correct time
+      var tMs=new Date(t).getTime();
+      // Update cp4_last_pull so THIS device doesn't re-download its own push
+      localStorage.setItem('cp4_last_pull',String(tMs));
+      // Update sync info
       _lastSyncInfo={time:t,device:detectDevice()};
       localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
+      // OTHER devices have older cp4_last_pull so ping will trigger their pullFromCloud(true)
     }
     updateSyncUI(true);
   }).catch(function(){
