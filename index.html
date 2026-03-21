@@ -1121,34 +1121,23 @@ function startRealtime(){
 
 // ── PING every 3s ────────────────────────────────────────────────────────────
 var _lastKnownRemoteTime=0;
+window._lastKnownRemoteTime=0;
 
 function startPing(){
   if(_pingTimer) clearInterval(_pingTimer);
   _pingTimer=setInterval(function(){
     if(!_currentUser||_applyingCloudData) return;
-    var ctrl=new AbortController();
-    var t=setTimeout(function(){ ctrl.abort(); },3000);
-    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=updated_at',{
-      credentials:'omit',
-      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY},
-      signal:ctrl.signal
-    }).then(function(r){ return r.json(); }).then(function(rows){
-      clearTimeout(t);
-      if(!rows||!rows.length){ updateSyncUI(false); return; }
+    // Push pending changes
+    if(_pendingPush||Object.keys(_changeLog).length>0){
+      syncNow();
+      return;
+    }
+    // Always pull to check for remote changes
+    pullFromCloud(true).then(function(updated){
+      if(updated) rAll(true);
       updateSyncUI(true);
-      var remoteTime=rows[0].updated_at?new Date(rows[0].updated_at).getTime():0;
-      // Push pending changes first
-      if(_pendingPush||Object.keys(_changeLog).length>0){
-        syncNow();
-        return;
-      }
-      // Pull if remote changed since last time WE checked
-      if(remoteTime>_lastKnownRemoteTime){
-        _lastKnownRemoteTime=remoteTime;
-        pullFromCloud(true).then(function(u){ if(u) rAll(true); });
-      }
-    }).catch(function(){ clearTimeout(t); updateSyncUI(false); });
-  },3000);
+    }).catch(function(){ updateSyncUI(false); });
+  },4000);
 }
 
 // ── DEVICE ───────────────────────────────────────────────────────────────────
