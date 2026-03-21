@@ -3357,56 +3357,48 @@ function initAuth(){
   var el=document.getElementById('login-appname');
   if(el) el.textContent=n;
 
-  // Ensure default admin exists
-  if(!S.users||!S.users.length){
-    S.users=[{id:'u1',nombre:'Admin',rol:'admin',email:'ingenieriaimza@gmail.com'}];
-    localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-    save();
-  }
-  if(S.users&&S.users.length) localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-
   // Check magic link in URL first
   if(window.location.hash&&window.location.hash.includes('access_token')){
     handleMagicLinkCallback();
     return;
   }
 
-  // Restore saved session
+  // Try to restore saved session
   var ss=localStorage.getItem('cp4_session');
   if(ss){
     try{
       var u=JSON.parse(ss);
-      var found=(S.users||[]).find(function(x){
-        return (u.email&&(x.email||'').toLowerCase()===u.email.toLowerCase())||(u.id&&x.id===u.id);
-      });
-      if(found){
+      if(u&&u.email){
+        // Session exists — enter app immediately with cached data
+        // Then verify in background
+        var bkUsers=localStorage.getItem('cp4_users_backup');
+        var users=S.users||[];
+        if(!users.length&&bkUsers) try{ users=JSON.parse(bkUsers); S.users=users; }catch(e){}
+        var found=users.find(function(x){
+          return (x.email||'').toLowerCase()===u.email.toLowerCase();
+        });
+        if(!found){
+          // Create minimal user from session to enter app
+          found={id:u.id||'u1',nombre:u.nombre||'Usuario',rol:u.rol||'editor',email:u.email};
+        }
         _currentUser=found;
         document.getElementById('login-screen').style.display='none';
         document.getElementById('app').style.display='flex';
         applyRoleRestrictions();
         return;
       }
-      // If users not loaded yet but session exists, try fetching users fresh
-      if(!S.users||!S.users.length){
-        fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
-          credentials:'omit',
-          headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY'}
-        }).then(function(r){ return r.json(); }).then(function(rows){
-          if(rows&&rows[0]&&rows[0].data&&rows[0].data.users) S.users=rows[0].data.users;
-          var f2=(S.users||[]).find(function(x){
-            return (u.email&&(x.email||'').toLowerCase()===u.email.toLowerCase())||(u.id&&x.id===u.id);
-          });
-          if(f2){
-            _currentUser=f2;
-            document.getElementById('login-screen').style.display='none';
-            document.getElementById('app').style.display='flex';
-            applyRoleRestrictions();
-          } else { showLogin(); }
-        }).catch(function(){ showLogin(); });
-        return;
-      }
     }catch(e){}
-    if(S.users&&S.users.length) localStorage.removeItem('cp4_session');
+  }
+
+  // No session — show login
+  // Ensure default admin for first install
+  if(!S.users||!S.users.length){
+    var bk=localStorage.getItem('cp4_users_backup');
+    if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
+    if(!S.users||!S.users.length){
+      S.users=[{id:'u1',nombre:'Admin',rol:'admin',email:'ingenieriaimza@gmail.com'}];
+      localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+    }
   }
   showLogin();
 }
