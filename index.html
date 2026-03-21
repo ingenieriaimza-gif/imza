@@ -629,6 +629,18 @@ if('serviceWorker' in navigator){
         <div id="cfg-stats" style="display:flex;flex-direction:column;gap:8px"></div>
       </div>
 
+      <!-- DIAGNÓSTICO (solo admin) -->
+      <div id="diag-wrap" style="background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:18px;margin-bottom:12px;display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:14px;font-weight:800;color:var(--txt)">🔍 Diagnóstico</div>
+          <div style="display:flex;gap:8px">
+            <button onclick="runDiag()" style="padding:6px 12px;border-radius:8px;border:none;background:rgba(106,170,255,0.15);color:#6aaaff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">▶ Ejecutar</button>
+            <button onclick="copyDiag()" style="padding:6px 12px;border-radius:8px;border:none;background:rgba(66,224,144,0.15);color:var(--green);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">📋 Copiar</button>
+          </div>
+        </div>
+        <div id="diag-output" style="font-size:11px;color:var(--txt2);font-family:monospace;line-height:1.8;white-space:pre-wrap;background:var(--card2);border-radius:8px;padding:10px;min-height:40px"></div>
+      </div>
+
 
     </div>
 
@@ -3380,8 +3392,56 @@ function resetAllData(){
   );
 }
 
+function copyDiag(){
+  var out=document.getElementById('diag-output');
+  if(!out||!out.textContent) return;
+  navigator.clipboard.writeText(out.textContent).then(function(){
+    toast('Diagnóstico copiado ✓','ok');
+  }).catch(function(){
+    // Fallback for iOS
+    var ta=document.createElement('textarea');
+    ta.value=out.textContent;
+    ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);
+    ta.select();ta.setSelectionRange(0,99999);
+    try{ document.execCommand('copy'); toast('Diagnóstico copiado ✓','ok'); }catch(e){ toast('Selecciona el texto manualmente','err'); }
+    document.body.removeChild(ta);
+  });
+}
+
+function runDiag(){
+  var out=document.getElementById('diag-output');
+  if(!out) return;
+  var lines=[];
+  lines.push('Device: '+detectDevice());
+  lines.push('Session: '+(localStorage.getItem('cp4_session')?'OK':'NO'));
+  lines.push('Pending: '+(localStorage.getItem('cp4_pending')||'0'));
+  lines.push('Changes: '+JSON.stringify(Object.keys(_changeLog)));
+  lines.push('Local proyectos: '+(S.proyectos||[]).length);
+  lines.push('Local personal: '+(S.personal||[]).length);
+  lines.push('WS: '+(_realtimeWs?['CONNECTING','OPEN','CLOSING','CLOSED'][_realtimeWs.readyState]:'null'));
+  lines.push('remoteAt: '+_remoteUpdatedAt);
+  out.textContent=lines.join('\n');
+  sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at,data').then(function(rows){
+    if(!rows||!rows.length){ out.textContent+='\nSin respuesta'; return; }
+    var row=rows[0]; var remote=row.data||{};
+    lines.push('Supabase at: '+row.updated_at);
+    lines.push('Remote proyectos: '+(remote.proyectos||[]).length);
+    lines.push('Remote personal: '+(remote.personal||[]).length);
+    var pMatch=(remote.proyectos||[]).length===(S.proyectos||[]).length;
+    var wMatch=(remote.personal||[]).length===(S.personal||[]).length;
+    lines.push('Proyectos: '+(pMatch?'OK':'DIFF local:'+(S.proyectos||[]).length+' remote:'+(remote.proyectos||[]).length));
+    lines.push('Personal: '+(wMatch?'OK':'DIFF local:'+(S.personal||[]).length+' remote:'+(remote.personal||[]).length));
+    out.textContent=lines.join('\n');
+  }).catch(function(e){ out.textContent+='\nError: '+e.message; });
+}
+
+
 function rCfgStats(){
   rUsersConfig();
+  // Show diag panel for admin only
+  var diagWrap=document.getElementById('diag-wrap');
+  if(diagWrap) diagWrap.style.display=(_currentUser&&_currentUser.rol==='admin')?'block':'none';
   // Only show last CONFIRMED sync with Supabase
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
@@ -4461,32 +4521,22 @@ var _pendingPush=false;
 // ── LOAD ─────────────────────────────────────────────────────────────────────
 function load(){
   loadChanges();
-  // Load from localStorage
-  var d=localStorage.getItem('cp4');
-  if(d){
-    try{
-      var parsed=JSON.parse(d);
-      // If users have no email field, clear to force fresh download
-      var hasEmailUsers=!parsed.users||!parsed.users.length||parsed.users.some(function(u){ return u.email; });
-      if(hasEmailUsers) Object.assign(S,parsed);
-      else {
-        localStorage.removeItem('cp4');
-        localStorage.removeItem('cp4_last_pull');
-      }
-    }catch(e){}
-  }
   S.date=td();
-  if(S.proyectos) S.proyectos.forEach(function(p,i){ if(!p.folio)p.folio='A'+(i+1); });
 
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
-  updateSyncUI(false); // start as offline until proven otherwise
+  updateSyncUI(false);
 
-  // Always force pull from cloud on startup to get latest data
+  // Always download fresh data from Supabase first
   pullFromCloud(true).then(function(updated){
-    if(updated) rAll();
+    rAll();
     initAuth();
   }).catch(function(){
+    // Offline fallback: load from localStorage
+    var d=localStorage.getItem('cp4');
+    if(d){ try{ Object.assign(S,JSON.parse(d)); }catch(e){} }
+    S.date=td();
+    rAll();
     initAuth();
   });
 }
