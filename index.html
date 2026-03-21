@@ -1585,62 +1585,6 @@ function isPast11pm(){
   return now.getHours()>=23;
 }
 
-function autoFalta(){
-  // Never touch future dates
-  if(S.date>td()) return;
-
-  const isToday=S.date===td();
-  const acts=S.actividades[S.date]||[];
-  const assigned=new Set(acts.flatMap(a=>a.trabajadores||[]));
-  let changed=false;
-
-  // ── Primero: actualizar estado de vacaciones programadas ─────────────────
-  S.personal.forEach(p=>{
-    if(p.vacIni&&p.vacFin){
-      const hoy=td();
-      if(hoy>=p.vacIni&&hoy<=p.vacFin){
-        if(p.estado!=='vacaciones'){p.estado='vacaciones';changed=true;}
-      } else if(p.vacIni&&p.vacFin&&hoy>p.vacFin){
-        // Vacaciones terminadas → archivar en historial y limpiar
-        if(!p.historialVac) p.historialVac=[];
-        const alreadyArchived=p.historialVac.some(h=>h.ini===p.vacIni&&h.fin===p.vacFin);
-        if(!alreadyArchived){
-          p.historialVac.push({ini:p.vacIni,fin:p.vacFin});
-          changed=true;
-        }
-        p.vacIni=null; p.vacFin=null;
-        if(p.estado==='vacaciones'){p.estado='activo';changed=true;}
-      }
-    }
-  });
-
-  // ── REGLA PRIORITARIA: fin de semana o festivo → todos activos ────────────
-  // Sábado, domingo o día festivo LFT: nadie puede quedar como falta
-  if(isWeekend(S.date)||isFestivo(S.date)){
-    S.personal.forEach(p=>{
-      if(p.estado==='vacaciones'||p.estado==='inactivo') return;
-      if(p.estado==='falta'){p.estado='activo';changed=true;}
-    });
-    if(changed&&!_syncRendering) save();
-    return; // No aplicar ninguna otra regla
-  }
-
-  if(acts.length>0){
-    // ── Solo si hay actividades: asignados → activo ────────────────────────
-    // NUNCA tocar: vacaciones, inactivo, no asignados
-    S.personal.forEach(p=>{
-      if(p.estado==='vacaciones'||p.estado==='inactivo') return;
-      if(assigned.has(p.id)){
-        if(p.estado==='falta'){p.estado='activo';changed=true;}
-      }
-      // No asignados → no se tocan
-    });
-  }
-  // Sin actividades → no se toca a nadie
-
-  if(changed&&!_syncRendering) save();
-}
-
 // scheduleMidnightFalta eliminado — regla de 11pm removida
 
 var _syncRendering=false;
@@ -1648,10 +1592,8 @@ var _applyingCloudData=false; // blocks save/push while applying cloud data
 
 function rAll(fromSync){
   _syncRendering=!!fromSync;
-  autoFalta();
-  _syncRendering=false;
-  // Always render all screens to ensure data is current everywhere
   rInicio();rAct();rHist();rProj();rPers();rNom();
+  _syncRendering=false;
 }
 
 function rInicio(){
@@ -1742,9 +1684,8 @@ function togVac(id){
     return;
   }
   p.estado=next;
+  p._upd=Date.now(); // stamp manual change
   save();
-  // Skip rAll() so autoFalta() doesn't overwrite the manual change
-  // Just refresh the screens that show personal status
   rInicio();
   rPers();
   rNom();
