@@ -1286,8 +1286,8 @@ function fmtDL(s){const[y,m,d]=s.split('-').map(Number);const dt=new Date(y,m-1,
 function fmtDate(s){if(!s)return'—';try{const[y,m,d]=s.split('-').map(Number);return`${String(d).padStart(2,'0')} ${MS2[m-1]} ${y}`;}catch(e){return s;}}
 
 function updDates(){document.getElementById('dtxt').textContent=fmtDL(S.date);}
-function chDay(d){const[y,m,dd]=S.date.split('-').map(Number);const dt=new Date(y,m-1,dd);dt.setDate(dt.getDate()+d);S.date=dt.toISOString().split('T')[0];updDates();rAll();save();}
-function setDate(v){if(!v)return;S.date=v;updDates();rAll();save();}
+function chDay(d){const[y,m,dd]=S.date.split('-').map(Number);const dt=new Date(y,m-1,dd);dt.setDate(dt.getDate()+d);S.date=dt.toISOString().split('T')[0];updDates();rAll();save();updatePresence();}
+function setDate(v){if(!v)return;S.date=v;updDates();rAll();save();updatePresence();}
 
 // NAVIGATE
 let curP='inicio';
@@ -3449,6 +3449,11 @@ function updatePresence(){
   if(!_currentUser) return;
   var screens={'inicio':'🏠 Inicio','actividad':'📋 Actividad','historial':'📚 Historial',
                'proyectos':'🏗 Proyectos','personal':'👷 Personal','nomina':'💰 Nómina','config':'⚙️ Config'};
+  var screenLabel=screens[curP]||curP;
+  // Add date context for screens that use it
+  if((curP==='inicio'||curP==='actividad')&&S.date){
+    screenLabel+=' · '+S.date;
+  }
   sbFetch('/rest/v1/imza_presence?device_id=eq.'+encodeURIComponent(detectDevice()),{
     method:'POST',
     headers:{'Prefer':'resolution=merge-duplicates'},
@@ -3457,7 +3462,7 @@ function updatePresence(){
       user_id:_currentUser.id,
       user_name:_currentUser.nombre,
       user_rol:_currentUser.rol,
-      screen:screens[curP]||curP,
+      screen:screenLabel,
       updated_at:new Date().toISOString()
     })
   }).catch(function(){});
