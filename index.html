@@ -978,7 +978,7 @@ function updateSyncUI(ok){
   var devEl=document.getElementById('sync-device');
   var cfgLast=document.getElementById('cfg-sync-last');
   var statusBadge=document.getElementById('sync-status-badge');
-  var online=navigator.onLine&&ok;
+  var online=_isOnline&&ok;
   if(dot) dot.style.background=online?'var(--green)':'var(--red)';
   // Status badge: En línea / Local
   if(statusBadge){
@@ -1045,7 +1045,7 @@ function pushToCloud(){
 }
 
 function pullFromCloud(){
-  if(!navigator.onLine) return Promise.resolve(false);
+  if(!_isOnline) return Promise.resolve(false);
   return sbFetch('/rest/v1/imza_data?id=eq.main&select=*').then(function(rows){
     if(!rows||!rows.length) return false;
     var row=rows[0];
@@ -1089,7 +1089,7 @@ function pullFromCloud(){
 }
 
 function syncNow(){
-  if(!navigator.onLine){
+  if(!_isOnline){
     updateSyncUI(false);
     toast('⚠️ Sin internet — datos guardados localmente','err');
     return;
@@ -1143,7 +1143,7 @@ function load(){
   document.querySelectorAll('.pin-key').forEach(function(b){ b.disabled=true; b.style.opacity='0.4'; });
 
   // If offline, skip cloud fetch and use local data immediately
-  if(!navigator.onLine){
+  if(!_isOnline){
     initAuth();
     return;
   }
@@ -1159,10 +1159,10 @@ function load(){
         var sfound=(S.users||[]).find(function(x){
           return x.id===su.id && x.nombre===su.nombre;
         });
-        if(!sfound&&navigator.onLine){
+        if(!sfound&&_isOnline){
           localStorage.removeItem('cp4_session');
         }
-      }catch(e){ if(navigator.onLine) localStorage.removeItem('cp4_session'); }
+      }catch(e){ if(_isOnline) localStorage.removeItem('cp4_session'); }
     }
     initAuth();
   }).catch(function(){
@@ -1181,7 +1181,7 @@ function save(){
   toSave._v=v;
   localStorage.setItem('cp4',JSON.stringify(toSave));
   localStorage.setItem('cp4_v',String(v));
-  if(!navigator.onLine){
+  if(!_isOnline){
     markPendingPush();
     return;
   }
@@ -1241,14 +1241,14 @@ function openS(id){
   }
   document.getElementById(id).classList.add('open');
   // Only pull from cloud if online
-  if(_editSheets.indexOf(id)!==-1&&navigator.onLine){
+  if(_editSheets.indexOf(id)!==-1&&_isOnline){
     pullFromCloud().then(function(updated){ if(updated){ rAll(true); } });
   }
 }
 function closeS(id){
   document.getElementById(id).classList.remove('open');
   // Only push if online
-  if(navigator.onLine){
+  if(_isOnline){
     if(_syncTimer){
       clearTimeout(_syncTimer);
       _syncTimer=null;
@@ -3647,7 +3647,7 @@ function sendMagicLink(){
     _doSendMagicLink(email,errEl,btn);
   }).catch(function(){
     if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; }
-    if(!navigator.onLine){
+    if(!_isOnline){
       errEl.textContent='Sin internet. Conéctate para iniciar sesión.';
     } else {
       errEl.textContent='Error de conexión. Intenta de nuevo.';
@@ -3853,7 +3853,7 @@ function applyRoleRestrictions(){
   // Smart polling: only sync when user is idle
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   _visorInterval=setInterval(function(){
-    if(!navigator.onLine||!_currentUser||_applyingCloudData) return;
+    if(!_isOnline||!_currentUser||_applyingCloudData) return;
     // Don't sync if user interacted in last 2 seconds
     if(Date.now()-_lastInteraction < 2000) return;
     pullFromCloud().then(function(updated){ if(updated){ rAll(true); } });
@@ -4444,7 +4444,7 @@ document.addEventListener('visibilitychange',function(){
 });
 
 window.addEventListener('pagehide',function(){
-  if(_currentUser&&navigator.onLine){
+  if(_currentUser&&_isOnline){
     pushToCloud();
   }
 });
