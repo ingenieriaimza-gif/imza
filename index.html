@@ -1009,69 +1009,20 @@ function getLocalData(){
 }
 
 function pushToCloud(){
+  if(_applyingCloudData) return Promise.resolve();
   var toSave=getLocalData();
   var device=detectDevice();
   var now=new Date().toISOString();
-  // Always include latest users and bump version
   toSave.users=S.users||[];
-  toSave._v=Date.now();
   toSave._device=device;
   return sbFetch('/rest/v1/imza_data?id=eq.main',{
     method:'PATCH',
-    body:JSON.stringify({data:toSave, updated_at:now, device:device})
-  }).then(function(result){
+    body:JSON.stringify({data:toSave,updated_at:now,device:device})
+  }).then(function(){
     _lastSyncInfo={time:now,device:device};
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     updateSyncUI(true);
-  }).catch(function(){
-    updateSyncUI(navigator.onLine?true:false);
-  });
-}
-
-function applyDeletedRegistry(remote){
-  var del=remote.deleted||{};
-  var localDel=S.deleted||{};
-  var allDel=Object.assign({},localDel,del);
-  if(remote.proyectos)
-    remote.proyectos=remote.proyectos.filter(function(p){ return !allDel['proj_'+p.id]; });
-  if(remote.personal)
-    remote.personal=remote.personal.filter(function(p){ return !allDel['pers_'+p.id]; });
-  if(remote.actividades)
-    Object.keys(remote.actividades).forEach(function(date){
-      remote.actividades[date]=(remote.actividades[date]||[]).filter(function(a){ return !allDel['act_'+a.id]; });
-    });
-  if(remote.users)
-    remote.users=remote.users.filter(function(u){ return !allDel['user_'+u.id]; });
-  return allDel;
-}
-
-function newerWins(a, b){
-  // Returns the record with the higher _upd timestamp
-  return ((a&&a._upd)||0) >= ((b&&b._upd)||0) ? a : b;
-}
-
-function mergeWithOffline(remote){
-  // CLOUD ALWAYS WINS on pull — ensures all devices see same data
-  // Local data is protected by pushing BEFORE pulling in syncNow
-  var allDel=applyDeletedRegistry(remote);
-
-  // Apply cloud data directly, only skip deleted records
-  S.proyectos=(remote.proyectos||[]).filter(function(p){ return !allDel['proj_'+p.id]; });
-  S.personal=(remote.personal||[]).filter(function(p){ return !allDel['pers_'+p.id]; });
-
-  // Actividades: apply cloud directly
-  S.actividades={};
-  Object.keys(remote.actividades||{}).forEach(function(date){
-    var acts=(remote.actividades[date]||[]).filter(function(a){ return !allDel['act_'+a.id]; });
-    if(acts.length) S.actividades[date]=acts;
-  });
-
-  // Users: apply cloud directly
-  S.users=(remote.users||[]).filter(function(u){ return !allDel['user_'+u.id]; });
-
-  // Deleted registry & exPersonal
-  S.deleted=allDel;
-  S.exPersonal=Object.assign({},remote.exPersonal||{},S.exPersonal||{});
+  }).catch(function(){ updateSyncUI(false); });
 }
 
 function pullFromCloud(){
@@ -1080,32 +1031,35 @@ function pullFromCloud(){
     var row=rows[0];
     var remote=row.data||{};
     if(!remote||!remote.proyectos) return false;
+    // Update sync info
     _lastSyncInfo={time:row.updated_at,device:row.device};
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     updateSyncUI(true);
-    // ALWAYS overwrite users from cloud completely
-    if(remote.users){
-      S.users=remote.users;
-    }
-    // Use server-side updated_at for comparison — always authoritative
+    // Always overwrite users
+    if(remote.users) S.users=remote.users;
+    // Check if remote changed since last pull
     var remoteTime=row.updated_at?new Date(row.updated_at).getTime():0;
-    var lastPullTime=parseInt(localStorage.getItem('cp4_last_pull')||'0');
-    // Skip only if we already pulled this exact version
-    if(remoteTime>0&&remoteTime<=lastPullTime) return false;
-    // Apply remote data — block save/push during this process
+    var lastPull=parseInt(localStorage.getItem('cp4_last_pull')||'0');
+    if(remoteTime>0&&remoteTime<=lastPull) return false;
+    // Apply remote data completely — cloud is source of truth
     _applyingCloudData=true;
     try{
-      var localHasData=(S.proyectos&&S.proyectos.length)||(S.personal&&S.personal.length)||(Object.keys(S.actividades||{}).length);
-      if(localHasData){
-        mergeWithOffline(remote);
-      } else {
-        var clean={};
-        for(var k in remote){ if(k!=='_v'&&k!=='_device') clean[k]=remote[k]; }
-        Object.assign(S,clean);
-      }
+      // Apply deletions first
+      var del=remote.deleted||{};
+      // Apply data directly from cloud
+      S.proyectos=(remote.proyectos||[]).filter(function(p){ return !del['proj_'+p.id]; });
+      S.personal=(remote.personal||[]).filter(function(p){ return !del['pers_'+p.id]; });
+      S.actividades={};
+      Object.keys(remote.actividades||{}).forEach(function(date){
+        var acts=(remote.actividades[date]||[]).filter(function(a){ return !del['act_'+a.id]; });
+        if(acts.length) S.actividades[date]=acts;
+      });
+      S.deleted=Object.assign({},del);
+      S.exPersonal=Object.assign({},remote.exPersonal||{});
       S.date=td();
-      var toSave2=getLocalData();
-      localStorage.setItem('cp4',JSON.stringify(toSave2));
+      // Save to localStorage silently
+      var toSave=getLocalData();
+      localStorage.setItem('cp4',JSON.stringify(toSave));
       localStorage.setItem('cp4_last_pull',String(remoteTime));
     }finally{
       _applyingCloudData=false;
@@ -1115,79 +1069,26 @@ function pullFromCloud(){
 }
 
 function syncNow(){
-  // Check network first
   if(!navigator.onLine){
     updateSyncUI(false);
     toast('⚠️ Sin internet — datos guardados localmente','err');
     return;
   }
   toast('Sincronizando...','ok');
+  // Push first, then pull
   pushToCloud().then(function(){
     return pullFromCloud();
   }).then(function(updated){
     var now=new Date().toISOString();
-    var device=detectDevice();
-    _lastSyncInfo={time:now,device:device};
-    localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
-    updateSyncUI(true);
-    if(updated){ rAll(true); toast('✓ Datos actualizados','ok'); }
-    else { toast('✓ Sincronizado correctamente','ok'); }
-  }).catch(function(){
-    updateSyncUI(false);
-    toast('⚠️ Sin conexión — datos guardados localmente','err');
-  });
-}
-
-// Listen for online/offline events and update UI automatically
-// ── iOS: sync when app comes back to foreground ──────────────────────────────
-document.addEventListener('visibilitychange', function(){
-  if(document.visibilityState==='visible'&&_currentUser){
-    // App came back to foreground — sync immediately
-    pullFromCloud().then(function(updated){
-      if(updated){ rAll(); }
-      updateSyncUI(true);
-    });
-  }
-});
-
-// iOS Safari: also handle pageshow (back/forward cache)
-window.addEventListener('pageshow', function(e){
-  if(e.persisted&&_currentUser){
-    pullFromCloud().then(function(updated){
-      if(updated){ rAll(); }
-    });
-  }
-});
-
-// iOS: sync when user focuses the window
-window.addEventListener('focus', function(){
-  if(_currentUser){
-    pullFromCloud().then(function(updated){
-      if(updated){ rAll(); }
-    });
-  }
-});
-
-window.addEventListener('online', function(){
-  updateSyncDot(true);
-  toast('✓ Conexión restaurada — sincronizando...','ok');
-  // Auto sync when connection returns
-  pushToCloud().then(function(){ return pullFromCloud(); }).then(function(updated){
-    if(updated){ rAll(true); toast('✓ Datos sincronizados','ok'); }
-    var now=new Date().toISOString();
     _lastSyncInfo={time:now,device:detectDevice()};
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     updateSyncUI(true);
-  }).catch(function(){});
-});
-window.addEventListener('offline', function(){
-  updateSyncDot(false);
-  toast('⚠️ Sin internet — cambios guardados localmente','err');
-});
-
-function updateSyncDot(online){
-  var dot=document.getElementById('sync-dot');
-  if(dot) dot.style.background=online?'var(--green)':'var(--red)';
+    if(updated){ rAll(true); toast('✓ Datos actualizados','ok'); }
+    else{ toast('✓ Sincronizado','ok'); }
+  }).catch(function(){
+    updateSyncUI(false);
+    toast('⚠️ Sin conexión','err');
+  });
 }
 
 
@@ -1238,7 +1139,6 @@ function load(){
 }
 
 function save(){
-  // Never save/push while applying cloud data
   if(_applyingCloudData) return;
   var toSave={};
   for(var k in S){ if(k!=='date'&&k!=='eAId'&&k!=='eADate') toSave[k]=S[k]; }
@@ -1246,6 +1146,11 @@ function save(){
   toSave._v=v;
   localStorage.setItem('cp4',JSON.stringify(toSave));
   localStorage.setItem('cp4_v',String(v));
+  if(!navigator.onLine){
+    // No internet — mark as pending, will upload when connection returns
+    markPendingPush();
+    return;
+  }
   clearTimeout(_syncTimer);
   _syncTimer=setTimeout(pushToCloud,800);
 }
@@ -4547,6 +4452,40 @@ function fixHeight(){
 fixHeight();
 window.addEventListener('resize',fixHeight);
 window.addEventListener('orientationchange',function(){ setTimeout(fixHeight,100); });
+
+// ── OFFLINE QUEUE ─────────────────────────────────────────────────────────────
+var _pendingPush=false; // flag: has unsaved changes waiting to upload
+
+function markPendingPush(){
+  _pendingPush=true;
+  localStorage.setItem('cp4_pending','1');
+  updateSyncDot(false);
+}
+
+// When connection returns: upload pending changes
+window.addEventListener('online',function(){
+  updateSyncDot(true);
+  var pending=localStorage.getItem('cp4_pending');
+  if(pending==='1'&&_currentUser){
+    toast('📶 Conexión restaurada — subiendo cambios...','ok');
+    pushToCloud().then(function(){
+      localStorage.removeItem('cp4_pending');
+      _pendingPush=false;
+      return pullFromCloud();
+    }).then(function(updated){
+      if(updated){ rAll(true); }
+      toast('✓ Cambios sincronizados','ok');
+      updateSyncUI(true);
+    }).catch(function(){});
+  } else {
+    updateSyncDot(true);
+  }
+});
+
+window.addEventListener('offline',function(){
+  updateSyncDot(false);
+  toast('⚠️ Sin internet — cambios guardados localmente','err');
+});
 
 load();updDates();rAll();
 // Load custom app name
