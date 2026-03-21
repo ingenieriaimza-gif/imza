@@ -861,12 +861,13 @@ function checkOnline(){
     }
     return Promise.resolve(false);
   }
-  return fetch(SB_URL+'/rest/v1/?_='+Date.now(),{
-    method:'HEAD',
-    headers:{'apikey':SB_KEY,'Cache-Control':'no-cache, no-store'},
+  return fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=updated_at&limit=1',{
+    method:'GET',
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY},
     cache:'no-store',
-    signal:AbortSignal.timeout(2000)
-  }).then(function(){
+    signal:AbortSignal.timeout(3000)
+  }).then(function(r){
+    if(!r.ok&&r.status!==200) throw new Error('not ok');
     var wasOffline=!_isOnline;
     _isOnline=true;
     updateSyncDot(true);
