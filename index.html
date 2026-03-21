@@ -851,7 +851,7 @@ const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 
 // ── Online status (iOS-safe real check) ───────────────────────────────────────
-var _isOnline=navigator.onLine; // start with browser guess
+var _isOnline=false; // always verify with real check before assuming online
 
 function checkOnline(){
   if(!navigator.onLine){
@@ -861,10 +861,10 @@ function checkOnline(){
     }
     return Promise.resolve(false);
   }
-  return fetch(SB_URL+'/rest/v1/',{
+  return fetch(SB_URL+'/rest/v1/?_='+Date.now(),{
     method:'HEAD',
-    headers:{'apikey':SB_KEY},
-    cache:'no-cache',
+    headers:{'apikey':SB_KEY,'Cache-Control':'no-cache, no-store'},
+    cache:'no-store',
     signal:AbortSignal.timeout(2000)
   }).then(function(){
     var wasOffline=!_isOnline;
