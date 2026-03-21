@@ -1147,13 +1147,18 @@ function pushToCloud(){
     });
   }).then(function(){
     clearChanges();
+    localStorage.removeItem('cp4_pending');
     return sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at');
   }).then(function(rows){
     if(rows&&rows[0]&&rows[0].updated_at){
       localStorage.setItem('cp4_last_pull',String(new Date(rows[0].updated_at).getTime()));
     }
     updateSyncUI(true);
-  }).catch(function(){ updateSyncUI(false); });
+  }).catch(function(){
+    // Push failed — keep changes marked as pending so they retry
+    markPendingPush();
+    updateSyncUI(false);
+  });
 }
 
 // ── PULL ─────────────────────────────────────────────────────────────────────
@@ -3965,8 +3970,19 @@ function applyRoleRestrictions(){
     if(Date.now()-_lastInteraction < 3000) return;
     pullFromCloud().then(function(updated){ if(updated) rAll(true); });
   }, 30000);
-  // Sync immediately on start
-  setTimeout(syncNow, 500);
+  // On start: if pending changes exist, push first
+  setTimeout(function(){
+    var hasPending=localStorage.getItem('cp4_pending')==='1'||Object.keys(_changeLog).length>0;
+    if(hasPending){
+      pushToCloud().then(function(){
+        localStorage.removeItem('cp4_pending');
+        return pullFromCloud();
+      }).then(function(updated){ if(updated) rAll(true); updateSyncUI(true); })
+      .catch(function(){ updateSyncUI(false); });
+    } else {
+      syncNow();
+    }
+  }, 500);
 }
 
 var _visorInterval=null;
