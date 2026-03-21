@@ -854,53 +854,53 @@ const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 var _isOnline=navigator.onLine; // start with browser guess
 
 function checkOnline(){
-  // Fast check using navigator.onLine first
   if(!navigator.onLine){
-    _isOnline=false;
-    updateSyncDot(false);
+    if(_isOnline){
+      _isOnline=false;
+      updateSyncDot(false);
+    }
     return Promise.resolve(false);
   }
-  // Real check via fetch
   return fetch(SB_URL+'/rest/v1/',{
     method:'HEAD',
     headers:{'apikey':SB_KEY},
     cache:'no-cache',
     signal:AbortSignal.timeout(2000)
   }).then(function(){
-    onConnectionRestored();
-    return true;
-  }).catch(function(){
-    _isOnline=false;
-    updateSyncDot(false);
-    return false;
-  });
-}
-
-function onConnectionRestored(){
-  if(!_isOnline){
+    var wasOffline=!_isOnline;
     _isOnline=true;
     updateSyncDot(true);
     if(_currentUser){
-      toast('📶 Conexión restaurada — sincronizando...','ok');
-      pushToCloud().then(function(){
-        localStorage.removeItem('cp4_pending');
-        _pendingPush=false;
-        return pullFromCloud();
-      }).then(function(updated){
-        rAll(true);
-        toast('✓ Sincronizado','ok');
-        updateSyncUI(true);
-      }).catch(function(){});
+      if(wasOffline||localStorage.getItem('cp4_pending')==='1'){
+        // Just came back online OR has pending changes — sync now
+        if(wasOffline) toast('📶 Conexión restaurada — sincronizando...','ok');
+        pushToCloud().then(function(){
+          localStorage.removeItem('cp4_pending');
+          _pendingPush=false;
+          return pullFromCloud();
+        }).then(function(updated){
+          if(updated) rAll(true);
+          if(wasOffline) toast('✓ Sincronizado','ok');
+          updateSyncUI(true);
+        }).catch(function(){});
+      }
     }
-  }
+    return true;
+  }).catch(function(){
+    if(_isOnline){
+      _isOnline=false;
+      updateSyncDot(false);
+    }
+    return false;
+  });
 }
 
 // Check every 1 second
 setInterval(checkOnline, 1000);
 
-// Also use browser events as fast trigger
 window.addEventListener('online', function(){
-  setTimeout(function(){ checkOnline(); }, 100);
+  _isOnline=false; // force wasOffline=true so sync runs
+  setTimeout(checkOnline, 100);
 });
 window.addEventListener('offline', function(){
   _isOnline=false;
