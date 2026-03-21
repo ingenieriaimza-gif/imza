@@ -3784,10 +3784,10 @@ function applyRoleRestrictions(){
   // Backup polling every 30s (safety net only)
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   _visorInterval=setInterval(function(){
-    if(!navigator.onLine||!_currentUser||_applyingCloudData) return;
-    if(Date.now()-_lastInteraction < 3000) return;
-    pullFromCloud().then(function(updated){ if(updated) rAll(true); });
-  }, 30000);
+    if(!_currentUser||_applyingCloudData) return;
+    if(Date.now()-_lastInteraction < 1500) return;
+    syncNow();
+  }, 5000);
   // On start: if pending changes exist, push first
   setTimeout(function(){
     var hasPending=localStorage.getItem('cp4_pending')==='1'||Object.keys(_changeLog).length>0;
@@ -4361,8 +4361,9 @@ window.addEventListener('offline',function(){
 document.addEventListener('visibilitychange',function(){
   if(document.visibilityState==='visible'&&_currentUser){
     _lastInteraction=0;
-    // Sync immediately when app comes to foreground
-    setTimeout(syncNow, 300);
+    // Sync when app comes to foreground
+    _lastInteraction=0;
+    setTimeout(syncNow, 200);
   }
   if(document.visibilityState==='hidden'&&_currentUser){
     // App going to background — push any pending changes immediately
