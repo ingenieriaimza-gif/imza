@@ -3357,25 +3357,40 @@ function initAuth(){
   var el=document.getElementById('login-appname');
   if(el) el.textContent=n;
 
-  var sb=getSbClient();
+  // Ensure default admin exists
+  if(!S.users||!S.users.length){
+    S.users=[{id:'u1',nombre:'Admin',rol:'admin',email:'ingenieriaimza@gmail.com'}];
+    localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+    save();
+  }
+  if(S.users&&S.users.length) localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
 
-  // Listen for auth state changes (handles magic link redirect)
-  sb.auth.onAuthStateChange(function(event, session){
-    if(event==='SIGNED_IN'&&session){
-      handleAuthSession(session);
-    } else if(event==='SIGNED_OUT'){
-      showLogin();
-    }
-  });
+  // Check magic link in URL first
+  if(window.location.hash&&window.location.hash.includes('access_token')){
+    handleMagicLinkCallback();
+    return;
+  }
 
-  // Check if there's already a session
-  sb.auth.getSession().then(function(res){
-    if(res.data&&res.data.session){
-      handleAuthSession(res.data.session);
-    } else {
-      showLogin();
-    }
-  });
+  // Restore saved session
+  var ss=localStorage.getItem('cp4_session');
+  if(ss){
+    try{
+      var u=JSON.parse(ss);
+      var found=(S.users||[]).find(function(x){
+        return (u.email&&(x.email||'').toLowerCase()===u.email.toLowerCase())||(u.id&&x.id===u.id);
+      });
+      if(found){
+        _currentUser=found;
+        document.getElementById('login-screen').style.display='none';
+        document.getElementById('app').style.display='flex';
+        applyRoleRestrictions();
+        return;
+      }
+    }catch(e){}
+    // Only clear session if we have valid users loaded
+    if(S.users&&S.users.length) localStorage.removeItem('cp4_session');
+  }
+  showLogin();
 }
 
 function handleAuthSession(session){
