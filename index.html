@@ -1105,7 +1105,17 @@ function load(){
   if(d){
     try{
       var parsed=JSON.parse(d);
-      Object.assign(S,parsed);
+      // If users exist but none have email, clear and force fresh download from cloud
+      var hasEmailUsers=!parsed.users||!parsed.users.length||parsed.users.some(function(u){ return u.email; });
+      if(!hasEmailUsers){
+        // Clear stale data — cloud has correct users with emails
+        localStorage.removeItem('cp4');
+        localStorage.removeItem('cp4_last_pull');
+        localStorage.removeItem('cp4_session');
+        d=null;
+      } else {
+        Object.assign(S,parsed);
+      }
     }catch(e){}
   }
   S.date=td();
