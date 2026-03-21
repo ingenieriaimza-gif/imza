@@ -1033,6 +1033,7 @@ function pushToCloud(){
 }
 
 function pullFromCloud(){
+  if(!navigator.onLine) return Promise.resolve(false);
   return sbFetch('/rest/v1/imza_data?id=eq.main&select=*').then(function(rows){
     if(!rows||!rows.length) return false;
     var row=rows[0];
@@ -1615,7 +1616,12 @@ var _applyingCloudData=false; // blocks save/push while applying cloud data
 
 function rAll(fromSync){
   _syncRendering=!!fromSync;
-  rInicio();rAct();rHist();rProj();rPers();rNom();
+  try{ rInicio(); }catch(e){}
+  try{ rAct(); }catch(e){}
+  try{ rHist(); }catch(e){}
+  try{ rProj(); }catch(e){}
+  try{ rPers(); }catch(e){}
+  try{ rNom(); }catch(e){}
   _syncRendering=false;
 }
 
@@ -1707,12 +1713,9 @@ function togVac(id){
     return;
   }
   p.estado=next;
-  p._upd=Date.now(); // stamp manual change
+  p._upd=Date.now();
   save();
-  rInicio();
-  rPers();
-  rNom();
-  renderVacList();
+  rAll();
   const cfg=VAC_CFG[next]||VAC_CFG.activo;
   toast(`${p.nombre} → ${cfg.emoji} ${cfg.label}`,'ok');
 }
@@ -3797,7 +3800,7 @@ function applyRoleRestrictions(){
   // Sync automático cada 2 segundos para todos los usuarios
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   _visorInterval=setInterval(function(){
-    if(!navigator.onLine||!_currentUser) return;
+    if(!navigator.onLine||!_currentUser||_applyingCloudData) return;
     pullFromCloud().then(function(updated){ if(updated){ rAll(true); } });
   }, 2000);
   // WebSocket Realtime para actualizaciones instantáneas
