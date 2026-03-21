@@ -3279,9 +3279,16 @@ function handleImport(input){
           const {_exportDate,_version,...restore}=data;
           Object.assign(S,restore);
           S.date=td();
-          save();rAll();
+          // Mark all fields as changed so they sync to cloud
+          markChanged('proyectos');
+          markChanged('personal');
+          markChanged('actividades');
+          save();
+          rAll();
           rCfgStats();
-          toast('Datos importados ✓','ok');
+          // Push to cloud immediately
+          pushToCloud().then(function(){ toast('Datos importados y sincronizados ✓','ok'); })
+          .catch(function(){ toast('Datos importados localmente ✓','ok'); });
         },
         'Importar','var(--blue)','Cancelar'
       );
