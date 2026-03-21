@@ -850,62 +850,30 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 
-// ── Online status (iOS-safe real check) ───────────────────────────────────────
-var _isOnline=false; // always verify with real check before assuming online
-
-function checkOnline(){
-  if(!navigator.onLine){
-    if(_isOnline){
-      _isOnline=false;
-      updateSyncDot(false);
-    }
-    return Promise.resolve(false);
-  }
-  return fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=updated_at&limit=1',{
-    method:'GET',
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY},
-    cache:'no-store',
-    signal:AbortSignal.timeout(3000)
-  }).then(function(r){
-    if(!r.ok&&r.status!==200) throw new Error('not ok');
-    var wasOffline=!_isOnline;
-    _isOnline=true;
-    updateSyncDot(true);
-    if(_currentUser){
-      if(wasOffline||localStorage.getItem('cp4_pending')==='1'){
-        // Just came back online OR has pending changes — sync now
-        if(wasOffline) toast('📶 Conexión restaurada — sincronizando...','ok');
-        pushToCloud().then(function(){
-          localStorage.removeItem('cp4_pending');
-          _pendingPush=false;
-          return pullFromCloud();
-        }).then(function(updated){
-          if(updated) rAll(true);
-          if(wasOffline) toast('✓ Sincronizado','ok');
-          updateSyncUI(true);
-        }).catch(function(){});
-      }
-    }
-    return true;
-  }).catch(function(){
-    if(_isOnline){
-      _isOnline=false;
-      updateSyncDot(false);
-    }
-    return false;
-  });
-}
-
-// Check every 1 second
-setInterval(checkOnline, 1000);
+// ── Online status ────────────────────────────────────────────────────────────
+var _isOnline=navigator.onLine;
 
 window.addEventListener('online', function(){
-  _isOnline=false; // force wasOffline=true so sync runs
-  setTimeout(checkOnline, 100);
+  navigator.onLine=true;
+  updateSyncDot(true);
+  if(_currentUser){
+    toast('📶 Conexión restaurada — sincronizando...','ok');
+    pushToCloud().then(function(){
+      localStorage.removeItem('cp4_pending');
+      _pendingPush=false;
+      return pullFromCloud();
+    }).then(function(updated){
+      if(updated) rAll(true);
+      toast('✓ Sincronizado','ok');
+      updateSyncUI(true);
+    }).catch(function(){});
+  }
 });
+
 window.addEventListener('offline', function(){
-  _isOnline=false;
+  navigator.onLine=false;
   updateSyncDot(false);
+  toast('⚠️ Sin internet — cambios guardados localmente','err');
 });
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
 let _syncTimer=null, _lastSyncInfo=null;
@@ -1036,7 +1004,7 @@ function updateSyncUI(ok){
   var devEl=document.getElementById('sync-device');
   var cfgLast=document.getElementById('cfg-sync-last');
   var statusBadge=document.getElementById('sync-status-badge');
-  var online=_isOnline&&ok;
+  var online=navigator.onLine&&ok;
   if(dot) dot.style.background=online?'var(--green)':'var(--red)';
   // Status badge: En línea / Local
   if(statusBadge){
@@ -1103,7 +1071,7 @@ function pushToCloud(){
 }
 
 function pullFromCloud(){
-  if(!_isOnline) return Promise.resolve(false);
+  if(!navigator.onLine) return Promise.resolve(false);
   return sbFetch('/rest/v1/imza_data?id=eq.main&select=*').then(function(rows){
     if(!rows||!rows.length) return false;
     var row=rows[0];
@@ -1147,7 +1115,7 @@ function pullFromCloud(){
 }
 
 function syncNow(){
-  if(!_isOnline){
+  if(!navigator.onLine){
     updateSyncUI(false);
     toast('⚠️ Sin internet — datos guardados localmente','err');
     return;
@@ -1201,7 +1169,7 @@ function load(){
   document.querySelectorAll('.pin-key').forEach(function(b){ b.disabled=true; b.style.opacity='0.4'; });
 
   // If offline, skip cloud fetch and use local data immediately
-  if(!_isOnline){
+  if(!navigator.onLine){
     initAuth();
     return;
   }
@@ -1217,10 +1185,10 @@ function load(){
         var sfound=(S.users||[]).find(function(x){
           return x.id===su.id && x.nombre===su.nombre;
         });
-        if(!sfound&&_isOnline){
+        if(!sfound&&navigator.onLine){
           localStorage.removeItem('cp4_session');
         }
-      }catch(e){ if(_isOnline) localStorage.removeItem('cp4_session'); }
+      }catch(e){ if(navigator.onLine) localStorage.removeItem('cp4_session'); }
     }
     initAuth();
   }).catch(function(){
@@ -1239,7 +1207,7 @@ function save(){
   toSave._v=v;
   localStorage.setItem('cp4',JSON.stringify(toSave));
   localStorage.setItem('cp4_v',String(v));
-  if(!_isOnline){
+  if(!navigator.onLine){
     markPendingPush();
     return;
   }
@@ -1299,14 +1267,14 @@ function openS(id){
   }
   document.getElementById(id).classList.add('open');
   // Only pull from cloud if online
-  if(_editSheets.indexOf(id)!==-1&&_isOnline){
+  if(_editSheets.indexOf(id)!==-1&&navigator.onLine){
     pullFromCloud().then(function(updated){ if(updated){ rAll(true); } });
   }
 }
 function closeS(id){
   document.getElementById(id).classList.remove('open');
   // Only push if online
-  if(_isOnline){
+  if(navigator.onLine){
     if(_syncTimer){
       clearTimeout(_syncTimer);
       _syncTimer=null;
@@ -3705,7 +3673,7 @@ function sendMagicLink(){
     _doSendMagicLink(email,errEl,btn);
   }).catch(function(){
     if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; }
-    if(!_isOnline){
+    if(!navigator.onLine){
       errEl.textContent='Sin internet. Conéctate para iniciar sesión.';
     } else {
       errEl.textContent='Error de conexión. Intenta de nuevo.';
@@ -3911,7 +3879,7 @@ function applyRoleRestrictions(){
   // Smart polling: only sync when user is idle
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   _visorInterval=setInterval(function(){
-    if(!_isOnline||!_currentUser||_applyingCloudData) return;
+    if(!navigator.onLine||!_currentUser||_applyingCloudData) return;
     // Don't sync if user interacted in last 2 seconds
     if(Date.now()-_lastInteraction < 2000) return;
     pullFromCloud().then(function(updated){ if(updated){ rAll(true); } });
@@ -4507,7 +4475,7 @@ document.addEventListener('visibilitychange',function(){
 });
 
 window.addEventListener('pagehide',function(){
-  if(_currentUser&&_isOnline){
+  if(_currentUser&&navigator.onLine){
     pushToCloud();
   }
 });
