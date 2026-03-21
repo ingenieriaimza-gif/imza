@@ -1034,6 +1034,25 @@ function getLocalData(){
   return d;
 }
 
+// ── CHANGE LOG ───────────────────────────────────────────────────────────────
+// Track what changed so we only push modified data
+var _changeLog={}; // {key: timestamp} e.g. {'proyectos':123, 'personal':456}
+
+function markChanged(key){
+  _changeLog[key]=Date.now();
+  localStorage.setItem('cp4_changes',JSON.stringify(_changeLog));
+}
+
+function clearChanges(){
+  _changeLog={};
+  localStorage.removeItem('cp4_changes');
+}
+
+function loadChanges(){
+  var c=localStorage.getItem('cp4_changes');
+  if(c){ try{ _changeLog=JSON.parse(c); }catch(e){} }
+}
+
 function pushToCloud(){
   if(_applyingCloudData) return Promise.resolve();
   // PROTECTION: never push without users
@@ -1139,7 +1158,7 @@ function syncNow(){
 
 
 function load(){
-  // localStorage persists across app updates — always load it first
+  loadChanges(); // restore pending change log
   var d=localStorage.getItem('cp4');
   if(d){
     try{
@@ -1423,12 +1442,12 @@ function saveAct(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permi
   if(S.eAId){const idx=S.actividades[date].findIndex(a=>a.id===S.eAId);if(idx!==-1)S.actividades[date][idx]={...S.actividades[date][idx],proyectoId:pId,notas:document.getElementById('a-n').value.trim(),trabajadores:selW,maquinaria:maq,gastos,horasExtras,upd:new Date().toISOString(),_upd:Date.now()};}
   else{const aid='a'+Date.now();S.actividades[date].push({id:aid,proyectoId:pId,notas:document.getElementById('a-n').value.trim(),trabajadores:selW,maquinaria:maq,gastos,horasExtras,cre:new Date().toISOString(),_upd:Date.now()});}
   try{
+    markChanged('actividades');
     save();
   }catch(e){ console.error('save error',e); }
-  // Close sheet without pushing (save handles push)
   document.getElementById('sov-act').classList.remove('open');
   toast('Actividad guardada ✓','ok');
-  try{ rAll(); }catch(e){ console.error('rAll error',e); }
+  try{ rAll(); }catch(e){}
 }
 
 // PROYECTO
@@ -1498,7 +1517,7 @@ function saveProj(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
   };
   if(id){const i=S.proyectos.findIndex(p=>p.id===id);if(i!==-1)S.proyectos[i]={...S.proyectos[i],...d,_upd:Date.now()};}
   else S.proyectos.push({id:'p'+Date.now(),...d,_upd:Date.now()});
-  try{ save(); }catch(e){}
+  try{ markChanged('proyectos'); save(); }catch(e){}
   document.getElementById('sov-proj').classList.remove('open');
   toast('Proyecto guardado ✓','ok');
   try{ rAll(); }catch(e){}
@@ -1572,7 +1591,7 @@ function savePers(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
   // Always keep exPersonal updated with latest name+cargo for history
   if(!S.exPersonal) S.exPersonal={};
   S.exPersonal[wid]={nombre:d.nombre,cargo:d.cargo||''};
-  try{ save(); }catch(e){}
+  try{ markChanged('personal'); save(); }catch(e){}
   document.getElementById('sov-pers').classList.remove('open');
   toast('Trabajador guardado ✓','ok');
   try{ rAll(); }catch(e){}
@@ -1789,6 +1808,7 @@ function togVac(id){
   }
   p.estado=next;
   p._upd=Date.now();
+  markChanged('personal');
   save();
   // Update immediately without debounce
   try{ renderVacList(); }catch(e){}
@@ -4441,12 +4461,13 @@ window.addEventListener('orientationchange',function(){ setTimeout(fixHeight,100
 document.addEventListener('visibilitychange',function(){
   if(document.visibilityState==='visible'&&_currentUser){
     _lastInteraction=0;
-    // Sync immediately when app comes to foreground
-    checkOnline().then(function(online){
-      if(online){
-        pullFromCloud().then(function(updated){ if(updated) rAll(true); });
-      }
-    });
+    // Push local changes first, then pull
+    pushToCloud().then(function(){
+      return pullFromCloud();
+    }).then(function(updated){
+      if(updated) rAll(true);
+      updateSyncUI(true);
+    }).catch(function(){ updateSyncUI(false); });
   }
   if(document.visibilityState==='hidden'&&_currentUser){
     // App going to background — push any pending changes immediately
