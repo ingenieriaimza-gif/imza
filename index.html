@@ -1130,6 +1130,12 @@ function load(){
   // Disable keypad while loading
   document.querySelectorAll('.pin-key').forEach(function(b){ b.disabled=true; b.style.opacity='0.4'; });
 
+  // If offline, skip cloud fetch and use local data immediately
+  if(!navigator.onLine){
+    initAuth();
+    return;
+  }
+
   pullFromCloud().then(function(updated){
     if(updated){ rAll(); }
     // Strictly validate session against fresh cloud users
@@ -3585,7 +3591,11 @@ function sendMagicLink(){
     _doSendMagicLink(email,errEl,btn);
   }).catch(function(){
     if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; }
-    errEl.textContent='Error de conexión. Verifica tu internet.';
+    if(!navigator.onLine){
+      errEl.textContent='Sin internet. Conéctate para iniciar sesión.';
+    } else {
+      errEl.textContent='Error de conexión. Intenta de nuevo.';
+    }
   });
 }
 
