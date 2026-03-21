@@ -1184,10 +1184,11 @@ function save(){
   if(!navigator.onLine){
     // No internet — mark as pending, will upload when connection returns
     markPendingPush();
-    return;
-  }
+    // Still need to render - don't return, let render happen
+  } else {
   clearTimeout(_syncTimer);
   _syncTimer=setTimeout(pushToCloud,200);
+  }
 }
 
 // DATE
@@ -1633,19 +1634,31 @@ var _applyingCloudData=false; // blocks save/push while applying cloud data
 
 var _rAllTimer=null;
 function rAll(fromSync){
-  // Debounce rapid calls to prevent listener loss
-  if(_rAllTimer) clearTimeout(_rAllTimer);
-  _rAllTimer=setTimeout(function(){
-    _syncRendering=!!fromSync;
-    try{ rInicio(); }catch(e){ console.warn('rInicio',e); }
-    try{ rAct(); }catch(e){ console.warn('rAct',e); }
-    try{ rHist(); }catch(e){ console.warn('rHist',e); }
-    try{ rProj(); }catch(e){ console.warn('rProj',e); }
-    try{ rPers(); }catch(e){ console.warn('rPers',e); }
-    try{ rNom(); }catch(e){ console.warn('rNom',e); }
+  if(fromSync){
+    // Sync updates: debounce to avoid interrupting user
+    if(_rAllTimer) clearTimeout(_rAllTimer);
+    _rAllTimer=setTimeout(function(){
+      _syncRendering=true;
+      try{ rInicio(); }catch(e){}
+      try{ rAct(); }catch(e){}
+      try{ rHist(); }catch(e){}
+      try{ rProj(); }catch(e){}
+      try{ rPers(); }catch(e){}
+      try{ rNom(); }catch(e){}
+      _syncRendering=false;
+      _rAllTimer=null;
+    }, 1500); // longer delay for sync updates
+  } else {
+    // User-triggered: render immediately, cancel any pending sync render
+    if(_rAllTimer){ clearTimeout(_rAllTimer); _rAllTimer=null; }
     _syncRendering=false;
-    _rAllTimer=null;
-  }, fromSync?50:0);
+    try{ rInicio(); }catch(e){}
+    try{ rAct(); }catch(e){}
+    try{ rHist(); }catch(e){}
+    try{ rProj(); }catch(e){}
+    try{ rPers(); }catch(e){}
+    try{ rNom(); }catch(e){}
+  }
 }
 
 function rInicio(){
