@@ -850,223 +850,54 @@ function td(){
 // ── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
-
-// ── Online status ────────────────────────────────────────────────────────────
-var _isOnline=navigator.onLine;
-
-window.addEventListener('online', function(){
-  navigator.onLine=true;
-  updateSyncDot(true);
-  if(_currentUser){
-    toast('📶 Conexión restaurada — sincronizando...','ok');
-    pushToCloud().then(function(){
-      localStorage.removeItem('cp4_pending');
-      _pendingPush=false;
-      return pullFromCloud();
-    }).then(function(updated){
-      if(updated) rAll(true);
-      toast('✓ Sincronizado','ok');
-      updateSyncUI(true);
-    }).catch(function(){});
-  }
-});
-
-window.addEventListener('offline', function(){
-  navigator.onLine=false;
-  updateSyncDot(false);
-  toast('⚠️ Sin internet — cambios guardados localmente','err');
-});
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-let _syncTimer=null, _lastSyncInfo=null;
-let _realtimeWs=null, _realtimeRef=0, _realtimeJoined=false;
 
-function startRealtime(){
-  if(_realtimeWs&&(_realtimeWs.readyState===0||_realtimeWs.readyState===1)) return;
-  try{
-    _realtimeWs=new WebSocket(SB_WS);
-    _realtimeWs.onopen=function(){
-      _realtimeJoined=true;
-      updateSyncUI(true);
-      // Join channel
-      _realtimeWs.send(JSON.stringify({
-        topic:'realtime:public:imza_data',event:'phx_join',
-        payload:{config:{postgres_changes:[{event:'UPDATE',schema:'public',table:'imza_data'}]}},
-        ref:String(++_realtimeRef)
-      }));
-      // Heartbeat every 20s to keep connection alive
-      if(_realtimeHb) clearInterval(_realtimeHb);
-      _realtimeHb=setInterval(function(){
-        if(_realtimeWs&&_realtimeWs.readyState===1){
-          _realtimeWs.send(JSON.stringify({topic:'phoenix',event:'heartbeat',payload:{},ref:String(++_realtimeRef)}));
-        }
-      },20000);
-      // Pull latest on reconnect
-      pullFromCloud().then(function(updated){ if(updated) rAll(true); });
-    };
-    _realtimeWs.onmessage=function(e){
-      try{
-        var msg=JSON.parse(e.data);
-        var isChange=msg.event==='postgres_changes'||
-          (msg.payload&&msg.payload.data&&msg.payload.data.type==='UPDATE');
-        if(!isChange) return;
-        // Skip our own push
-        var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device)||'';
-        if(dev&&dev===detectDevice()) return;
-        // Remote change — pull immediately
-        pullFromCloud(true).then(function(updated){
-          if(updated){ rAll(true); updateSyncUI(true); }
-        });
-      }catch(err){}
-    };
-    _realtimeWs.onclose=function(){
-      _realtimeJoined=false;
-      if(_realtimeHb){ clearInterval(_realtimeHb); _realtimeHb=null; }
-      // WebSocket closed = likely no internet
-      updateSyncUI(false);
-      // Reconnect after 2 seconds
-      setTimeout(startRealtime,2000);
-    };
-    _realtimeWs.onerror=function(){ _realtimeWs.close(); };
-  }catch(err){
-    setTimeout(startRealtime,3000);
-  }
-}
+// ── SYNC STATE ───────────────────────────────────────────────────────────────
+var _syncTimer=null;
+var _lastSyncInfo=null;
+var _applyingCloudData=false;
+var _pendingPush=false;
+var _changeLog={};
+var _realtimeWs=null;
 var _realtimeHb=null;
+var _pingTimer=null;
 
-// Fast connectivity ping every 5s
-var _pingInterval=null;
-function startPingInterval(){
-  if(_pingInterval) clearInterval(_pingInterval);
-  _pingInterval=setInterval(function(){
-    if(!_currentUser||_applyingCloudData) return;
-    var ctrl=new AbortController();
-    var t=setTimeout(function(){ ctrl.abort(); },3000);
-    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=updated_at',{
-      method:'GET',
-      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'},
-      credentials:'omit',
-      signal:ctrl.signal
-    }).then(function(r){
-      clearTimeout(t);
-      if(!r.ok){ updateSyncUI(false); return; }
-      return r.json().then(function(rows){
-        if(!rows||!rows.length){ updateSyncUI(false); return; }
-        updateSyncUI(true);
-        var remoteTime=rows[0].updated_at?new Date(rows[0].updated_at).getTime():0;
-        var lastPull=parseInt(localStorage.getItem('cp4_last_pull')||'0');
-        // If remote is newer than last pull → force download changes
-        if(remoteTime>lastPull){
-          pullFromCloud(true).then(function(updated){
-            if(updated) rAll(true);
-          });
-        }
-      });
-    }).catch(function(){
-      clearTimeout(t);
-      updateSyncUI(false);
-    });
-  },2000);
-}
-
-// ── DELETION REGISTRY HELPERS ───────────────────────────────────────────────
-function recordDeleted(type, id){
-  if(!S.deleted) S.deleted={};
-  S.deleted[type+'_'+id]=Date.now();
-}
-function isDeleted(type, id){
-  return !!(S.deleted&&S.deleted[type+'_'+id]);
-}
-
-function detectDevice(){
-  // Return unique device ID so two iPhones are treated as different devices
-  var uid=localStorage.getItem('cp4_device_id');
-  if(!uid){
-    var ua=navigator.userAgent;
-    var type='🖥';
-    if(/iPhone|iPad|iPod/.test(ua)) type='📱';
-    else if(/Android/.test(ua)) type='📱';
-    else if(/Mac/.test(ua)) type='💻';
-    else if(/Windows/.test(ua)) type='💻';
-    uid=type+'_'+Math.random().toString(36).slice(2,8);
-    localStorage.setItem('cp4_device_id',uid);
-  }
-  return uid;
-}
-
-function detectDeviceLabel(){
-  var id=detectDevice();
-  if(id.startsWith('📱')) return '📱 iPhone';
-  if(id.startsWith('💻 Mac')||id.indexOf('Mac')>-1) return '💻 Mac';
-  if(id.startsWith('💻')) return '💻 PC';
-  return '🖥 Dispositivo';
-}
-
-function sbFetch(path, opts){
-  opts=opts||{};
-  return fetch(SB_URL+path, Object.assign({}, opts, {
-    credentials: 'omit',
-    headers: Object.assign({
-      'apikey': SB_KEY,
-      'Authorization': 'Bearer '+SB_KEY,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
-    }, opts.headers||{})
-  })).then(function(res){
-    if(!res.ok) return res.text().then(function(t){ throw new Error(t); });
-    return res.text().then(function(t){ return t?JSON.parse(t):null; });
-  });
-}
-
-function fmtSyncTime(iso){
-  var d=new Date(iso);
-  var mo=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][d.getMonth()];
-  var dia=String(d.getDate()).padStart(2,'0');
-  var hr=String(d.getHours()).padStart(2,'0');
-  var mn=String(d.getMinutes()).padStart(2,'0');
-  var yr=d.getFullYear();
-  return {mini:hr+':'+mn, full:dia+' '+mo+' '+yr+' '+hr+':'+mn};
+// ── HELPERS ──────────────────────────────────────────────────────────────────
+function updateSyncDot(ok){
+  var dot=document.getElementById('sync-dot');
+  if(dot) dot.style.background=ok?'var(--green)':'var(--red)';
 }
 
 function updateSyncUI(ok){
-  var dot=document.getElementById('sync-dot');
+  updateSyncDot(ok);
+  var badge=document.getElementById('sync-status-badge');
   var mini=document.getElementById('sync-mini');
   var last=document.getElementById('sync-last');
-  var devEl=document.getElementById('sync-device');
   var cfgLast=document.getElementById('cfg-sync-last');
-  var statusBadge=document.getElementById('sync-status-badge');
-  var online=navigator.onLine&&ok;
-  if(dot) dot.style.background=online?'var(--green)':'var(--red)';
-  // Status badge: En línea / Local
-  if(statusBadge){
-    statusBadge.textContent=online?'En línea':'Local';
-    statusBadge.style.color=online?'var(--green)':'var(--red)';
-    statusBadge.style.background=online?'rgba(61,214,140,0.12)':'rgba(240,96,96,0.12)';
+  if(badge){
+    badge.textContent=ok?'En línea':'Local';
+    badge.style.color=ok?'var(--green)':'var(--red)';
+    badge.style.background=ok?'rgba(61,214,140,0.12)':'rgba(240,96,96,0.12)';
   }
   if(_lastSyncInfo&&_lastSyncInfo.time){
     var t=fmtSyncTime(_lastSyncInfo.time);
-    var device=_lastSyncInfo.device||'Desconocido';
-    var deviceLabel=device.length>10?device.substring(0,2)+' '+device.split('_')[1]||device:device;
     if(mini) mini.textContent=t.mini;
     if(last) last.textContent=t.full;
-    if(devEl) devEl.textContent='Desde: '+deviceLabel;
-    if(cfgLast) cfgLast.textContent=t.full+' · '+deviceLabel;
-  } else {
-    if(mini) mini.textContent=online?'En línea':'Sin conexión';
-    if(last) last.textContent='Sin sincronización aún';
-    if(devEl) devEl.textContent='';
-    if(cfgLast) cfgLast.textContent='—';
+    if(cfgLast) cfgLast.textContent=t.full;
+    var devEl=document.getElementById('sync-device');
+    if(devEl) devEl.textContent=_lastSyncInfo.device||'';
   }
 }
 
-function getLocalData(){
-  var d={};
-  for(var k in S){ if(k!=='date'&&k!=='eAId'&&k!=='eADate') d[k]=S[k]; }
-  return d;
+function updateSyncDotOnly(ok){
+  updateSyncDot(ok);
 }
 
-// ── CHANGE LOG ───────────────────────────────────────────────────────────────
-// Track what changed so we only push modified data
-var _changeLog={}; // {key: timestamp} e.g. {'proyectos':123, 'personal':456}
+function markPendingPush(){
+  _pendingPush=true;
+  localStorage.setItem('cp4_pending','1');
+  updateSyncDot(false);
+}
 
 function markChanged(key){
   _changeLog[key]=Date.now();
@@ -1076,15 +907,39 @@ function markChanged(key){
 function clearChanges(){
   _changeLog={};
   localStorage.removeItem('cp4_changes');
+  localStorage.removeItem('cp4_pending');
+  _pendingPush=false;
 }
 
 function loadChanges(){
-  var c=localStorage.getItem('cp4_changes');
-  if(c){ try{ _changeLog=JSON.parse(c); }catch(e){} }
+  try{ _changeLog=JSON.parse(localStorage.getItem('cp4_changes')||'{}'); }catch(e){}
 }
 
-// ── MERGE HELPERS ────────────────────────────────────────────────────────────
-function mergeArrayByUpd(local, cloud){
+function getLocalData(){
+  var d={};
+  for(var k in S){ if(k!=='date'&&k!=='eAId'&&k!=='eADate') d[k]=S[k]; }
+  return d;
+}
+
+// ── API ──────────────────────────────────────────────────────────────────────
+function sbFetch(path, opts){
+  opts=opts||{};
+  return fetch(SB_URL+path, Object.assign({}, opts, {
+    credentials:'omit',
+    headers: Object.assign({
+      'apikey':SB_KEY,
+      'Authorization':'Bearer '+SB_KEY,
+      'Content-Type':'application/json',
+      'Prefer':'return=representation'
+    }, opts.headers||{})
+  })).then(function(res){
+    if(!res.ok) return res.text().then(function(t){ throw new Error(t); });
+    return res.text().then(function(t){ return t?JSON.parse(t):null; });
+  });
+}
+
+// ── MERGE ────────────────────────────────────────────────────────────────────
+function mergeArr(local, cloud){
   var map={};
   (cloud||[]).forEach(function(r){ if(r.id) map[r.id]=r; });
   (local||[]).forEach(function(r){
@@ -1094,120 +949,94 @@ function mergeArrayByUpd(local, cloud){
   return Object.values(map);
 }
 
-function mergeActividades(local, cloud){
-  var result=Object.assign({},cloud||{});
-  Object.keys(local||{}).forEach(function(date){
-    if(!result[date]){
-      result[date]=local[date];
-    } else {
-      var map={};
-      (result[date]||[]).forEach(function(a){ map[a.id]=a; });
-      (local[date]||[]).forEach(function(a){
-        if(!map[a.id]||(a._upd||0)>=(map[a.id]._upd||0)) map[a.id]=a;
-      });
-      result[date]=Object.values(map);
-    }
+function mergeActs(local, cloud){
+  var res=Object.assign({},cloud||{});
+  Object.keys(local||{}).forEach(function(d){
+    if(!res[d]){ res[d]=local[d]; return; }
+    var map={};
+    (res[d]||[]).forEach(function(a){ map[a.id]=a; });
+    (local[d]||[]).forEach(function(a){
+      if(!map[a.id]||(a._upd||0)>=(map[a.id]._upd||0)) map[a.id]=a;
+    });
+    res[d]=Object.values(map);
   });
-  return result;
+  return res;
 }
 
 // ── PUSH ─────────────────────────────────────────────────────────────────────
 function pushToCloud(){
   if(_applyingCloudData) return Promise.resolve();
+  // Protect users
   if(!S.users||!S.users.length){
     var bk=localStorage.getItem('cp4_users_backup');
     if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
     if(!S.users||!S.users.length) return Promise.resolve();
   }
   localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-
   var changes=Object.keys(_changeLog);
-  if(!changes.length) return Promise.resolve(); // nothing to push
+  if(!changes.length) return Promise.resolve();
 
   var device=detectDevice();
   var now=new Date().toISOString();
 
-  // Get current cloud data first, merge, then push
   return sbFetch('/rest/v1/imza_data?id=eq.main&select=*').then(function(rows){
     var cloud=(rows&&rows[0]&&rows[0].data)||{};
-
-    // Build merged patch — only changed fields, merged with cloud
     var patch={};
     changes.forEach(function(key){
-      if(key==='actividades'){
-        patch[key]=mergeActividades(S[key]||{}, cloud[key]||{});
-      } else if(Array.isArray(S[key])){
-        patch[key]=mergeArrayByUpd(S[key]||[], cloud[key]||[]);
-      } else {
-        patch[key]=S[key];
-      }
+      if(key==='actividades') patch[key]=mergeActs(S[key]||{}, cloud[key]||{});
+      else if(Array.isArray(S[key])) patch[key]=mergeArr(S[key]||[], cloud[key]||[]);
+      else patch[key]=S[key];
     });
     patch.users=S.users||[];
     patch.deleted=Object.assign({},cloud.deleted||{},S.deleted||{});
     patch.exPersonal=Object.assign({},cloud.exPersonal||{},S.exPersonal||{});
     patch._device=device;
-
-    // Apply merged to local S
+    // Apply merged locally
     _applyingCloudData=true;
     try{
-      changes.forEach(function(key){ if(patch[key]!==undefined) S[key]=patch[key]; });
-      S.deleted=patch.deleted;
-      S.exPersonal=patch.exPersonal;
+      changes.forEach(function(k){ if(patch[k]!==undefined) S[k]=patch[k]; });
+      S.deleted=patch.deleted; S.exPersonal=patch.exPersonal;
       localStorage.setItem('cp4',JSON.stringify(getLocalData()));
     }finally{ _applyingCloudData=false; }
-
     return sbFetch('/rest/v1/imza_data?id=eq.main',{
       method:'PATCH',
       body:JSON.stringify({data:patch,updated_at:now,device:device})
     });
   }).then(function(){
     clearChanges();
-    localStorage.removeItem('cp4_pending');
     return sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at');
   }).then(function(rows){
-    if(rows&&rows[0]&&rows[0].updated_at){
+    if(rows&&rows[0]&&rows[0].updated_at)
       localStorage.setItem('cp4_last_pull',String(new Date(rows[0].updated_at).getTime()));
-    }
     updateSyncUI(true);
   }).catch(function(){
-    // Push failed — keep changes marked as pending so they retry
     markPendingPush();
     updateSyncUI(false);
   });
 }
 
 // ── PULL ─────────────────────────────────────────────────────────────────────
-function pullFromCloud(forceApply){
-  if(!navigator.onLine) return Promise.resolve(false);
+function pullFromCloud(force){
   return sbFetch('/rest/v1/imza_data?id=eq.main&select=*').then(function(rows){
     if(!rows||!rows.length) return false;
-    var row=rows[0];
-    var remote=row.data||{};
+    var row=rows[0]; var remote=row.data||{};
     if(!remote||!remote.proyectos) return false;
-
     _lastSyncInfo={time:row.updated_at,device:row.device};
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     updateSyncUI(true);
-
-    // Always update users
     if(remote.users&&remote.users.length) S.users=remote.users;
-
     var remoteTime=row.updated_at?new Date(row.updated_at).getTime():0;
     var lastPull=parseInt(localStorage.getItem('cp4_last_pull')||'0');
-    if(!forceApply&&remoteTime>0&&remoteTime<=lastPull) return false; // already have this
-
-    // Merge remote into local — newest wins per record
+    if(!force&&remoteTime>0&&remoteTime<=lastPull) return false;
     _applyingCloudData=true;
     try{
       var del=Object.assign({},remote.deleted||{},S.deleted||{});
-      S.proyectos=mergeArrayByUpd(S.proyectos||[], remote.proyectos||[])
-        .filter(function(p){ return !del['proj_'+p.id]; });
-      S.personal=mergeArrayByUpd(S.personal||[], remote.personal||[])
-        .filter(function(p){ return !del['pers_'+p.id]; });
-      S.actividades=mergeActividades(S.actividades||{}, remote.actividades||{});
-      Object.keys(S.actividades).forEach(function(date){
-        S.actividades[date]=(S.actividades[date]||[]).filter(function(a){ return !del['act_'+a.id]; });
-        if(!S.actividades[date].length) delete S.actividades[date];
+      S.proyectos=mergeArr(S.proyectos||[],remote.proyectos||[]).filter(function(p){return !del['proj_'+p.id];});
+      S.personal=mergeArr(S.personal||[],remote.personal||[]).filter(function(p){return !del['pers_'+p.id];});
+      S.actividades=mergeActs(S.actividades||{},remote.actividades||{});
+      Object.keys(S.actividades).forEach(function(d){
+        S.actividades[d]=(S.actividades[d]||[]).filter(function(a){return !del['act_'+a.id];});
+        if(!S.actividades[d].length) delete S.actividades[d];
       });
       S.deleted=del;
       S.exPersonal=Object.assign({},S.exPersonal||{},remote.exPersonal||{});
@@ -1216,106 +1045,119 @@ function pullFromCloud(forceApply){
       localStorage.setItem('cp4_last_pull',String(remoteTime));
     }finally{ _applyingCloudData=false; }
     return true;
-  }).catch(function(){
-    updateSyncUI(false);
-    return false;
-  });
+  }).catch(function(){ updateSyncUI(false); return false; });
 }
 
 // ── SYNC ─────────────────────────────────────────────────────────────────────
 function syncNow(){
-  var hasChanges=Object.keys(_changeLog).length>0||localStorage.getItem('cp4_pending')==='1';
-  var op=hasChanges
-    ? pushToCloud().then(function(){ localStorage.removeItem('cp4_pending'); return pullFromCloud(); })
-    : pullFromCloud();
-  op.then(function(updated){
-    updateSyncUI(true);
-    if(updated) rAll(true);
-  }).catch(function(){
-    updateSyncUI(false);
-  });
+  var hasPending=_pendingPush||Object.keys(_changeLog).length>0||localStorage.getItem('cp4_pending')==='1';
+  if(hasPending){
+    pushToCloud().then(function(){ return pullFromCloud(false); })
+    .then(function(updated){ if(updated) rAll(true); })
+    .catch(function(){ updateSyncUI(false); });
+  } else {
+    pullFromCloud(false).then(function(updated){ if(updated) rAll(true); })
+    .catch(function(){ updateSyncUI(false); });
+  }
 }
 
-
-
-function load(){
-  loadChanges(); // restore pending change log
-  var d=localStorage.getItem('cp4');
-  if(d){
-    try{
-      var parsed=JSON.parse(d);
-      // If users exist but none have email, clear and force fresh download from cloud
-      var hasEmailUsers=!parsed.users||!parsed.users.length||parsed.users.some(function(u){ return u.email; });
-      if(!hasEmailUsers){
-        // Clear stale data but KEEP session
-        localStorage.removeItem('cp4');
-        localStorage.removeItem('cp4_last_pull');
-        d=null;
-      } else {
-        Object.assign(S,parsed);
-      }
-    }catch(e){}
-  }
-  S.date=td();
-  S.proyectos.forEach(function(p,i){ if(!p.folio)p.folio='A'+(i+1); });
-  var ls=localStorage.getItem('cp4_lastsync');
-  if(ls)try{_lastSyncInfo=JSON.parse(ls);}catch(e){}
-  updateSyncUI(navigator.onLine);
-
-  // Show loading indicator on login screen
-  var errEl=document.getElementById('login-error');
-  if(errEl) errEl.innerHTML='<span style="color:var(--txt3)">⏳ Cargando usuarios...</span>';
-  // Disable keypad while loading
-  document.querySelectorAll('.pin-key').forEach(function(b){ b.disabled=true; b.style.opacity='0.4'; });
-
-  // If offline, skip cloud fetch and use local data immediately
-  if(!navigator.onLine){
-    initAuth();
-    return;
-  }
-
-  pullFromCloud().then(function(updated){
-    if(updated){ rAll(); }
-    // Strictly validate session against fresh cloud users
-    var ss=localStorage.getItem('cp4_session');
-    if(ss){
+// ── REALTIME ─────────────────────────────────────────────────────────────────
+function startRealtime(){
+  if(_realtimeWs&&(_realtimeWs.readyState===0||_realtimeWs.readyState===1)) return;
+  try{
+    _realtimeWs=new WebSocket(SB_WS);
+    _realtimeWs.onopen=function(){
+      _realtimeWs.send(JSON.stringify({
+        topic:'realtime:public:imza_data',event:'phx_join',
+        payload:{config:{postgres_changes:[{event:'UPDATE',schema:'public',table:'imza_data'}]}},
+        ref:'1'
+      }));
+      if(_realtimeHb) clearInterval(_realtimeHb);
+      _realtimeHb=setInterval(function(){
+        if(_realtimeWs&&_realtimeWs.readyState===1)
+          _realtimeWs.send(JSON.stringify({topic:'phoenix',event:'heartbeat',payload:{},ref:'hb'}));
+      },20000);
+      pullFromCloud(false).then(function(u){ if(u) rAll(true); });
+    };
+    _realtimeWs.onmessage=function(e){
       try{
-        var su=JSON.parse(ss);
-        // User must exist in cloud users with EXACT same name
-        var sfound=(S.users||[]).find(function(x){
-          return x.id===su.id && x.nombre===su.nombre;
-        });
-        if(!sfound&&navigator.onLine){
-          localStorage.removeItem('cp4_session');
-        }
-      }catch(e){ if(navigator.onLine) localStorage.removeItem('cp4_session'); }
-    }
-    initAuth();
-  }).catch(function(){
-    initAuth();
-  }).finally(function(){
-    document.querySelectorAll('.pin-key').forEach(function(b){ b.disabled=false; b.style.opacity=''; });
-    renderLoginUsers();
-  });
+        var msg=JSON.parse(e.data);
+        var isChange=msg.event==='postgres_changes'||
+          (msg.payload&&msg.payload.data&&msg.payload.data.type==='UPDATE');
+        if(!isChange) return;
+        var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device)||'';
+        if(dev&&dev===detectDevice()) return;
+        pullFromCloud(true).then(function(u){ if(u){ rAll(true); updateSyncUI(true); }});
+      }catch(e){}
+    };
+    _realtimeWs.onclose=function(){
+      if(_realtimeHb){ clearInterval(_realtimeHb); _realtimeHb=null; }
+      updateSyncUI(false);
+      setTimeout(startRealtime,3000);
+    };
+    _realtimeWs.onerror=function(){ _realtimeWs.close(); };
+  }catch(e){ setTimeout(startRealtime,3000); }
 }
 
+// ── PING every 3s ────────────────────────────────────────────────────────────
+function startPing(){
+  if(_pingTimer) clearInterval(_pingTimer);
+  _pingTimer=setInterval(function(){
+    if(!_currentUser) return;
+    var ctrl=new AbortController();
+    var t=setTimeout(function(){ ctrl.abort(); },3000);
+    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=updated_at',{
+      credentials:'omit',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY},
+      signal:ctrl.signal
+    }).then(function(r){ return r.json(); }).then(function(rows){
+      clearTimeout(t);
+      if(!rows||!rows.length){ updateSyncUI(false); return; }
+      updateSyncUI(true);
+      var remoteTime=rows[0].updated_at?new Date(rows[0].updated_at).getTime():0;
+      var lastPull=parseInt(localStorage.getItem('cp4_last_pull')||'0');
+      if(remoteTime>lastPull) pullFromCloud(true).then(function(u){ if(u) rAll(true); });
+      // Push pending if online
+      if(_pendingPush||Object.keys(_changeLog).length>0) syncNow();
+    }).catch(function(){ clearTimeout(t); updateSyncUI(false); });
+  },3000);
+}
+
+// ── DEVICE ───────────────────────────────────────────────────────────────────
+function detectDevice(){
+  var uid=localStorage.getItem('cp4_device_id');
+  if(!uid){
+    var ua=navigator.userAgent;
+    var type='🖥';
+    if(/iPhone|iPad|iPod/.test(ua)) type='📱';
+    else if(/Android/.test(ua)) type='📱';
+    else if(/Mac/.test(ua)) type='💻';
+    uid=type+'_'+Math.random().toString(36).slice(2,7);
+    localStorage.setItem('cp4_device_id',uid);
+  }
+  return uid;
+}
+
+// ── DELETED REGISTRY ─────────────────────────────────────────────────────────
+function recordDeleted(type,id){
+  if(!S.deleted) S.deleted={};
+  S.deleted[type+'_'+id]=Date.now();
+}
+function isDeleted(type,id){ return !!(S.deleted&&S.deleted[type+'_'+id]); }
+
+// ── SAVE ─────────────────────────────────────────────────────────────────────
 function save(){
   if(_applyingCloudData) return;
-  // ALWAYS save to localStorage first — never block on network
-  var toSave={};
-  for(var k in S){ if(k!=='date'&&k!=='eAId'&&k!=='eADate') toSave[k]=S[k]; }
-  var v=Date.now();
-  toSave._v=v;
+  var toSave=getLocalData();
+  toSave._v=Date.now();
   localStorage.setItem('cp4',JSON.stringify(toSave));
-  localStorage.setItem('cp4_v',String(v));
-  // Mark pending — will upload when online
   markPendingPush();
-  // Try to push if we think we're online (non-blocking)
   clearTimeout(_syncTimer);
   _syncTimer=setTimeout(function(){
-    pushToCloud().catch(function(){ /* fails silently, stays pending */ });
-  },50);
+    pushToCloud().catch(function(){});
+  },300);
 }
+
 
 // DATE
 const MS=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -3572,6 +3414,7 @@ function handleMagicLinkCallback(){
   if(!accessToken) return false;
   // Exchange token for user info
   fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/user',{
+    credentials:'omit',
     headers:{
       'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',
       'Authorization':'Bearer '+accessToken
@@ -4478,11 +4321,7 @@ window.addEventListener('pagehide',function(){
 // ── OFFLINE QUEUE ─────────────────────────────────────────────────────────────
 var _pendingPush=false;
 
-function markPendingPush(){
-  _pendingPush=true;
-  localStorage.setItem('cp4_pending','1');
-  updateSyncDot(false);
-}
+
 
 load();updDates();rAll();
 // Load custom app name
