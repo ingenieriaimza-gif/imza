@@ -1210,6 +1210,8 @@ function startLiveSync(){
   if(_liveTimer) clearInterval(_liveTimer);
   _liveTimer=setInterval(function(){
     if(!_currentUser||_applyingCloudData) return;
+    // Skip if user just interacted (avoid interrupting edits)
+    if(Date.now()-_lastInteraction < 1000) return;
     // If we have pending changes, push first
     if(_pendingPush||Object.keys(_changeLog).length>0){
       pushToCloud().then(function(){
@@ -1226,13 +1228,12 @@ function startLiveSync(){
       updateSyncUI(true);
       if(t && t!==_remoteUpdatedAt){
         _remoteUpdatedAt=t;
-        // New data available — download it
         pullFromCloud(true).then(function(updated){
           if(updated) rAll(true);
         });
       }
     }).catch(function(){ updateSyncUI(false); });
-  },3000);
+  },2000);
 }
 
 // Keep old name for compatibility
@@ -3441,6 +3442,70 @@ function copyDiag(){
   });
 }
 
+// ── PRESENCE ─────────────────────────────────────────────────────────────────
+var _presenceTimer=null;
+
+function updatePresence(){
+  if(!_currentUser) return;
+  var screens={'inicio':'🏠 Inicio','actividad':'📋 Actividad','historial':'📚 Historial',
+               'proyectos':'🏗 Proyectos','personal':'👷 Personal','nomina':'💰 Nómina','config':'⚙️ Config'};
+  sbFetch('/rest/v1/imza_presence?device_id=eq.'+encodeURIComponent(detectDevice()),{
+    method:'POST',
+    headers:{'Prefer':'resolution=merge-duplicates'},
+    body:JSON.stringify({
+      device_id:detectDevice(),
+      user_id:_currentUser.id,
+      user_name:_currentUser.nombre,
+      user_rol:_currentUser.rol,
+      screen:screens[curP]||curP,
+      updated_at:new Date().toISOString()
+    })
+  }).catch(function(){});
+}
+
+var _onlineRefreshTimer=null;
+function loadOnlineUsers(){
+  var wrap=document.getElementById('online-users-wrap');
+  var list=document.getElementById('online-users-list');
+  var count=document.getElementById('online-count');
+  if(!wrap||!list) return;
+  if(!_currentUser||_currentUser.rol!=='admin'){ wrap.style.display='none'; return; }
+  wrap.style.display='block';
+  // Auto-refresh every 2s while on config screen
+  if(!_onlineRefreshTimer){
+    _onlineRefreshTimer=setInterval(function(){
+      if(curP==='config') loadOnlineUsers();
+      else { clearInterval(_onlineRefreshTimer); _onlineRefreshTimer=null; }
+    },2000);
+  }
+  // Get users active in last 5 seconds
+  var cutoff=new Date(Date.now()-5000).toISOString();
+  sbFetch('/rest/v1/imza_presence?updated_at=gt.'+cutoff+'&select=*&order=updated_at.desc').then(function(rows){
+    if(!rows){ list.innerHTML=''; return; }
+    if(count) count.textContent=rows.length+' en línea';
+    list.innerHTML=rows.map(function(r){
+      var isMe=r.device_id===detectDevice();
+      var rolColors={admin:'var(--gold)',editor:'var(--green)',visor:'var(--blue)'};
+      var color=rolColors[r.user_rol]||'var(--txt2)';
+      var initials=(r.user_name||'?').charAt(0).toUpperCase();
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">'+
+        '<div style="width:36px;height:36px;border-radius:50%;background:'+color+'22;color:'+color+';display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0">'+initials+'</div>'+
+        '<div style="flex:1">'+
+          '<div style="font-size:13px;font-weight:700;color:var(--txt)">'+r.user_name+(isMe?' <span style="font-size:10px;color:var(--gold)">(tú)</span>':'')+'</div>'+
+          '<div style="font-size:11px;color:var(--txt3)">'+r.screen+'</div>'+
+        '</div>'+
+        '<div style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0"></div>'+
+      '</div>';
+    }).join('');
+  }).catch(function(){ list.innerHTML=''; });
+}
+
+function startPresence(){
+  updatePresence();
+  if(_presenceTimer) clearInterval(_presenceTimer);
+  _presenceTimer=setInterval(updatePresence, 2000);
+}
+
 function runDiag(){
   var out=document.getElementById('diag-output');
   if(!out) return;
@@ -3474,6 +3539,8 @@ function rCfgStats(){
   // Show diag panel for admin only
   var diagWrap=document.getElementById('diag-wrap');
   if(diagWrap) diagWrap.style.display=(_currentUser&&_currentUser.rol==='admin')?'block':'none';
+  // Load online users for admin
+  loadOnlineUsers();
   // Only show last CONFIRMED sync with Supabase
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
@@ -3969,6 +4036,7 @@ function applyRoleRestrictions(){
   // WebSocket Realtime handles instant updates
   startRealtime();
   startLiveSync();
+  startPresence();
   // Backup polling every 30s (safety net only)
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   _visorInterval=setInterval(function(){
