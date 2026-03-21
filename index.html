@@ -1148,25 +1148,42 @@ function startRealtime(){
 }
 
 // ── PING every 3s ────────────────────────────────────────────────────────────
-var _lastKnownRemoteTime=0;
-window._lastKnownRemoteTime=0;
+// ── LIVE SYNC ────────────────────────────────────────────────────────────────
+// Checks Supabase every 3s for changes from other devices
+var _liveTimer=null;
+var _remoteUpdatedAt='';
 
-function startPing(){
-  if(_pingTimer) clearInterval(_pingTimer);
-  _pingTimer=setInterval(function(){
+function startLiveSync(){
+  if(_liveTimer) clearInterval(_liveTimer);
+  _liveTimer=setInterval(function(){
     if(!_currentUser||_applyingCloudData) return;
-    // Push pending changes
+    // If we have pending changes, push first
     if(_pendingPush||Object.keys(_changeLog).length>0){
-      syncNow();
+      pushToCloud().then(function(){
+        clearChanges();
+        return pullFromCloud(false);
+      }).then(function(u){ if(u) rAll(true); updateSyncUI(true); })
+      .catch(function(){ updateSyncUI(false); });
       return;
     }
-    // Always pull to check for remote changes
-    pullFromCloud(true).then(function(updated){
-      if(updated) rAll(true);
+    // Check if Supabase has newer data
+    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
+      if(!rows||!rows.length){ updateSyncUI(false); return; }
+      var t=rows[0].updated_at||'';
       updateSyncUI(true);
+      if(t && t!==_remoteUpdatedAt){
+        _remoteUpdatedAt=t;
+        // New data available — download it
+        pullFromCloud(true).then(function(updated){
+          if(updated) rAll(true);
+        });
+      }
     }).catch(function(){ updateSyncUI(false); });
-  },4000);
+  },3000);
 }
+
+// Keep old name for compatibility
+function startPing(){ startLiveSync(); }
 
 // ── DEVICE ───────────────────────────────────────────────────────────────────
 function detectDevice(){
@@ -3816,7 +3833,7 @@ function applyRoleRestrictions(){
   rUsersConfig();
   // WebSocket Realtime handles instant updates
   startRealtime();
-  startPing();
+  startLiveSync();
   // Backup polling every 30s (safety net only)
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   _visorInterval=setInterval(function(){
