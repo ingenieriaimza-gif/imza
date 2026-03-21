@@ -852,6 +852,32 @@ const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
 
+// ── VERSION CONTROL ───────────────────────────────────────────────────────────
+// Increment this number with every new version uploaded to GitHub
+const APP_VERSION = '1.0.0';
+
+(function cleanOldCache(){
+  var saved = localStorage.getItem('cp4_app_version');
+  if(saved !== APP_VERSION){
+    // New version detected — clear all cached app state except user data
+    var keep = {
+      cp4_session:    localStorage.getItem('cp4_session'),
+      cp4_auth_token: localStorage.getItem('cp4_auth_token'),
+      cp4_refresh_token: localStorage.getItem('cp4_refresh_token'),
+      cp4_users_backup: localStorage.getItem('cp4_users_backup'),
+      cp4_device_id:  localStorage.getItem('cp4_device_id'),
+      cp4_appname:    localStorage.getItem('cp4_appname'),
+    };
+    // Clear everything
+    localStorage.clear();
+    // Restore only what matters
+    Object.keys(keep).forEach(function(k){ if(keep[k]) localStorage.setItem(k, keep[k]); });
+    // Mark new version
+    localStorage.setItem('cp4_app_version', APP_VERSION);
+    console.log('IMZA: cache limpiado para versión', APP_VERSION);
+  }
+})();
+
 // ── SYNC STATE ───────────────────────────────────────────────────────────────
 var _syncTimer=null;
 var _lastSyncInfo=null;
@@ -1044,22 +1070,24 @@ function pullFromCloud(force){
     _lastSyncInfo={time:row.updated_at,device:row.device};
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     updateSyncUI(true);
-    if(remote.users&&remote.users.length) S.users=remote.users;
     var remoteTime=row.updated_at?new Date(row.updated_at).getTime():0;
     var lastPull=parseInt(localStorage.getItem('cp4_last_pull')||'0');
+    // Skip only if not forced AND already have this version
     if(!force&&remoteTime>0&&remoteTime<=lastPull) return false;
+    // Apply cloud data directly - cloud is source of truth
     _applyingCloudData=true;
     try{
-      var del=Object.assign({},remote.deleted||{},S.deleted||{});
-      S.proyectos=mergeArr(S.proyectos||[],remote.proyectos||[]).filter(function(p){return !del['proj_'+p.id];});
-      S.personal=mergeArr(S.personal||[],remote.personal||[]).filter(function(p){return !del['pers_'+p.id];});
-      S.actividades=mergeActs(S.actividades||{},remote.actividades||{});
-      Object.keys(S.actividades).forEach(function(d){
-        S.actividades[d]=(S.actividades[d]||[]).filter(function(a){return !del['act_'+a.id];});
-        if(!S.actividades[d].length) delete S.actividades[d];
+      var del=remote.deleted||{};
+      S.proyectos=(remote.proyectos||[]).filter(function(p){return !del['proj_'+p.id];});
+      S.personal=(remote.personal||[]).filter(function(p){return !del['pers_'+p.id];});
+      S.actividades={};
+      Object.keys(remote.actividades||{}).forEach(function(d){
+        var acts=(remote.actividades[d]||[]).filter(function(a){return !del['act_'+a.id];});
+        if(acts.length) S.actividades[d]=acts;
       });
+      if(remote.users&&remote.users.length) S.users=remote.users;
       S.deleted=del;
-      S.exPersonal=Object.assign({},S.exPersonal||{},remote.exPersonal||{});
+      S.exPersonal=remote.exPersonal||{};
       S.date=td();
       localStorage.setItem('cp4',JSON.stringify(getLocalData()));
       localStorage.setItem('cp4_last_pull',String(remoteTime));
