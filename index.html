@@ -1160,7 +1160,7 @@ function syncNow(){
     _lastSyncInfo={time:now,device:device};
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     updateSyncUI(true);
-    if(updated){ rAll(true); toast('✓ Datos actualizados','ok'); }
+    if(updated){ rAll(); toast('✓ Datos actualizados','ok'); }
     else { toast('✓ Sincronizado correctamente','ok'); }
   }).catch(function(){
     updateSyncUI(false);
@@ -1174,7 +1174,7 @@ window.addEventListener('online', function(){
   toast('✓ Conexión restaurada — sincronizando...','ok');
   // Auto sync when connection returns
   pushToCloud().then(function(){ return pullFromCloud(); }).then(function(updated){
-    if(updated){ rAll(true); toast('✓ Datos sincronizados','ok'); }
+    if(updated){ rAll(); toast('✓ Datos sincronizados','ok'); }
     var now=new Date().toISOString();
     _lastSyncInfo={time:now,device:detectDevice()};
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
@@ -1741,19 +1741,7 @@ function autoFalta(){
 
 function rAll(silent){
   autoFalta();
-  // Only re-render the current visible screen when syncing silently
-  if(silent){
-    switch(curP){
-      case 'inicio': rInicio(); break;
-      case 'actividad': rAct(); break;
-      case 'historial': rHist(); break;
-      case 'proyectos': rProj(); break;
-      case 'personal': rPers(); break;
-      case 'nomina': rNom(); break;
-      default: rInicio();
-    }
-    return;
-  }
+  // Always render all screens to ensure data is current everywhere
   rInicio();rAct();rHist();rProj();rPers();rNom();
 }
 
