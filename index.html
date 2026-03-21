@@ -859,22 +859,13 @@ const APP_VERSION = '1.0.0';
 (function cleanOldCache(){
   var saved = localStorage.getItem('cp4_app_version');
   if(saved !== APP_VERSION){
-    // New version detected — clear all cached app state except user data
-    var keep = {
-      cp4_session:    localStorage.getItem('cp4_session'),
-      cp4_auth_token: localStorage.getItem('cp4_auth_token'),
-      cp4_refresh_token: localStorage.getItem('cp4_refresh_token'),
-      cp4_users_backup: localStorage.getItem('cp4_users_backup'),
-      cp4_device_id:  localStorage.getItem('cp4_device_id'),
-      cp4_appname:    localStorage.getItem('cp4_appname'),
-    };
-    // Clear everything
-    localStorage.clear();
-    // Restore only what matters
-    Object.keys(keep).forEach(function(k){ if(keep[k]) localStorage.setItem(k, keep[k]); });
+    // New version — only clear non-essential cache, keep session and data
+    // Clear specific old keys that may conflict
+    var clearKeys = ['cp4_last_pull','cp4_v','cp4_changes','cp4_pending','cp4_lastsync'];
+    clearKeys.forEach(function(k){ localStorage.removeItem(k); });
     // Mark new version
     localStorage.setItem('cp4_app_version', APP_VERSION);
-    console.log('IMZA: cache limpiado para versión', APP_VERSION);
+    console.log('IMZA: actualizado a versión', APP_VERSION);
   }
 })();
 
@@ -1088,9 +1079,27 @@ function pullFromCloud(force){
       if(remote.users&&remote.users.length) S.users=remote.users;
       S.deleted=del;
       S.exPersonal=remote.exPersonal||{};
+      S.deletedUsers=remote.deletedUsers||{};
       S.date=td();
       localStorage.setItem('cp4',JSON.stringify(getLocalData()));
       localStorage.setItem('cp4_last_pull',String(remoteTime));
+      // Check if current user was deleted — force logout
+      if(_currentUser&&S.deletedUsers&&S.deletedUsers[_currentUser.id]){
+        setTimeout(function(){
+          toast('Tu cuenta fue eliminada','err');
+          setTimeout(logout, 1500);
+        },500);
+      }
+      // Also verify current user still exists in users list
+      if(_currentUser){
+        var stillExists=(S.users||[]).find(function(u){ return u.id===_currentUser.id; });
+        if(!stillExists){
+          setTimeout(function(){
+            toast('Tu sesión ya no es válida','err');
+            setTimeout(logout, 1500);
+          },500);
+        }
+      }
     }finally{ _applyingCloudData=false; }
     return true;
   }).catch(function(){ updateSyncUI(false); return false; });
@@ -4110,9 +4119,15 @@ function dUser(uid){
   confirmShow('¿Eliminar usuario?','"'+u.nombre+'" será eliminado.',function(){
     S.users=S.users.filter(function(x){ return x.id!==uid; });
     recordDeleted('user',uid);
+    // Store deleted user ID in Supabase so all devices invalidate session
+    if(!S.deletedUsers) S.deletedUsers={};
+    S.deletedUsers[uid]=Date.now();
+    markChanged('users');
     save();
-    pushToCloud();
-    rUsersConfig(); toast('Usuario eliminado','ok');
+    pushToCloud().then(function(){
+      toast('Usuario eliminado','ok');
+    });
+    rUsersConfig();
   },'Eliminar','var(--red)','Cancelar');
 }
 
