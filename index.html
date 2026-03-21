@@ -1092,19 +1092,24 @@ function pullFromCloud(){
     var lastPullTime=parseInt(localStorage.getItem('cp4_last_pull')||'0');
     // Skip only if we already pulled this exact version
     if(remoteTime>0&&remoteTime<=lastPullTime) return false;
-    // Apply remote data with smart merge
-    var localHasData=(S.proyectos&&S.proyectos.length)||(S.personal&&S.personal.length)||(Object.keys(S.actividades||{}).length);
-    if(localHasData){
-      mergeWithOffline(remote);
-    } else {
-      var clean={};
-      for(var k in remote){ if(k!=='_v'&&k!=='_device') clean[k]=remote[k]; }
-      Object.assign(S,clean);
+    // Apply remote data — block save/push during this process
+    _applyingCloudData=true;
+    try{
+      var localHasData=(S.proyectos&&S.proyectos.length)||(S.personal&&S.personal.length)||(Object.keys(S.actividades||{}).length);
+      if(localHasData){
+        mergeWithOffline(remote);
+      } else {
+        var clean={};
+        for(var k in remote){ if(k!=='_v'&&k!=='_device') clean[k]=remote[k]; }
+        Object.assign(S,clean);
+      }
+      S.date=td();
+      var toSave2=getLocalData();
+      localStorage.setItem('cp4',JSON.stringify(toSave2));
+      localStorage.setItem('cp4_last_pull',String(remoteTime));
+    }finally{
+      _applyingCloudData=false;
     }
-    S.date=td();
-    var toSave2=getLocalData();
-    localStorage.setItem('cp4',JSON.stringify(toSave2));
-    localStorage.setItem('cp4_last_pull',String(remoteTime));
     return true;
   }).catch(function(){ updateSyncUI(false); return false; });
 }
@@ -1233,6 +1238,8 @@ function load(){
 }
 
 function save(){
+  // Never save/push while applying cloud data
+  if(_applyingCloudData) return;
   var toSave={};
   for(var k in S){ if(k!=='date'&&k!=='eAId'&&k!=='eADate') toSave[k]=S[k]; }
   var v=Date.now();
@@ -1732,6 +1739,7 @@ function autoFalta(){
 // scheduleMidnightFalta eliminado — regla de 11pm removida
 
 var _syncRendering=false;
+var _applyingCloudData=false; // blocks save/push while applying cloud data
 
 function rAll(fromSync){
   _syncRendering=!!fromSync;
