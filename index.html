@@ -3536,8 +3536,32 @@ function initAuth(){
     }catch(e){}
   }
 
-  // No session — show login
-  // Ensure default admin for first install
+  // No local session — check Supabase for session saved from Safari
+  var deviceId=detectDevice();
+  sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(deviceId)+'&select=session_data').then(function(rows){
+    if(rows&&rows[0]&&rows[0].session_data){
+      try{
+        var u=JSON.parse(rows[0].session_data);
+        if(u&&u.email){
+          var found=(S.users||[]).find(function(x){
+            return (x.email||'').toLowerCase()===u.email.toLowerCase();
+          });
+          if(found){
+            _currentUser=found;
+            localStorage.setItem('cp4_session',JSON.stringify(u));
+            document.getElementById('login-screen').style.display='none';
+            document.getElementById('app').style.display='flex';
+            applyRoleRestrictions();
+            return;
+          }
+        }
+      }catch(e){}
+    }
+    showLoginScreen();
+  }).catch(function(){ showLoginScreen(); });
+}
+
+function showLoginScreen(){
   if(!S.users||!S.users.length){
     var bk=localStorage.getItem('cp4_users_backup');
     if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
@@ -3604,12 +3628,22 @@ function handleMagicLinkCallback(){
       });
       if(found){
         _currentUser=found;
-        // Save session with email for reliable restore
         var sessionData={id:found.id,nombre:found.nombre,email:(found.email||email).toLowerCase(),rol:found.rol};
         localStorage.setItem('cp4_session',JSON.stringify(sessionData));
         localStorage.setItem('cp4_auth_token',accessToken);
         var refreshToken=params.get('refresh_token');
         if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
+        // Save session token to Supabase so PWA can restore it
+        var deviceId=detectDevice();
+        sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(deviceId),{
+          method:'POST',
+          headers:{'Prefer':'resolution=merge-duplicates'},
+          body:JSON.stringify({
+            device_id:deviceId,
+            session_data:JSON.stringify(sessionData),
+            updated_at:new Date().toISOString()
+          })
+        }).catch(function(){});
         window.history.replaceState(null,'',window.location.pathname);
         document.getElementById('login-screen').style.display='none';
         document.getElementById('app').style.display='flex';
