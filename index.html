@@ -1007,7 +1007,6 @@ function mergeActs(local, cloud){
 // ── PUSH ─────────────────────────────────────────────────────────────────────
 function pushToCloud(){
   if(_applyingCloudData) return Promise.resolve();
-  // Protect users
   if(!S.users||!S.users.length){
     var bk=localStorage.getItem('cp4_users_backup');
     if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
@@ -1020,42 +1019,23 @@ function pushToCloud(){
   var device=detectDevice();
   var now=new Date().toISOString();
 
-  return sbFetch('/rest/v1/imza_data?id=eq.main&select=*').then(function(rows){
-    var cloud=(rows&&rows[0]&&rows[0].data)||{};
-    var patch={};
-    changes.forEach(function(key){
-      if(key==='actividades') patch[key]=mergeActs(S[key]||{}, cloud[key]||{});
-      else if(Array.isArray(S[key])) patch[key]=mergeArr(S[key]||[], cloud[key]||[]);
-      else patch[key]=S[key];
-    });
-    patch.users=S.users||[];
-    patch.deleted=Object.assign({},cloud.deleted||{},S.deleted||{});
-    patch.exPersonal=Object.assign({},cloud.exPersonal||{},S.exPersonal||{});
-    patch._device=device;
-    // Apply merged locally
-    _applyingCloudData=true;
-    try{
-      changes.forEach(function(k){ if(patch[k]!==undefined) S[k]=patch[k]; });
-      S.deleted=patch.deleted; S.exPersonal=patch.exPersonal;
-      localStorage.setItem('cp4',JSON.stringify(getLocalData()));
-    }finally{ _applyingCloudData=false; }
-    return sbFetch('/rest/v1/imza_data?id=eq.main',{
-      method:'PATCH',
-      body:JSON.stringify({data:patch,updated_at:now,device:device})
-    });
+  // LOCAL DATA ALWAYS WINS — no merge, just upload what we have
+  var patch=getLocalData();
+  patch._device=device;
+
+  return sbFetch('/rest/v1/imza_data?id=eq.main',{
+    method:'PATCH',
+    body:JSON.stringify({data:patch,updated_at:now,device:device})
   }).then(function(){
     clearChanges();
-    return sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at,device');
+    return sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at');
   }).then(function(rows){
     if(rows&&rows[0]&&rows[0].updated_at){
       var t=rows[0].updated_at;
-      var tMs=new Date(t).getTime();
-      // Update cp4_last_pull so THIS device doesn't re-download its own push
-      localStorage.setItem('cp4_last_pull',String(tMs));
-      // Update sync info
-      _lastSyncInfo={time:t,device:detectDevice()};
+      _lastSyncInfo={time:t,device:device};
       localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
-      // OTHER devices have older cp4_last_pull so ping will trigger their pullFromCloud(true)
+      localStorage.setItem('cp4_last_pull',String(new Date(t).getTime()));
+      _remoteUpdatedAt=t;
     }
     updateSyncUI(true);
   }).catch(function(){
