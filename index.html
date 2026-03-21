@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0c0e12">
 <title>IMZA</title>
@@ -912,7 +913,7 @@ function startRealtime(){
         var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device)||'';
         if(dev&&dev===detectDevice()) return;
         // Remote change — pull immediately
-        pullFromCloud().then(function(updated){
+        pullFromCloud(true).then(function(updated){
           if(updated){ rAll(true); updateSyncUI(true); }
         });
       }catch(err){}
@@ -941,7 +942,9 @@ function startPingInterval(){
     var ctrl=new AbortController();
     var t=setTimeout(function(){ ctrl.abort(); },3000);
     fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=updated_at',{
-      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY},
+      method:'GET',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'},
+      credentials:'omit',
       signal:ctrl.signal
     }).then(function(r){
       clearTimeout(t);
@@ -951,9 +954,9 @@ function startPingInterval(){
         updateSyncUI(true);
         var remoteTime=rows[0].updated_at?new Date(rows[0].updated_at).getTime():0;
         var lastPull=parseInt(localStorage.getItem('cp4_last_pull')||'0');
-        // If remote is newer than last pull → download changes
+        // If remote is newer than last pull → force download changes
         if(remoteTime>lastPull){
-          pullFromCloud().then(function(updated){
+          pullFromCloud(true).then(function(updated){
             if(updated) rAll(true);
           });
         }
@@ -962,7 +965,7 @@ function startPingInterval(){
       clearTimeout(t);
       updateSyncUI(false);
     });
-  },4000);
+  },2000);
 }
 
 // ── DELETION REGISTRY HELPERS ───────────────────────────────────────────────
@@ -1001,6 +1004,7 @@ function detectDeviceLabel(){
 function sbFetch(path, opts){
   opts=opts||{};
   return fetch(SB_URL+path, Object.assign({}, opts, {
+    credentials: 'omit',
     headers: Object.assign({
       'apikey': SB_KEY,
       'Authorization': 'Bearer '+SB_KEY,
@@ -1173,7 +1177,7 @@ function pushToCloud(){
 }
 
 // ── PULL ─────────────────────────────────────────────────────────────────────
-function pullFromCloud(){
+function pullFromCloud(forceApply){
   if(!navigator.onLine) return Promise.resolve(false);
   return sbFetch('/rest/v1/imza_data?id=eq.main&select=*').then(function(rows){
     if(!rows||!rows.length) return false;
@@ -1190,7 +1194,7 @@ function pullFromCloud(){
 
     var remoteTime=row.updated_at?new Date(row.updated_at).getTime():0;
     var lastPull=parseInt(localStorage.getItem('cp4_last_pull')||'0');
-    if(remoteTime>0&&remoteTime<=lastPull) return false; // already have this
+    if(!forceApply&&remoteTime>0&&remoteTime<=lastPull) return false; // already have this
 
     // Merge remote into local — newest wins per record
     _applyingCloudData=true;
@@ -3492,96 +3496,6 @@ function toggleSyncBar(){
 
 var _currentUser=null;
 
-function initAuth(){
-  // First check if this is a magic link callback
-  if(window.location.hash&&window.location.hash.includes('access_token')){
-    if(handleMagicLinkCallback()) return;
-  }
-  // Only create default admin if truly no users exist anywhere
-  if(!S.users||!S.users.length){
-    var raw=localStorage.getItem('cp4');
-    var hasUsers=false;
-    if(raw){try{var parsed=JSON.parse(raw);if(parsed.users&&parsed.users.length)hasUsers=true;}catch(e){}}
-    if(!hasUsers){
-      // Prompt admin to create first user — no default PIN
-      S.users=[{id:'u1',nombre:'Admin',rol:'admin',email:'ingenieriaimza@gmail.com'}];
-      save();
-    }
-  }
-  // If default admin still has 0000 pin, remind to change it (but don't block)
-  
-  // Update login screen app name
-  var n=localStorage.getItem('cp4_appname')||'IMZA';
-  var el=document.getElementById('login-appname');
-  if(el) el.textContent=n;
-  // Fix iOS autocorrect on name input
-  setTimeout(function(){
-    var ni=document.getElementById('login-name-input');
-    if(ni){
-      ni.addEventListener('input',function(){
-        this.value=this.value.replace(/[‘’]/g,"'").replace(/[“”]/g,'"');
-      });
-    }
-  },100);
-  // Restore session — S.users already has latest data from cloud (pulled before initAuth)
-  var savedSession=localStorage.getItem('cp4_session');
-  if(savedSession){
-    try{
-      var u=JSON.parse(savedSession);
-      var found=null;
-      // Match by email against latest cloud users
-      if(u.email){
-        found=(S.users||[]).find(function(x){ return (x.email||'').toLowerCase()===(u.email||'').toLowerCase(); });
-      }
-      if(!found&&u.id){
-        found=(S.users||[]).find(function(x){ return x.id===u.id; });
-      }
-      if(found){
-        // User exists — restore with CURRENT role/permissions from cloud
-        _currentUser=found; // always use fresh data, not cached session data
-        localStorage.setItem('cp4_session',JSON.stringify({id:found.id,nombre:found.nombre,email:(found.email||'').toLowerCase()}));
-        document.getElementById('login-screen').style.display='none';
-        document.getElementById('app').style.display='flex';
-        applyRoleRestrictions();
-        return;
-      } else {
-        // User was deleted — clear everything and force login
-        localStorage.removeItem('cp4_session');
-        localStorage.removeItem('cp4_auth_token');
-        localStorage.removeItem('cp4_refresh_token');
-      }
-    }catch(e){
-      localStorage.removeItem('cp4_session');
-    }
-  }
-  // Try refreshing Supabase session if token exists
-  var refreshToken=localStorage.getItem('cp4_refresh_token');
-  if(refreshToken){
-    fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/token?grant_type=refresh_token',{
-      method:'POST',
-      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Content-Type':'application/json'},
-      body:JSON.stringify({refresh_token:refreshToken})
-    }).then(function(r){ return r.json(); }).then(function(data){
-      if(data.access_token&&data.user){
-        var email=(data.user.email||'').toLowerCase();
-        var found=(S.users||[]).find(function(x){ return (x.email||'').toLowerCase()===email; });
-        if(found){
-          _currentUser=found;
-          localStorage.setItem('cp4_session',JSON.stringify({id:found.id,nombre:found.nombre,email:found.email}));
-          localStorage.setItem('cp4_auth_token',data.access_token);
-          if(data.refresh_token) localStorage.setItem('cp4_refresh_token',data.refresh_token);
-          document.getElementById('login-screen').style.display='none';
-          document.getElementById('app').style.display='flex';
-          applyRoleRestrictions();
-          return;
-        }
-      }
-      showLogin();
-    }).catch(function(){ showLogin(); });
-    return;
-  }
-  showLogin();
-}
 
 // ── MAGIC LINK AUTH ──────────────────────────────────────────────────────────
 var _sbClient=null;
@@ -3593,24 +3507,7 @@ function getSbClient(){
   return _sbClient;
 }
 
-function loginBack(){
-  document.getElementById('login-step-sent').style.display='none';
-  document.getElementById('login-step-email').style.display='block';
-  document.getElementById('login-error').textContent='';
-}
 
-function showLogin(){
-  _currentUser=null;
-  document.getElementById('login-screen').style.display='flex';
-  document.getElementById('login-step1').style.display='block';
-  document.getElementById('login-step2').style.display='none';
-  var errEl=document.getElementById('login-error');
-  if(errEl) errEl.textContent='';
-  var emailEl=document.getElementById('login-email');
-  if(emailEl) emailEl.value='';
-  var btn=document.getElementById('login-btn');
-  if(btn){ btn.textContent='Enviar link de acceso ✉️'; btn.disabled=false; }
-}
 
 function initAuth(){
   // Update app name
@@ -3665,12 +3562,6 @@ function handleAuthSession(session){
 // ── MAGIC LINK AUTH ──────────────────────────────────────────────────────────
 
 
-function loginBack(){
-  document.getElementById('login-step-sent').style.display='none';
-  document.getElementById('login-step-email').style.display='block';
-  var btn=document.getElementById('btn-magic-link');
-  if(btn){ btn.disabled=false; btn.textContent='Enviar link de acceso ✉️'; }
-}
 
 function handleMagicLinkCallback(){
   // Check URL for magic link token from Supabase
