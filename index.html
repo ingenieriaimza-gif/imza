@@ -854,29 +854,20 @@ const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 var _isOnline=navigator.onLine; // start with browser guess
 
 function checkOnline(){
+  // Fast check using navigator.onLine first
+  if(!navigator.onLine){
+    _isOnline=false;
+    updateSyncDot(false);
+    return Promise.resolve(false);
+  }
+  // Real check via fetch
   return fetch(SB_URL+'/rest/v1/',{
     method:'HEAD',
     headers:{'apikey':SB_KEY},
     cache:'no-cache',
-    signal:AbortSignal.timeout(3000)
+    signal:AbortSignal.timeout(2000)
   }).then(function(){
-    if(!_isOnline){
-      _isOnline=true;
-      updateSyncDot(true);
-      if(_currentUser){
-        // Always push local changes first, then pull latest from cloud
-        toast('📶 Conexión restaurada — sincronizando...','ok');
-        pushToCloud().then(function(){
-          localStorage.removeItem('cp4_pending');
-          _pendingPush=false;
-          return pullFromCloud();
-        }).then(function(updated){
-          rAll(true);
-          toast('✓ Sincronizado','ok');
-          updateSyncUI(true);
-        }).catch(function(){});
-      }
-    }
+    onConnectionRestored();
     return true;
   }).catch(function(){
     _isOnline=false;
@@ -885,8 +876,36 @@ function checkOnline(){
   });
 }
 
-// Check every 2 seconds
-setInterval(checkOnline, 2000);
+function onConnectionRestored(){
+  if(!_isOnline){
+    _isOnline=true;
+    updateSyncDot(true);
+    if(_currentUser){
+      toast('📶 Conexión restaurada — sincronizando...','ok');
+      pushToCloud().then(function(){
+        localStorage.removeItem('cp4_pending');
+        _pendingPush=false;
+        return pullFromCloud();
+      }).then(function(updated){
+        rAll(true);
+        toast('✓ Sincronizado','ok');
+        updateSyncUI(true);
+      }).catch(function(){});
+    }
+  }
+}
+
+// Check every 1 second
+setInterval(checkOnline, 1000);
+
+// Also use browser events as fast trigger
+window.addEventListener('online', function(){
+  setTimeout(function(){ checkOnline(); }, 100);
+});
+window.addEventListener('offline', function(){
+  _isOnline=false;
+  updateSyncDot(false);
+});
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
 let _syncTimer=null, _lastSyncInfo=null;
 let _realtimeWs=null, _realtimeRef=0, _realtimeJoined=false;
