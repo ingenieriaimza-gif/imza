@@ -868,6 +868,18 @@ function updateSyncDot(ok){
   if(dot) dot.style.background=ok?'var(--green)':'var(--red)';
 }
 
+function fmtSyncTime(iso){
+  try{
+    var d=new Date(iso);
+    var mo=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][d.getMonth()];
+    var dia=String(d.getDate()).padStart(2,'0');
+    var hr=String(d.getHours()).padStart(2,'0');
+    var mn=String(d.getMinutes()).padStart(2,'0');
+    var yr=d.getFullYear();
+    return {mini:hr+':'+mn, full:dia+' '+mo+' '+yr+' '+hr+':'+mn};
+  }catch(e){ return {mini:'--:--',full:'—'}; }
+}
+
 function updateSyncUI(ok){
   updateSyncDot(ok);
   var badge=document.getElementById('sync-status-badge');
