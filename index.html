@@ -1016,10 +1016,15 @@ function pushToCloud(){
     });
   }).then(function(){
     clearChanges();
-    return sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at');
+    return sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at,device');
   }).then(function(rows){
-    if(rows&&rows[0]&&rows[0].updated_at)
-      localStorage.setItem('cp4_last_pull',String(new Date(rows[0].updated_at).getTime()));
+    if(rows&&rows[0]&&rows[0].updated_at){
+      var t=rows[0].updated_at;
+      localStorage.setItem('cp4_last_pull',String(new Date(t).getTime()));
+      // Update sync info so Config shows correct time
+      _lastSyncInfo={time:t,device:detectDevice()};
+      localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
+    }
     updateSyncUI(true);
   }).catch(function(){
     markPendingPush();
