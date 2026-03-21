@@ -863,15 +863,17 @@ function checkOnline(){
     if(!_isOnline){
       _isOnline=true;
       updateSyncDot(true);
-      // Upload pending changes when connection restored
-      if(localStorage.getItem('cp4_pending')==='1'&&_currentUser){
-        toast('📶 Subiendo cambios pendientes...','ok');
+      if(_currentUser){
+        // Always push local changes first, then pull latest from cloud
+        toast('📶 Conexión restaurada — sincronizando...','ok');
         pushToCloud().then(function(){
           localStorage.removeItem('cp4_pending');
+          _pendingPush=false;
           return pullFromCloud();
         }).then(function(updated){
-          if(updated) rAll(true);
-          toast('✓ Cambios sincronizados','ok');
+          rAll(true);
+          toast('✓ Sincronizado','ok');
+          updateSyncUI(true);
         }).catch(function(){});
       }
     }
@@ -883,8 +885,8 @@ function checkOnline(){
   });
 }
 
-// Check every 4 seconds
-setInterval(checkOnline, 4000);
+// Check every 2 seconds
+setInterval(checkOnline, 2000);
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
 let _syncTimer=null, _lastSyncInfo=null;
 let _realtimeWs=null, _realtimeRef=0, _realtimeJoined=false;
@@ -1222,7 +1224,7 @@ function save(){
     return;
   }
   clearTimeout(_syncTimer);
-  _syncTimer=setTimeout(pushToCloud,200);
+  _syncTimer=setTimeout(pushToCloud,50);
 }
 
 // DATE
@@ -4449,8 +4451,13 @@ window.addEventListener('orientationchange',function(){ setTimeout(fixHeight,100
 // Push immediately when app is closed or hidden
 document.addEventListener('visibilitychange',function(){
   if(document.visibilityState==='visible'&&_currentUser){
-    // Reset interaction timer so sync can happen after coming back
     _lastInteraction=0;
+    // Sync immediately when app comes to foreground
+    checkOnline().then(function(online){
+      if(online){
+        pullFromCloud().then(function(updated){ if(updated) rAll(true); });
+      }
+    });
   }
   if(document.visibilityState==='hidden'&&_currentUser){
     // App going to background — push any pending changes immediately
