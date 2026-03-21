@@ -1021,6 +1021,13 @@ function pushToCloud(){
   }).then(function(){
     _lastSyncInfo={time:now,device:device};
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
+    // After push, get the actual server timestamp to avoid re-downloading our own data
+    return sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at');
+  }).then(function(rows){
+    if(rows&&rows[0]&&rows[0].updated_at){
+      var serverTime=new Date(rows[0].updated_at).getTime();
+      localStorage.setItem('cp4_last_pull',String(serverTime));
+    }
     updateSyncUI(true);
   }).catch(function(){ updateSyncUI(false); });
 }
