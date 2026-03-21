@@ -3886,6 +3886,7 @@ function applyRoleRestrictions(){
   }, 3000);
   // WebSocket Realtime para actualizaciones instantáneas
   startRealtime();
+  startPing();
   // Force immediate sync on app start
   pullFromCloud().then(function(updated){ if(updated){ rAll(true); } });
 }
