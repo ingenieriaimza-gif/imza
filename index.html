@@ -3460,24 +3460,62 @@ function initAuth(){
       });
     }
   },100);
-  // Validate saved session strictly - id AND nombre must match current S.users
+  // Restore session — S.users already has latest data from cloud (pulled before initAuth)
   var savedSession=localStorage.getItem('cp4_session');
   if(savedSession){
     try{
       var u=JSON.parse(savedSession);
-      var found=(S.users||[]).find(function(x){
-        return x.id===u.id && x.nombre===u.nombre;
-      });
+      var found=null;
+      // Match by email against latest cloud users
+      if(u.email){
+        found=(S.users||[]).find(function(x){ return (x.email||'').toLowerCase()===(u.email||'').toLowerCase(); });
+      }
+      if(!found&&u.id){
+        found=(S.users||[]).find(function(x){ return x.id===u.id; });
+      }
       if(found){
-        _currentUser=found;
+        // User exists — restore with CURRENT role/permissions from cloud
+        _currentUser=found; // always use fresh data, not cached session data
+        localStorage.setItem('cp4_session',JSON.stringify({id:found.id,nombre:found.nombre,email:(found.email||'').toLowerCase()}));
         document.getElementById('login-screen').style.display='none';
         document.getElementById('app').style.display='flex';
         applyRoleRestrictions();
         return;
+      } else {
+        // User was deleted — clear everything and force login
+        localStorage.removeItem('cp4_session');
+        localStorage.removeItem('cp4_auth_token');
+        localStorage.removeItem('cp4_refresh_token');
       }
-    }catch(e){}
-    // Any mismatch — clear session and show login
-    localStorage.removeItem('cp4_session');
+    }catch(e){
+      localStorage.removeItem('cp4_session');
+    }
+  }
+  // Try refreshing Supabase session if token exists
+  var refreshToken=localStorage.getItem('cp4_refresh_token');
+  if(refreshToken){
+    fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/token?grant_type=refresh_token',{
+      method:'POST',
+      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Content-Type':'application/json'},
+      body:JSON.stringify({refresh_token:refreshToken})
+    }).then(function(r){ return r.json(); }).then(function(data){
+      if(data.access_token&&data.user){
+        var email=(data.user.email||'').toLowerCase();
+        var found=(S.users||[]).find(function(x){ return (x.email||'').toLowerCase()===email; });
+        if(found){
+          _currentUser=found;
+          localStorage.setItem('cp4_session',JSON.stringify({id:found.id,nombre:found.nombre,email:found.email}));
+          localStorage.setItem('cp4_auth_token',data.access_token);
+          if(data.refresh_token) localStorage.setItem('cp4_refresh_token',data.refresh_token);
+          document.getElementById('login-screen').style.display='none';
+          document.getElementById('app').style.display='flex';
+          applyRoleRestrictions();
+          return;
+        }
+      }
+      showLogin();
+    }).catch(function(){ showLogin(); });
+    return;
   }
   showLogin();
 }
@@ -3688,6 +3726,9 @@ function handleMagicLinkCallback(){
         _currentUser=found;
         localStorage.setItem('cp4_session',JSON.stringify({id:found.id,nombre:found.nombre,email:found.email}));
         localStorage.setItem('cp4_auth_token',accessToken);
+        // Save refresh token for persistent sessions
+        var refreshToken=params.get('refresh_token');
+        if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
         // Clean URL
         window.history.replaceState(null,'',window.location.pathname);
         document.getElementById('login-screen').style.display='none';
@@ -4063,20 +4104,15 @@ function saveUser(uid){
   if(rol) S.users[idx].rol=rol;
   if(email) S.users[idx].email=email;
   save();
+  pushToCloud(); // Push immediately so other devices get new permissions
   rUsersConfig();
   toast('Guardado ✓','ok');
-  // Always clear session for that user so they must re-login with new data
   var isSelf=uid===(_currentUser&&_currentUser.id);
   if(isSelf){
-    // Log out self after change
     setTimeout(logout,400);
-  } else {
-    // Clear saved session for that user
-    try{
-      var ss=localStorage.getItem('cp4_session');
-      if(ss){ var s=JSON.parse(ss); if(s.id===uid) localStorage.removeItem('cp4_session'); }
-    }catch(e){}
   }
+  // Note: other devices will get updated permissions on next pullFromCloud
+  // because session restore always re-checks against latest S.users
 }
 
 function openAddUser(){
@@ -4201,7 +4237,9 @@ function dUser(uid){
   confirmShow('¿Eliminar usuario?','"'+u.nombre+'" será eliminado.',function(){
     S.users=S.users.filter(function(x){ return x.id!==uid; });
     recordDeleted('user',uid);
-    save(); rUsersConfig(); toast('Usuario eliminado','ok');
+    save();
+    pushToCloud(); // Push immediately so deleted user can't log in on other devices
+    rUsersConfig(); toast('Usuario eliminado','ok');
   },'Eliminar','var(--red)','Cancelar');
 }
 
