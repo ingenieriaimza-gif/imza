@@ -1109,10 +1109,9 @@ function load(){
       // If users exist but none have email, clear and force fresh download from cloud
       var hasEmailUsers=!parsed.users||!parsed.users.length||parsed.users.some(function(u){ return u.email; });
       if(!hasEmailUsers){
-        // Clear stale data — cloud has correct users with emails
+        // Clear stale data but KEEP session
         localStorage.removeItem('cp4');
         localStorage.removeItem('cp4_last_pull');
-        localStorage.removeItem('cp4_session');
         d=null;
       } else {
         Object.assign(S,parsed);
@@ -1148,10 +1147,10 @@ function load(){
         var sfound=(S.users||[]).find(function(x){
           return x.id===su.id && x.nombre===su.nombre;
         });
-        if(!sfound){
+        if(!sfound&&navigator.onLine){
           localStorage.removeItem('cp4_session');
         }
-      }catch(e){ localStorage.removeItem('cp4_session'); }
+      }catch(e){ if(navigator.onLine) localStorage.removeItem('cp4_session'); }
     }
     initAuth();
   }).catch(function(){
