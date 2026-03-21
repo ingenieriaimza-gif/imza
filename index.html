@@ -1173,27 +1173,24 @@ function pullFromCloud(){
       localStorage.setItem('cp4_last_pull',String(remoteTime));
     }finally{ _applyingCloudData=false; }
     return true;
-  }).catch(function(){ updateSyncUI(false); return false; });
+  }).catch(function(){
+    updateSyncUI(false);
+    return false;
+  });
 }
 
 // ── SYNC ─────────────────────────────────────────────────────────────────────
 function syncNow(){
-  if(!navigator.onLine){ updateSyncUI(false); return; }
   var hasChanges=Object.keys(_changeLog).length>0||localStorage.getItem('cp4_pending')==='1';
-  if(hasChanges){
-    pushToCloud().then(function(){
-      localStorage.removeItem('cp4_pending');
-      return pullFromCloud();
-    }).then(function(updated){
-      updateSyncUI(true);
-      if(updated) rAll(true);
-    }).catch(function(){ updateSyncUI(false); });
-  } else {
-    pullFromCloud().then(function(updated){
-      updateSyncUI(true);
-      if(updated) rAll(true);
-    }).catch(function(){ updateSyncUI(false); });
-  }
+  var op=hasChanges
+    ? pushToCloud().then(function(){ localStorage.removeItem('cp4_pending'); return pullFromCloud(); })
+    : pullFromCloud();
+  op.then(function(updated){
+    updateSyncUI(true);
+    if(updated) rAll(true);
+  }).catch(function(){
+    updateSyncUI(false);
+  });
 }
 
 
