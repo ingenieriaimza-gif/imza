@@ -3441,7 +3441,7 @@ function initAuth(){
     if(raw){try{var parsed=JSON.parse(raw);if(parsed.users&&parsed.users.length)hasUsers=true;}catch(e){}}
     if(!hasUsers){
       // Prompt admin to create first user — no default PIN
-      S.users=[{id:'u1',nombre:'Admin',rol:'admin',pin:'0000',email:''}];
+      S.users=[{id:'u1',nombre:'Admin',rol:'admin',email:'ingenieriaimza@gmail.com'}];
       save();
     }
   }
