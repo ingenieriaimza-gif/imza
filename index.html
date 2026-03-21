@@ -3315,9 +3315,9 @@ function resetAllData(){
 
 function rCfgStats(){
   rUsersConfig();
-  // Always reload lastSyncInfo from localStorage before showing
+  // Only show last CONFIRMED sync with Supabase
   var ls=localStorage.getItem('cp4_lastsync');
-  if(ls)try{_lastSyncInfo=JSON.parse(ls);}catch(e){}
+  if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
   updateSyncUI(true);
   const el=document.getElementById('cfg-stats');
   if(!el) return;
