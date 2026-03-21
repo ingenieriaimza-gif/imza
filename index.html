@@ -1051,55 +1051,25 @@ function newerWins(a, b){
 }
 
 function mergeWithOffline(remote){
+  // CLOUD ALWAYS WINS on pull — ensures all devices see same data
+  // Local data is protected by pushing BEFORE pulling in syncNow
   var allDel=applyDeletedRegistry(remote);
 
-  // ── Proyectos ──────────────────────────────────────────────────────────────
-  var projMap={};
-  (remote.proyectos||[]).forEach(function(p){ projMap[p.id]=p; });
-  (S.proyectos||[]).forEach(function(p){
-    if(allDel['proj_'+p.id]) return; // deleted, skip
-    projMap[p.id]=projMap[p.id]?newerWins(p,projMap[p.id]):p;
-  });
-  S.proyectos=Object.values(projMap).filter(function(p){ return !allDel['proj_'+p.id]; });
+  // Apply cloud data directly, only skip deleted records
+  S.proyectos=(remote.proyectos||[]).filter(function(p){ return !allDel['proj_'+p.id]; });
+  S.personal=(remote.personal||[]).filter(function(p){ return !allDel['pers_'+p.id]; });
 
-  // ── Personal ───────────────────────────────────────────────────────────────
-  var persMap={};
-  (remote.personal||[]).forEach(function(p){ persMap[p.id]=p; });
-  (S.personal||[]).forEach(function(p){
-    if(allDel['pers_'+p.id]) return;
-    persMap[p.id]=persMap[p.id]?newerWins(p,persMap[p.id]):p;
-  });
-  S.personal=Object.values(persMap).filter(function(p){ return !allDel['pers_'+p.id]; });
-
-  // ── Actividades ────────────────────────────────────────────────────────────
-  var actMap={};
-  Object.keys(remote.actividades||{}).forEach(function(date){
-    actMap[date]={};
-    (remote.actividades[date]||[]).forEach(function(a){ actMap[date][a.id]=a; });
-  });
-  Object.keys(S.actividades||{}).forEach(function(date){
-    if(!actMap[date]) actMap[date]={};
-    (S.actividades[date]||[]).forEach(function(a){
-      if(allDel['act_'+a.id]) return;
-      actMap[date][a.id]=actMap[date][a.id]?newerWins(a,actMap[date][a.id]):a;
-    });
-  });
+  // Actividades: apply cloud directly
   S.actividades={};
-  Object.keys(actMap).forEach(function(date){
-    var acts=Object.values(actMap[date]).filter(function(a){ return !allDel['act_'+a.id]; });
+  Object.keys(remote.actividades||{}).forEach(function(date){
+    var acts=(remote.actividades[date]||[]).filter(function(a){ return !allDel['act_'+a.id]; });
     if(acts.length) S.actividades[date]=acts;
   });
 
-  // ── Users ──────────────────────────────────────────────────────────────────
-  var usrMap={};
-  (remote.users||[]).forEach(function(u){ usrMap[u.id]=u; });
-  (S.users||[]).forEach(function(u){
-    if(allDel['user_'+u.id]) return;
-    usrMap[u.id]=usrMap[u.id]?newerWins(u,usrMap[u.id]):u;
-  });
-  S.users=Object.values(usrMap).filter(function(u){ return !allDel['user_'+u.id]; });
+  // Users: apply cloud directly
+  S.users=(remote.users||[]).filter(function(u){ return !allDel['user_'+u.id]; });
 
-  // ── Deleted registry & exPersonal ─────────────────────────────────────────
+  // Deleted registry & exPersonal
   S.deleted=allDel;
   S.exPersonal=Object.assign({},remote.exPersonal||{},S.exPersonal||{});
 }
