@@ -3850,19 +3850,23 @@ function applyRoleRestrictions(){
     if(Date.now()-_lastInteraction < 1500) return;
     syncNow();
   }, 5000);
-  // On start: if pending changes exist, push first
+  // On login: always force pull to get latest data
   setTimeout(function(){
+    _remoteUpdatedAt=''; // reset so live sync forces a pull
     var hasPending=localStorage.getItem('cp4_pending')==='1'||Object.keys(_changeLog).length>0;
     if(hasPending){
       pushToCloud().then(function(){
         localStorage.removeItem('cp4_pending');
-        return pullFromCloud();
+        return pullFromCloud(true);
       }).then(function(updated){ if(updated) rAll(true); updateSyncUI(true); })
       .catch(function(){ updateSyncUI(false); });
     } else {
-      syncNow();
+      pullFromCloud(true).then(function(updated){
+        if(updated) rAll(true);
+        updateSyncUI(true);
+      }).catch(function(){ updateSyncUI(false); });
     }
-  }, 500);
+  }, 300);
 }
 
 var _visorInterval=null;
@@ -4437,9 +4441,13 @@ document.addEventListener('visibilitychange',function(){
     }
   }
   if(document.visibilityState==='visible'){
-    // Coming to foreground — sync immediately
+    // Coming to foreground — force fresh pull
     _lastInteraction=0;
-    setTimeout(syncNow, 200);
+    _remoteUpdatedAt=''; // force live sync to pull
+    setTimeout(function(){
+      pullFromCloud(true).then(function(u){ if(u) rAll(true); updateSyncUI(true); })
+      .catch(function(){ updateSyncUI(false); });
+    }, 200);
   }
 });
 
@@ -4474,8 +4482,8 @@ function load(){
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
   updateSyncUI(false); // start as offline until proven otherwise
 
-  // Pull from cloud then init auth
-  pullFromCloud(false).then(function(updated){
+  // Always force pull from cloud on startup to get latest data
+  pullFromCloud(true).then(function(updated){
     if(updated) rAll();
     initAuth();
   }).catch(function(){
