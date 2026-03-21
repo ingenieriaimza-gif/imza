@@ -3386,8 +3386,26 @@ function initAuth(){
         applyRoleRestrictions();
         return;
       }
+      // If users not loaded yet but session exists, try fetching users fresh
+      if(!S.users||!S.users.length){
+        fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
+          credentials:'omit',
+          headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY'}
+        }).then(function(r){ return r.json(); }).then(function(rows){
+          if(rows&&rows[0]&&rows[0].data&&rows[0].data.users) S.users=rows[0].data.users;
+          var f2=(S.users||[]).find(function(x){
+            return (u.email&&(x.email||'').toLowerCase()===u.email.toLowerCase())||(u.id&&x.id===u.id);
+          });
+          if(f2){
+            _currentUser=f2;
+            document.getElementById('login-screen').style.display='none';
+            document.getElementById('app').style.display='flex';
+            applyRoleRestrictions();
+          } else { showLogin(); }
+        }).catch(function(){ showLogin(); });
+        return;
+      }
     }catch(e){}
-    // Only clear session if we have valid users loaded
     if(S.users&&S.users.length) localStorage.removeItem('cp4_session');
   }
   showLogin();
@@ -3437,19 +3455,23 @@ function handleMagicLinkCallback(){
   }).then(function(res){ return res.json(); }).then(function(user){
     if(!user||!user.email) return;
     var email=user.email.toLowerCase();
-    // Match against our registered users
-    pullFromCloud().then(function(){
+    // Always fetch fresh users from Supabase before matching
+    fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
+      credentials:'omit',
+      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY'}
+    }).then(function(r){ return r.json(); }).then(function(rows){
+      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users) S.users=rows[0].data.users;
       var found=(S.users||[]).find(function(u){
         return (u.email||'').toLowerCase()===email;
       });
       if(found){
         _currentUser=found;
-        localStorage.setItem('cp4_session',JSON.stringify({id:found.id,nombre:found.nombre,email:found.email}));
+        // Save session with email for reliable restore
+        var sessionData={id:found.id,nombre:found.nombre,email:(found.email||email).toLowerCase(),rol:found.rol};
+        localStorage.setItem('cp4_session',JSON.stringify(sessionData));
         localStorage.setItem('cp4_auth_token',accessToken);
-        // Save refresh token for persistent sessions
         var refreshToken=params.get('refresh_token');
         if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
-        // Clean URL
         window.history.replaceState(null,'',window.location.pathname);
         document.getElementById('login-screen').style.display='none';
         document.getElementById('app').style.display='flex';
@@ -3457,10 +3479,28 @@ function handleMagicLinkCallback(){
         rAll();
         toast('Bienvenido, '+found.nombre+' 👋','ok');
       } else {
-        document.getElementById('login-error').textContent='Este correo no está registrado. Contacta al administrador.';
+        document.getElementById('login-error').textContent='Correo no registrado. Contacta al administrador.';
         document.getElementById('login-step-email').style.display='block';
         document.getElementById('login-step-sent').style.display='none';
         document.getElementById('login-screen').style.display='flex';
+      }
+    }).catch(function(){
+      // Fallback: try with cached users
+      var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
+      if(found){
+        _currentUser=found;
+        localStorage.setItem('cp4_session',JSON.stringify({id:found.id,nombre:found.nombre,email:(found.email||email).toLowerCase(),rol:found.rol}));
+        localStorage.setItem('cp4_auth_token',accessToken);
+        window.history.replaceState(null,'',window.location.pathname);
+        document.getElementById('login-screen').style.display='none';
+        document.getElementById('app').style.display='flex';
+        applyRoleRestrictions();
+        rAll();
+        toast('Bienvenido, '+found.nombre+' 👋','ok');
+      } else {
+        document.getElementById('login-error').textContent='Sin conexión. Intenta de nuevo.';
+        document.getElementById('login-step-email').style.display='block';
+        document.getElementById('login-step-sent').style.display='none';
       }
     });
   }).catch(function(){
@@ -3566,7 +3606,7 @@ function handleMagicLinkRedirect(){
       var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
       if(found){
         _currentUser=found;
-        localStorage.setItem('cp4_session',JSON.stringify({id:found.id,nombre:found.nombre,email:email}));
+        localStorage.setItem('cp4_session',JSON.stringify({id:found.id,nombre:found.nombre,email:email,rol:found.rol}));
         // Clean URL
         window.history.replaceState({},document.title,window.location.pathname);
         return true;
@@ -3724,7 +3764,7 @@ function applyRoleRestrictions(){
   rUsersConfig();
   // WebSocket Realtime handles instant updates
   startRealtime();
-  startPingInterval();
+  startPing();
   // Backup polling every 30s (safety net only)
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   _visorInterval=setInterval(function(){
@@ -4292,6 +4332,14 @@ function fixHeight(){
 fixHeight();
 window.addEventListener('resize',fixHeight);
 window.addEventListener('orientationchange',function(){ setTimeout(fixHeight,100); });
+
+window.addEventListener('online',function(){
+  updateSyncUI(true);
+  if(_currentUser){ toast('📶 Conexión restaurada','ok'); setTimeout(syncNow,300); }
+});
+window.addEventListener('offline',function(){
+  updateSyncUI(false);
+});
 
 // Push immediately when app is closed or hidden
 document.addEventListener('visibilitychange',function(){
