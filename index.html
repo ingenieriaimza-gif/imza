@@ -4336,6 +4336,39 @@ window.addEventListener('pagehide',function(){
 // ── OFFLINE QUEUE ─────────────────────────────────────────────────────────────
 var _pendingPush=false;
 
+// ── LOAD ─────────────────────────────────────────────────────────────────────
+function load(){
+  loadChanges();
+  // Load from localStorage
+  var d=localStorage.getItem('cp4');
+  if(d){
+    try{
+      var parsed=JSON.parse(d);
+      // If users have no email field, clear to force fresh download
+      var hasEmailUsers=!parsed.users||!parsed.users.length||parsed.users.some(function(u){ return u.email; });
+      if(hasEmailUsers) Object.assign(S,parsed);
+      else {
+        localStorage.removeItem('cp4');
+        localStorage.removeItem('cp4_last_pull');
+      }
+    }catch(e){}
+  }
+  S.date=td();
+  if(S.proyectos) S.proyectos.forEach(function(p,i){ if(!p.folio)p.folio='A'+(i+1); });
+
+  var ls=localStorage.getItem('cp4_lastsync');
+  if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
+  updateSyncUI(false); // start as offline until proven otherwise
+
+  // Pull from cloud then init auth
+  pullFromCloud(false).then(function(updated){
+    if(updated) rAll();
+    initAuth();
+  }).catch(function(){
+    initAuth();
+  });
+}
+
 
 
 load();updDates();rAll();
