@@ -932,6 +932,20 @@ function startRealtime(){
 }
 var _realtimeHb=null;
 
+// Fast connectivity ping every 5s
+var _pingInterval=null;
+function startPingInterval(){
+  if(_pingInterval) clearInterval(_pingInterval);
+  _pingInterval=setInterval(function(){
+    if(!_currentUser) return;
+    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(){
+      updateSyncUI(true);
+    }).catch(function(){
+      updateSyncUI(false);
+    });
+  },5000);
+}
+
 // ── DELETION REGISTRY HELPERS ───────────────────────────────────────────────
 function recordDeleted(type, id){
   if(!S.deleted) S.deleted={};
@@ -3935,6 +3949,7 @@ function applyRoleRestrictions(){
   rUsersConfig();
   // WebSocket Realtime handles instant updates
   startRealtime();
+  startPingInterval();
   // Backup polling every 30s (safety net only)
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   _visorInterval=setInterval(function(){
