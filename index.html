@@ -3410,50 +3410,9 @@ function getSbClient(){
   return _sbClient;
 }
 
-function sendMagicLink(){
-  var email=(document.getElementById('login-email').value||'').trim();
-  var errEl=document.getElementById('login-error');
-  if(!email||!email.includes('@')){
-    errEl.textContent='Ingresa un correo válido';
-    return;
-  }
-  var btn=document.getElementById('login-btn');
-  btn.textContent='Enviando...';
-  btn.disabled=true;
-  errEl.textContent='';
-  getSbClient().auth.signInWithOtp({
-    email:email,
-    options:{
-      emailRedirectTo:'https://gregarious-trifle-532fd3.netlify.app',
-      shouldCreateUser:false
-    }
-  }).then(function(res){
-    if(res.error){
-      errEl.textContent=res.error.message==='Signups not allowed for this instance'
-        ?'Este correo no está registrado. Pide al administrador que te agregue.'
-        :res.error.message;
-      btn.textContent='Enviar link de acceso ✉️';
-      btn.disabled=false;
-      return;
-    }
-    // Show confirmation
-    document.getElementById('login-step1').style.display='none';
-    var s2=document.getElementById('login-step2');
-    s2.style.display='block';
-    document.getElementById('login-email-sent').innerHTML='Se envió un link a<br><b>'+email+'</b>';
-  }).catch(function(err){
-    errEl.textContent='Error al enviar. Verifica tu conexión.';
-    btn.textContent='Enviar link de acceso ✉️';
-    btn.disabled=false;
-  });
-}
-
 function loginBack(){
-  document.getElementById('login-step2').style.display='none';
-  document.getElementById('login-step1').style.display='block';
-  var btn=document.getElementById('login-btn');
-  btn.textContent='Enviar link de acceso ✉️';
-  btn.disabled=false;
+  document.getElementById('login-step-sent').style.display='none';
+  document.getElementById('login-step-email').style.display='block';
   document.getElementById('login-error').textContent='';
 }
 
@@ -3521,58 +3480,7 @@ function handleAuthSession(session){
 }
 
 // ── MAGIC LINK AUTH ──────────────────────────────────────────────────────────
-function sendMagicLink(){
-  var emailEl=document.getElementById('login-email-input');
-  var errEl=document.getElementById('login-error');
-  var email=(emailEl?emailEl.value||'':'').trim().toLowerCase();
-  if(!email||!email.includes('@')){
-    if(errEl) errEl.textContent='Ingresa un correo válido';
-    return;
-  }
-  // Check if email is registered in S.users
-  var userMatch=(S.users||[]).find(function(u){
-    return (u.email||'').toLowerCase()===email;
-  });
-  if(!userMatch){
-    if(errEl) errEl.textContent='Este correo no está registrado en la app';
-    return;
-  }
-  var btn=document.getElementById('btn-magic-link');
-  if(btn){ btn.disabled=true; btn.textContent='Enviando...'; }
-  if(errEl) errEl.textContent='';
 
-  // Send magic link via Supabase Auth
-  fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/magiclink',{
-    method:'POST',
-    headers:{
-      'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',
-      'Content-Type':'application/json'
-    },
-    body:JSON.stringify({
-      email:email,
-      options:{emailRedirectTo:'https://gregarious-trifle-532fd3.netlify.app'}
-    })
-  }).then(function(res){
-    if(res.ok){
-      // Show sent screen
-      document.getElementById('login-step-email').style.display='none';
-      var sent=document.getElementById('login-step-sent');
-      sent.style.display='block';
-      var msg=document.getElementById('login-sent-msg');
-      if(msg) msg.textContent='Enviamos un link a '+email+'. Tócalo desde tu correo para entrar.';
-      // Save email for session matching
-      localStorage.setItem('cp4_pending_email',email);
-    } else {
-      res.json().then(function(d){
-        if(errEl) errEl.textContent=(d&&d.msg)||'Error al enviar. Intenta de nuevo.';
-        if(btn){ btn.disabled=false; btn.textContent='Enviar link de acceso ✉️'; }
-      });
-    }
-  }).catch(function(){
-    if(errEl) errEl.textContent='Sin conexión. Intenta de nuevo.';
-    if(btn){ btn.disabled=false; btn.textContent='Enviar link de acceso ✉️'; }
-  });
-}
 
 function loginBack(){
   document.getElementById('login-step-sent').style.display='none';
@@ -3656,12 +3564,33 @@ function sendMagicLink(){
   var email=(inp?inp.value||'':'').trim().toLowerCase();
   var errEl=document.getElementById('login-error');
   if(!email||!email.includes('@')){ errEl.textContent='Ingresa un correo válido'; return; }
-  // Check if email is registered
-  var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
-  if(!found){ errEl.textContent='Este correo no está registrado. Contacta al administrador.'; return; }
-  errEl.textContent='';
-  // Disable button while sending
   var btn=document.querySelector('#login-step-email button');
+  if(btn){ btn.disabled=true; btn.textContent='Verificando...'; }
+  // Fetch users directly from Supabase
+  fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
+    headers:{
+      'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',
+      'Authorization':'Bearer sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY'
+    }
+  }).then(function(r){ return r.json(); }).then(function(rows){
+    if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; }
+    var users=(rows&&rows[0]&&rows[0].data&&rows[0].data.users)||[];
+    // Update local users
+    if(users.length) S.users=users;
+    var found=users.find(function(u){ return (u.email||'').toLowerCase()===email; });
+    if(!found){
+      errEl.textContent='Este correo no está registrado. Contacta al administrador.';
+      return;
+    }
+    _doSendMagicLink(email,errEl,btn);
+  }).catch(function(){
+    if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; }
+    errEl.textContent='Error de conexión. Verifica tu internet.';
+  });
+}
+
+function _doSendMagicLink(email,errEl,btn){
+  errEl.textContent='';
   if(btn){ btn.disabled=true; btn.textContent='Enviando...'; }
   // Send magic link via Supabase Auth
   fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/magiclink',{
