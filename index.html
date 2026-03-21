@@ -3642,6 +3642,7 @@ function sendMagicLink(){
   if(btn){ btn.disabled=true; btn.textContent='Verificando...'; }
   // Fetch users directly from Supabase
   fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
+    credentials:'omit',
     headers:{
       'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',
       'Authorization':'Bearer sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY'
@@ -3673,6 +3674,7 @@ function _doSendMagicLink(email,errEl,btn){
   // Send magic link via Supabase Auth
   fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/magiclink',{
     method:'POST',
+    credentials:'omit',
     headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Content-Type':'application/json'},
     body:JSON.stringify({email:email, redirect_to:'https://gregarious-trifle-532fd3.netlify.app'})
   }).then(function(res){
