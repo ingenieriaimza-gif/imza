@@ -1612,17 +1612,29 @@ function isPast11pm(){
 // scheduleMidnightFalta eliminado — regla de 11pm removida
 
 var _syncRendering=false;
+var _lastInteraction=0;
+
+// Track user interactions to pause sync
+['touchstart','touchend','mousedown','click','keydown'].forEach(function(evt){
+  document.addEventListener(evt, function(){ _lastInteraction=Date.now(); }, {passive:true, capture:true});
+});
 var _applyingCloudData=false; // blocks save/push while applying cloud data
 
+var _rAllTimer=null;
 function rAll(fromSync){
-  _syncRendering=!!fromSync;
-  try{ rInicio(); }catch(e){}
-  try{ rAct(); }catch(e){}
-  try{ rHist(); }catch(e){}
-  try{ rProj(); }catch(e){}
-  try{ rPers(); }catch(e){}
-  try{ rNom(); }catch(e){}
-  _syncRendering=false;
+  // Debounce rapid calls to prevent listener loss
+  if(_rAllTimer) clearTimeout(_rAllTimer);
+  _rAllTimer=setTimeout(function(){
+    _syncRendering=!!fromSync;
+    try{ rInicio(); }catch(e){ console.warn('rInicio',e); }
+    try{ rAct(); }catch(e){ console.warn('rAct',e); }
+    try{ rHist(); }catch(e){ console.warn('rHist',e); }
+    try{ rProj(); }catch(e){ console.warn('rProj',e); }
+    try{ rPers(); }catch(e){ console.warn('rPers',e); }
+    try{ rNom(); }catch(e){ console.warn('rNom',e); }
+    _syncRendering=false;
+    _rAllTimer=null;
+  }, fromSync?50:0);
 }
 
 function rInicio(){
@@ -1681,14 +1693,10 @@ function renderVacList(){
     return;
   }
   // Build with DOM nodes — no inline onclick
-  c.innerHTML='';
-  S.personal.forEach((p,i)=>{
+  c.innerHTML=S.personal.map((p,i)=>{
     const st=p.estado||'activo';
     const cfg=VAC_CFG[st]||VAC_CFG.activo;
-    const div=document.createElement('div');
-    div.className='li';
-    div.style.cssText=`cursor:pointer;border-color:${cfg.border};background:${cfg.bg}`;
-    div.innerHTML=`
+    return `<div class="li" data-wid="${p.id}" style="cursor:pointer;border-color:${cfg.border};background:${cfg.bg}">
       <div class="liav" style="background:${WC[i%WC.length]}22;color:${WC[i%WC.length]}">${inits(p.nombre)}</div>
       <div class="lib">
         <div class="liname">${p.nombre}</div>
@@ -1697,10 +1705,14 @@ function renderVacList(){
       <div class="lir" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
         <span class="b ${cfg.cls}" style="font-size:12px">${cfg.emoji} ${cfg.label}</span>
         <div style="font-size:10px;color:var(--txt3)">toca para cambiar</div>
-      </div>`;
-    div.addEventListener('click', function(){ togVac(p.id); });
-    c.appendChild(div);
-  });
+      </div>
+    </div>`;
+  }).join('');
+  // Use event delegation - listener stays on stable container
+  c.onclick=function(e){
+    const li=e.target.closest('[data-wid]');
+    if(li) togVac(li.dataset.wid);
+  };
 }
 
 function togVac(id){
@@ -1715,7 +1727,11 @@ function togVac(id){
   p.estado=next;
   p._upd=Date.now();
   save();
-  rAll();
+  // Update immediately without debounce
+  try{ renderVacList(); }catch(e){}
+  try{ rInicio(); }catch(e){}
+  try{ rPers(); }catch(e){}
+  try{ rNom(); }catch(e){}
   const cfg=VAC_CFG[next]||VAC_CFG.activo;
   toast(`${p.nombre} → ${cfg.emoji} ${cfg.label}`,'ok');
 }
@@ -3797,12 +3813,14 @@ function applyRoleRestrictions(){
   if(calBtn) calBtn.style.display='flex';
 
   rUsersConfig();
-  // Sync automático cada 2 segundos para todos los usuarios
+  // Smart polling: only sync when user is idle
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   _visorInterval=setInterval(function(){
     if(!navigator.onLine||!_currentUser||_applyingCloudData) return;
+    // Don't sync if user interacted in last 2 seconds
+    if(Date.now()-_lastInteraction < 2000) return;
     pullFromCloud().then(function(updated){ if(updated){ rAll(true); } });
-  }, 2000);
+  }, 3000);
   // WebSocket Realtime para actualizaciones instantáneas
   startRealtime();
   // Force immediate sync on app start
@@ -4355,6 +4373,10 @@ window.addEventListener('orientationchange',function(){ setTimeout(fixHeight,100
 
 // Push immediately when app is closed or hidden
 document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='visible'&&_currentUser){
+    // Reset interaction timer so sync can happen after coming back
+    _lastInteraction=0;
+  }
   if(document.visibilityState==='hidden'&&_currentUser){
     // App going to background — push any pending changes immediately
     if(_syncTimer){
