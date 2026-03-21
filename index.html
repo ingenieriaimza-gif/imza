@@ -920,6 +920,7 @@ function startRealtime(){
     _realtimeWs.onclose=function(){
       _realtimeJoined=false;
       if(_realtimeHb){ clearInterval(_realtimeHb); _realtimeHb=null; }
+      // WebSocket closed = likely no internet
       updateSyncUI(false);
       // Reconnect after 2 seconds
       setTimeout(startRealtime,2000);
@@ -1258,18 +1259,20 @@ function load(){
 
 function save(){
   if(_applyingCloudData) return;
+  // ALWAYS save to localStorage first — never block on network
   var toSave={};
   for(var k in S){ if(k!=='date'&&k!=='eAId'&&k!=='eADate') toSave[k]=S[k]; }
   var v=Date.now();
   toSave._v=v;
   localStorage.setItem('cp4',JSON.stringify(toSave));
   localStorage.setItem('cp4_v',String(v));
-  if(!navigator.onLine){
-    markPendingPush();
-    return;
-  }
+  // Mark pending — will upload when online
+  markPendingPush();
+  // Try to push if we think we're online (non-blocking)
   clearTimeout(_syncTimer);
-  _syncTimer=setTimeout(pushToCloud,50);
+  _syncTimer=setTimeout(function(){
+    pushToCloud().catch(function(){ /* fails silently, stays pending */ });
+  },50);
 }
 
 // DATE
@@ -1317,27 +1320,21 @@ function navigate(p){
 // SHEETS
 var _editSheets=['sov-act','sov-proj','sov-pers','sov-vac'];
 function openS(id){
-  // Block edit sheets for visor
   if(_currentUser&&_currentUser.rol==='visor'&&_editSheets.indexOf(id)!==-1){
     toast('No tienes permisos para editar','err');
     return;
   }
   document.getElementById(id).classList.add('open');
-  // Only pull from cloud if online
-  if(_editSheets.indexOf(id)!==-1&&navigator.onLine){
-    pullFromCloud().then(function(updated){ if(updated){ rAll(true); } });
+  // Pull latest if online (non-blocking, don't wait)
+  if(_editSheets.indexOf(id)!==-1){
+    pullFromCloud().catch(function(){});
   }
 }
 function closeS(id){
   document.getElementById(id).classList.remove('open');
-  // Only push if online
-  if(navigator.onLine){
-    if(_syncTimer){
-      clearTimeout(_syncTimer);
-      _syncTimer=null;
-    }
-    pushToCloud();
-  }
+  // Always try to push (save already stored locally, push is non-blocking)
+  clearTimeout(_syncTimer);
+  pushToCloud().catch(function(){});
 }
 document.querySelectorAll('.sov').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)closeS(el.id);}));
 
