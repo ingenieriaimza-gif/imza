@@ -1019,13 +1019,11 @@ function pushToCloud(){
   return sbFetch('/rest/v1/imza_data?id=eq.main',{
     method:'PATCH',
     body:JSON.stringify({data:toSave, updated_at:now, device:device})
-  }).then(function(){
+  }).then(function(result){
     _lastSyncInfo={time:now,device:device};
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
-    localStorage.setItem('cp4_v',String(toSave._v));
     updateSyncUI(true);
   }).catch(function(){
-    // Don't update lastSyncInfo if push failed
     updateSyncUI(navigator.onLine?true:false);
   });
 }
@@ -1119,27 +1117,24 @@ function pullFromCloud(){
     if(remote.users){
       S.users=remote.users;
     }
-    var remoteV=remote._v||0;
-    var localV=parseInt(localStorage.getItem('cp4_v')||'0');
-    // If local has data and is same or newer version, skip overwrite
-    if(remoteV<=localV) return false;
-    // Remote is newer — but only merge data fields, never reset existing records
-    // If local already has proyectos/personal/actividades, protect them
+    // Use server-side updated_at for comparison — always authoritative
+    var remoteTime=row.updated_at?new Date(row.updated_at).getTime():0;
+    var lastPullTime=parseInt(localStorage.getItem('cp4_last_pull')||'0');
+    // Skip only if we already pulled this exact version
+    if(remoteTime>0&&remoteTime<=lastPullTime) return false;
+    // Apply remote data with smart merge
     var localHasData=(S.proyectos&&S.proyectos.length)||(S.personal&&S.personal.length)||(Object.keys(S.actividades||{}).length);
     if(localHasData){
-      // Use smart merge to protect local data
       mergeWithOffline(remote);
     } else {
-      // No local data — safe to load everything from cloud
       var clean={};
       for(var k in remote){ if(k!=='_v'&&k!=='_device') clean[k]=remote[k]; }
       Object.assign(S,clean);
     }
     S.date=td();
     var toSave2=getLocalData();
-    toSave2._v=remoteV;
     localStorage.setItem('cp4',JSON.stringify(toSave2));
-    localStorage.setItem('cp4_v',String(remoteV));
+    localStorage.setItem('cp4_last_pull',String(remoteTime));
     return true;
   }).catch(function(){ updateSyncUI(false); return false; });
 }
@@ -1199,8 +1194,6 @@ function load(){
     try{
       var parsed=JSON.parse(d);
       Object.assign(S,parsed);
-      // Restore _v so pullFromCloud knows not to overwrite newer local data
-      if(parsed._v) localStorage.setItem('cp4_v',String(parsed._v));
     }catch(e){}
   }
   S.date=td();
