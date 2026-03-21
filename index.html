@@ -1152,7 +1152,7 @@ function save(){
     return;
   }
   clearTimeout(_syncTimer);
-  _syncTimer=setTimeout(pushToCloud,800);
+  _syncTimer=setTimeout(pushToCloud,200);
 }
 
 // DATE
@@ -4393,6 +4393,41 @@ function fixHeight(){
 fixHeight();
 window.addEventListener('resize',fixHeight);
 window.addEventListener('orientationchange',function(){ setTimeout(fixHeight,100); });
+
+// Push immediately when app is closed or hidden
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='hidden'&&_currentUser){
+    // App going to background — push any pending changes immediately
+    if(_syncTimer){
+      clearTimeout(_syncTimer);
+      _syncTimer=null;
+    }
+    // Use sendBeacon for reliable delivery even when closing
+    var toSave=getLocalData();
+    toSave.users=S.users||[];
+    toSave._device=detectDevice();
+    var now=new Date().toISOString();
+    var body=JSON.stringify({data:toSave,updated_at:now,device:toSave._device});
+    var url=SB_URL+'/rest/v1/imza_data?id=eq.main';
+    // Try sendBeacon first (most reliable on mobile)
+    if(navigator.sendBeacon){
+      var blob=new Blob([body],{type:'application/json'});
+      navigator.sendBeacon(url,blob);
+    } else {
+      pushToCloud();
+    }
+  }
+  if(document.visibilityState==='visible'&&_currentUser){
+    // App coming back to foreground — pull latest
+    pullFromCloud().then(function(updated){ if(updated){ rAll(true); } });
+  }
+});
+
+window.addEventListener('pagehide',function(){
+  if(_currentUser&&navigator.onLine){
+    pushToCloud();
+  }
+});
 
 // ── OFFLINE QUEUE ─────────────────────────────────────────────────────────────
 var _pendingPush=false; // flag: has unsaved changes waiting to upload
