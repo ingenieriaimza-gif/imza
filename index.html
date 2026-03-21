@@ -849,6 +849,42 @@ function td(){
 // ── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
+
+// ── Online status (iOS-safe real check) ───────────────────────────────────────
+var _isOnline=navigator.onLine; // start with browser guess
+
+function checkOnline(){
+  return fetch(SB_URL+'/rest/v1/',{
+    method:'HEAD',
+    headers:{'apikey':SB_KEY},
+    cache:'no-cache',
+    signal:AbortSignal.timeout(3000)
+  }).then(function(){
+    if(!_isOnline){
+      _isOnline=true;
+      updateSyncDot(true);
+      // Upload pending changes when connection restored
+      if(localStorage.getItem('cp4_pending')==='1'&&_currentUser){
+        toast('📶 Subiendo cambios pendientes...','ok');
+        pushToCloud().then(function(){
+          localStorage.removeItem('cp4_pending');
+          return pullFromCloud();
+        }).then(function(updated){
+          if(updated) rAll(true);
+          toast('✓ Cambios sincronizados','ok');
+        }).catch(function(){});
+      }
+    }
+    return true;
+  }).catch(function(){
+    _isOnline=false;
+    updateSyncDot(false);
+    return false;
+  });
+}
+
+// Check every 4 seconds
+setInterval(checkOnline, 4000);
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
 let _syncTimer=null, _lastSyncInfo=null;
 let _realtimeWs=null, _realtimeRef=0, _realtimeJoined=false;
@@ -4450,38 +4486,13 @@ window.addEventListener('pagehide',function(){
 });
 
 // ── OFFLINE QUEUE ─────────────────────────────────────────────────────────────
-var _pendingPush=false; // flag: has unsaved changes waiting to upload
+var _pendingPush=false;
 
 function markPendingPush(){
   _pendingPush=true;
   localStorage.setItem('cp4_pending','1');
   updateSyncDot(false);
 }
-
-// When connection returns: upload pending changes
-window.addEventListener('online',function(){
-  updateSyncDot(true);
-  var pending=localStorage.getItem('cp4_pending');
-  if(pending==='1'&&_currentUser){
-    toast('📶 Conexión restaurada — subiendo cambios...','ok');
-    pushToCloud().then(function(){
-      localStorage.removeItem('cp4_pending');
-      _pendingPush=false;
-      return pullFromCloud();
-    }).then(function(updated){
-      if(updated){ rAll(true); }
-      toast('✓ Cambios sincronizados','ok');
-      updateSyncUI(true);
-    }).catch(function(){});
-  } else {
-    updateSyncDot(true);
-  }
-});
-
-window.addEventListener('offline',function(){
-  updateSyncDot(false);
-  toast('⚠️ Sin internet — cambios guardados localmente','err');
-});
 
 load();updDates();rAll();
 // Load custom app name
