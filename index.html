@@ -3281,17 +3281,25 @@ function handleImport(input){
         '¿Importar datos?',
         'Esto reemplazará todos los datos actuales con los del archivo "'+file.name+'".',
         ()=>{
-          const {_exportDate,_version,...restore}=data;
-          Object.assign(S,restore);
+          // Keep current users — never overwrite them on import
+          var currentUsers=S.users&&S.users.length?S.users:null;
+          var currentDeleted=S.deleted||{};
+          var currentExPersonal=S.exPersonal||{};
+          // Reset all data
+          S.proyectos=data.proyectos||[];
+          S.personal=data.personal||[];
+          S.actividades=data.actividades||{};
+          S.deleted=data.deleted||currentDeleted;
+          S.exPersonal=data.exPersonal||currentExPersonal;
+          // Always keep current users
+          if(currentUsers) S.users=currentUsers;
           S.date=td();
-          // Mark all fields as changed so they sync to cloud
           markChanged('proyectos');
           markChanged('personal');
           markChanged('actividades');
           save();
           rAll();
           rCfgStats();
-          // Push to cloud immediately
           pushToCloud().then(function(){ toast('Datos importados y sincronizados ✓','ok'); })
           .catch(function(){ toast('Datos importados localmente ✓','ok'); });
         },
