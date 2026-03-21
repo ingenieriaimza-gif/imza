@@ -1019,13 +1019,65 @@ function pushToCloud(){
   var device=detectDevice();
   var now=new Date().toISOString();
 
-  // LOCAL DATA ALWAYS WINS — no merge, just upload what we have
-  var patch=getLocalData();
-  patch._device=device;
+  // Get cloud data first, merge by _upd (newest record wins), then upload
+  return sbFetch('/rest/v1/imza_data?id=eq.main&select=*').then(function(rows){
+    var cloud=(rows&&rows[0]&&rows[0].data)||{};
 
-  return sbFetch('/rest/v1/imza_data?id=eq.main',{
-    method:'PATCH',
-    body:JSON.stringify({data:patch,updated_at:now,device:device})
+    // Merge: for each array, compare record by record using _upd timestamp
+    var merged=Object.assign({},cloud);
+    
+    // Proyectos: newest _upd per id wins
+    var projMap={};
+    (cloud.proyectos||[]).forEach(function(r){ projMap[r.id]=r; });
+    (S.proyectos||[]).forEach(function(r){
+      if(!projMap[r.id]||(r._upd||0)>=(projMap[r.id]._upd||0)) projMap[r.id]=r;
+    });
+    merged.proyectos=Object.values(projMap);
+
+    // Personal: newest _upd per id wins
+    var persMap={};
+    (cloud.personal||[]).forEach(function(r){ persMap[r.id]=r; });
+    (S.personal||[]).forEach(function(r){
+      if(!persMap[r.id]||(r._upd||0)>=(persMap[r.id]._upd||0)) persMap[r.id]=r;
+    });
+    merged.personal=Object.values(persMap);
+
+    // Actividades: newest _upd per activity id wins
+    merged.actividades=Object.assign({},cloud.actividades||{});
+    Object.keys(S.actividades||{}).forEach(function(date){
+      if(!merged.actividades[date]){
+        merged.actividades[date]=S.actividades[date];
+      } else {
+        var actMap={};
+        (merged.actividades[date]||[]).forEach(function(a){ actMap[a.id]=a; });
+        (S.actividades[date]||[]).forEach(function(a){
+          if(!actMap[a.id]||(a._upd||0)>=(actMap[a.id]._upd||0)) actMap[a.id]=a;
+        });
+        merged.actividades[date]=Object.values(actMap);
+      }
+    });
+
+    merged.users=S.users||[];
+    merged.deleted=Object.assign({},cloud.deleted||{},S.deleted||{});
+    merged.exPersonal=Object.assign({},cloud.exPersonal||{},S.exPersonal||{});
+    merged.deletedUsers=Object.assign({},cloud.deletedUsers||{},S.deletedUsers||{});
+    merged._device=device;
+
+    // Apply merged to local S
+    _applyingCloudData=true;
+    try{
+      S.proyectos=merged.proyectos;
+      S.personal=merged.personal;
+      S.actividades=merged.actividades;
+      S.deleted=merged.deleted;
+      S.exPersonal=merged.exPersonal;
+      localStorage.setItem('cp4',JSON.stringify(getLocalData()));
+    }finally{ _applyingCloudData=false; }
+
+    return sbFetch('/rest/v1/imza_data?id=eq.main',{
+      method:'PATCH',
+      body:JSON.stringify({data:merged,updated_at:now,device:device})
+    });
   }).then(function(){
     clearChanges();
     return sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at');
