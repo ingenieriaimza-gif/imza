@@ -938,12 +938,20 @@ function startPingInterval(){
   if(_pingInterval) clearInterval(_pingInterval);
   _pingInterval=setInterval(function(){
     if(!_currentUser) return;
-    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(){
-      updateSyncUI(true);
+    var ctrl=new AbortController();
+    var t=setTimeout(function(){ ctrl.abort(); },3000); // 3s timeout
+    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=updated_at',{
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY},
+      signal:ctrl.signal
+    }).then(function(r){
+      clearTimeout(t);
+      if(r.ok) updateSyncUI(true);
+      else updateSyncUI(false);
     }).catch(function(){
+      clearTimeout(t);
       updateSyncUI(false);
     });
-  },5000);
+  },4000);
 }
 
 // ── DELETION REGISTRY HELPERS ───────────────────────────────────────────────
