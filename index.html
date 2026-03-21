@@ -4370,43 +4370,24 @@ window.addEventListener('offline',function(){
 
 // Push immediately when app is closed or hidden
 document.addEventListener('visibilitychange',function(){
-  if(document.visibilityState==='visible'&&_currentUser){
-    _lastInteraction=0;
-    // Sync when app comes to foreground
+  if(!_currentUser) return;
+  if(document.visibilityState==='hidden'){
+    // Going to background — push pending changes
+    clearTimeout(_syncTimer);
+    _syncTimer=null;
+    if(Object.keys(_changeLog).length>0||_pendingPush){
+      pushToCloud().catch(function(){});
+    }
+  }
+  if(document.visibilityState==='visible'){
+    // Coming to foreground — sync immediately
     _lastInteraction=0;
     setTimeout(syncNow, 200);
-  }
-  if(document.visibilityState==='hidden'&&_currentUser){
-    // App going to background — push any pending changes immediately
-    if(_syncTimer){
-      clearTimeout(_syncTimer);
-      _syncTimer=null;
-    }
-    // Use sendBeacon for reliable delivery even when closing
-    var toSave=getLocalData();
-    toSave.users=S.users||[];
-    toSave._device=detectDevice();
-    var now=new Date().toISOString();
-    var body=JSON.stringify({data:toSave,updated_at:now,device:toSave._device});
-    var url=SB_URL+'/rest/v1/imza_data?id=eq.main';
-    // Try sendBeacon first (most reliable on mobile)
-    if(navigator.sendBeacon){
-      var blob=new Blob([body],{type:'application/json'});
-      navigator.sendBeacon(url,blob);
-    } else {
-      pushToCloud();
-    }
-  }
-  if(document.visibilityState==='visible'&&_currentUser){
-    // App coming back to foreground — pull latest
-    pullFromCloud().then(function(updated){ if(updated){ rAll(true); } });
   }
 });
 
 window.addEventListener('pagehide',function(){
-  if(_currentUser&&navigator.onLine){
-    pushToCloud();
-  }
+  if(_currentUser) pushToCloud().catch(function(){});
 });
 
 // ── OFFLINE QUEUE ─────────────────────────────────────────────────────────────
