@@ -1182,13 +1182,11 @@ function save(){
   localStorage.setItem('cp4',JSON.stringify(toSave));
   localStorage.setItem('cp4_v',String(v));
   if(!navigator.onLine){
-    // No internet — mark as pending, will upload when connection returns
     markPendingPush();
-    // Still need to render - don't return, let render happen
-  } else {
+    return;
+  }
   clearTimeout(_syncTimer);
   _syncTimer=setTimeout(pushToCloud,200);
-  }
 }
 
 // DATE
@@ -1242,16 +1240,19 @@ function openS(id){
     return;
   }
   document.getElementById(id).classList.add('open');
-  if(_editSheets.indexOf(id)!==-1){
+  // Only pull from cloud if online
+  if(_editSheets.indexOf(id)!==-1&&navigator.onLine){
     pullFromCloud().then(function(updated){ if(updated){ rAll(true); } });
   }
 }
 function closeS(id){
   document.getElementById(id).classList.remove('open');
-  // Immediately push if there's a pending sync
-  if(_syncTimer){
-    clearTimeout(_syncTimer);
-    _syncTimer=null;
+  // Only push if online
+  if(navigator.onLine){
+    if(_syncTimer){
+      clearTimeout(_syncTimer);
+      _syncTimer=null;
+    }
     pushToCloud();
   }
 }
