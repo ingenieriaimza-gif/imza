@@ -1267,6 +1267,10 @@ function save(){
   var toSave=getLocalData();
   toSave._v=Date.now();
   localStorage.setItem('cp4',JSON.stringify(toSave));
+  // Always mark all data fields as changed so pushToCloud uploads everything
+  markChanged('proyectos');
+  markChanged('personal');
+  markChanged('actividades');
   markPendingPush();
   clearTimeout(_syncTimer);
   _syncTimer=setTimeout(function(){
@@ -3640,9 +3644,15 @@ function initAuth(){
     }catch(e){}
   }
 
-  // No local session — check Supabase for session saved from Safari
-  var deviceId=detectDevice();
-  sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(deviceId)+'&select=session_data').then(function(rows){
+  // No local session — check Supabase for session saved from Safari/browser
+  // Try each registered user's email as key
+  var emails=(S.users||[]).map(function(u){ return (u.email||'').toLowerCase(); }).filter(Boolean);
+  if(!emails.length){
+    showLoginScreen();
+    return;
+  }
+  var emailKeys=emails.map(function(e){ return encodeURIComponent(e); }).join(',');
+  sbFetch('/rest/v1/imza_sessions?device_id=in.('+emailKeys+')&select=session_data&order=updated_at.desc&limit=1').then(function(rows){
     if(rows&&rows[0]&&rows[0].session_data){
       try{
         var u=JSON.parse(rows[0].session_data);
@@ -3737,13 +3747,12 @@ function handleMagicLinkCallback(){
         localStorage.setItem('cp4_auth_token',accessToken);
         var refreshToken=params.get('refresh_token');
         if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
-        // Save session token to Supabase so PWA can restore it
-        var deviceId=detectDevice();
-        sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(deviceId),{
+        // Save session to Supabase by email so PWA can restore it
+        sbFetch('/rest/v1/imza_sessions',{
           method:'POST',
           headers:{'Prefer':'resolution=merge-duplicates'},
           body:JSON.stringify({
-            device_id:deviceId,
+            device_id:(found.email||email).toLowerCase(),
             session_data:JSON.stringify(sessionData),
             updated_at:new Date().toISOString()
           })
