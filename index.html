@@ -431,8 +431,18 @@ if('serviceWorker' in navigator){
     <div id="s-inicio" class="screen active">
       <div class="sec"><div class="sec-lbl">Resumen del día</div></div>
       <div class="stats" style="margin-bottom:10px">
-        <div class="sbox"><div class="slbl">Proyectos</div><div class="sval cg" id="st-p">0</div><div class="ssub">activos</div></div>
-        <div class="sbox"><div class="slbl">Personal</div><div class="sval ct" id="st-w">0</div><div class="ssub">activos</div></div>
+        <div class="sbox" style="cursor:pointer" onclick="">
+          <div class="slbl">Proyectos</div>
+          <div class="sval cg" id="st-p">0</div>
+          <div class="ssub">activos</div>
+          <div id="st-proj-names" style="font-size:11px;color:var(--txt2);margin-top:5px;line-height:1.6;text-align:left"></div>
+        </div>
+        <div class="sbox" style="cursor:pointer" onclick="">
+          <div class="slbl">Personal</div>
+          <div class="sval ct" id="st-w">0</div>
+          <div class="ssub">activos</div>
+          <div id="st-activos-names" style="font-size:11px;color:var(--txt2);margin-top:5px;line-height:1.6;text-align:left"></div>
+        </div>
         <div class="sbox" id="st-vac-box" onclick="openVacM()" style="cursor:pointer;grid-column:1/-1;padding:16px 18px;border-color:rgba(240,201,74,0.1)">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
             <div class="slbl" style="margin:0">Ausencias del personal</div>
@@ -1877,34 +1887,61 @@ function rAll(fromSync){
 }
 
 function rInicio(){
-  document.getElementById('st-p').textContent=S.proyectos.filter(p=>p.estado==='activo').length;
-  // activos = no vacaciones y no falta y no inactivo
+  const today=td();
+  const selDate=S.date||today;
+  const isToday=selDate===today;
+
+  // Show selected date label
+  const dateLabel=document.getElementById('inicio-date-label');
+  if(dateLabel) dateLabel.textContent=isToday?'Hoy — '+fmtD(selDate):fmtD(selDate);
+
+  // Stats for selected date
+  var activosProj=S.proyectos.filter(p=>p.estado==='activo')
+    .sort(function(a,b){ return (b._upd||0)-(a._upd||0); });
+  document.getElementById('st-p').textContent=activosProj.length;
+  var projNamesEl=document.getElementById('st-proj-names');
+  if(projNamesEl) projNamesEl.innerHTML=activosProj.length?
+    activosProj.map(p=>'<div>'+p.folio+' '+p.nombre+'</div>').join(''):
+    '<span style="opacity:0.5">—</span>';
   const activos=S.personal.filter(p=>p.estado==='activo');
   document.getElementById('st-w').textContent=activos.length;
+  var activosEl=document.getElementById('st-activos-names');
+  if(activosEl) activosEl.innerHTML=activos.length?activos.map(p=>'<div>'+p.nombre+'</div>').join(''):'<span style="opacity:0.5">—</span>';
   const vacs=S.personal.filter(p=>p.estado==='vacaciones');
   const falts=S.personal.filter(p=>p.estado==='falta');
   document.getElementById('st-v').textContent=vacs.length;
   document.getElementById('st-f').textContent=falts.length;
   document.getElementById('st-vac-names').innerHTML=vacs.length?vacs.map(p=>`<div>${p.nombre}</div>`).join(''):'<span style="opacity:0.5">—</span>';
   document.getElementById('st-falt-names').innerHTML=falts.length?falts.map(p=>`<div>${p.nombre}</div>`).join(''):'<span style="opacity:0.5">—</span>';
+
+  // Activities: show selected date first, then recent dates
   const rc=document.getElementById('rc-list');
-  const today=td();
-  // All dates with activity, sorted newest first
   let dates=Object.keys(S.actividades).filter(d=>(S.actividades[d]||[]).length).sort((a,b)=>b.localeCompare(a));
-  // Always include today at top if it has activity, then up to 4 more recent days
-  const todayInList=dates.includes(today);
-  if(todayInList){
-    dates=[today,...dates.filter(d=>d!==today)].slice(0,5);
+  // Put selected date at top if has activity
+  if(dates.includes(selDate)){
+    dates=[selDate,...dates.filter(d=>d!==selDate)].slice(0,5);
   } else {
-    dates=dates.slice(0,4);
+    // Show selected date even if empty
+    dates=[selDate,...dates.slice(0,4)];
   }
-  if(!dates.length){rc.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><p>Sin actividades recientes</p></div>';return;}
+  if(!dates.length){
+    rc.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><p>Sin actividades recientes</p></div>';
+    return;
+  }
   rc.innerHTML=dates.map(d=>{
-    const acts=S.actividades[d]||[];const iT=d===today;
-    return`<div class="li" onclick="setDate('${d}');navigate('actividad')" style="cursor:pointer;${iT?'border-color:rgba(240,201,74,0.35);background:rgba(240,201,74,0.04)':''}">
-      <div class="liav" style="background:${iT?'rgba(240,201,74,0.2)':'rgba(240,201,74,0.10)'};color:var(--gold);flex-direction:column;gap:0;font-size:13px">${d.split('-')[2]}<span style="font-size:9px;font-weight:600">${MS2[parseInt(d.split('-')[1])-1]}</span></div>
-      <div class="lib"><div class="liname">${fmtD(d)} ${iT?'<span class="b bg" style="font-size:9px;padding:1px 6px">Hoy</span>':''}</div><div class="lisub">${acts.map(a=>gpnFull(a.proyectoId)).join(' · ')}</div></div>
-      <div class="lir"><div class="lival cg">${acts.length}</div><div class="lival2">actividad${acts.length>1?'es':''}</div></div>
+    const acts=S.actividades[d]||[];
+    const isSel=d===selDate;
+    const isTod=d===today;
+    return`<div class="li" onclick="setDate('${d}');navigate('actividad')" style="cursor:pointer;${isSel?'border-color:rgba(240,201,74,0.35);background:rgba(240,201,74,0.04)':''}">
+      <div class="liav" style="background:${isSel?'rgba(240,201,74,0.2)':'rgba(240,201,74,0.10)'};color:var(--gold);flex-direction:column;gap:0;font-size:13px">${d.split('-')[2]}<span style="font-size:9px;font-weight:600">${MS2[parseInt(d.split('-')[1])-1]}</span></div>
+      <div class="lib">
+        <div class="liname">${fmtD(d)}
+          ${isTod?'<span class="b bg" style="font-size:9px;padding:1px 6px">Hoy</span>':''}
+          ${isSel&&!isTod?'<span class="b" style="font-size:9px;padding:1px 6px;background:rgba(106,170,255,0.15);color:#6aaaff;border-radius:4px">Seleccionado</span>':''}
+        </div>
+        <div class="lisub">${acts.length?acts.map(a=>gpnFull(a.proyectoId)).join(' · '):'Sin actividades'}</div>
+      </div>
+      <div class="lir"><div class="lival cg">${acts.length}</div><div class="lival2">actividad${acts.length!==1?'es':''}</div></div>
     </div>`;
   }).join('');
 }
