@@ -1802,23 +1802,64 @@ var _lastInteraction=0;
 var _applyingCloudData=false; // blocks save/push while applying cloud data
 
 var _rAllTimer=null;
+function isSheetOpen(){
+  // Check if any overlay/sheet is open
+  return document.querySelectorAll('.sov.open').length > 0 ||
+         document.querySelectorAll('.cal-overlay.open').length > 0;
+}
+
+function isUserInteracting(){
+  // Don't interrupt if sheet open or user interacted in last 3s
+  return isSheetOpen() || (Date.now()-_lastInteraction < 3000);
+}
+
 function rAll(fromSync){
+  var scroll=document.getElementById('scroll');
+  var scrollTop=scroll?scroll.scrollTop:0;
+  var savedStep=typeof aCurStep!=='undefined'?aCurStep:1;
+  var sheetWasOpen=isSheetOpen();
+
   if(fromSync){
-    // Sync updates: debounce to avoid interrupting user
     if(_rAllTimer) clearTimeout(_rAllTimer);
     _rAllTimer=setTimeout(function(){
       _syncRendering=true;
-      try{ rInicio(); }catch(e){}
-      try{ rAct(); }catch(e){}
-      try{ rHist(); }catch(e){}
-      try{ rProj(); }catch(e){}
-      try{ rPers(); }catch(e){}
-      try{ rNom(); }catch(e){}
-      _syncRendering=false;
-      _rAllTimer=null;
-    }, 1500); // longer delay for sync updates
+      // Freeze scroll before update
+      if(scroll) scroll.style.overflow='hidden';
+      requestAnimationFrame(function(){
+        // Update only current screen — minimal DOM change
+        try{
+          switch(curP){
+            case 'inicio':    rInicio(); break;
+            case 'actividad': rAct(); break;
+            case 'historial': rHist(); break;
+            case 'proyectos': rProj(); break;
+            case 'personal':  rPers(); break;
+            case 'nomina':    rNom(); break;
+            case 'config':    rCfgStats(); break;
+          }
+        }catch(e){}
+        // Also update other screens silently
+        requestAnimationFrame(function(){
+          try{
+            if(curP!=='inicio') rInicio();
+            if(curP!=='actividad') rAct();
+            if(curP!=='historial') rHist();
+            if(curP!=='proyectos') rProj();
+            if(curP!=='personal') rPers();
+            if(curP!=='nomina') rNom();
+          }catch(e){}
+          // Restore scroll silently
+          if(scroll){
+            scroll.scrollTop=scrollTop;
+            scroll.style.overflow='';
+          }
+          if(sheetWasOpen) try{ shStep(savedStep); }catch(e){}
+          _syncRendering=false;
+          _rAllTimer=null;
+        });
+      });
+    },300);
   } else {
-    // User-triggered: render immediately, cancel any pending sync render
     if(_rAllTimer){ clearTimeout(_rAllTimer); _rAllTimer=null; }
     _syncRendering=false;
     try{ rInicio(); }catch(e){}
@@ -1827,6 +1868,7 @@ function rAll(fromSync){
     try{ rProj(); }catch(e){}
     try{ rPers(); }catch(e){}
     try{ rNom(); }catch(e){}
+    if(scroll) scroll.scrollTop=scrollTop;
   }
 }
 
@@ -4798,5 +4840,10 @@ load();updDates();rAll();
     <button onclick="loginBack()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt2);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">← Usar otro correo</button>
   </div>
 </div>
+<script>
+document.addEventListener('touchstart',function(){ window._lastInteraction=Date.now(); },true);
+document.addEventListener('mousedown',function(){ window._lastInteraction=Date.now(); },true);
+document.addEventListener('keydown',function(){ window._lastInteraction=Date.now(); },true);
+</script>
 </body>
 </html>
