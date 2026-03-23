@@ -1085,38 +1085,86 @@ function updateCompanyUI(){
 
 function openCompanyManager(){
   if(!_currentUser||_currentUser.rol!=='admin') return;
+  // Remove existing overlay
+  var existing=document.getElementById('company-overlay');
+  if(existing) existing.remove();
+
   var overlay=document.createElement('div');
   overlay.id='company-overlay';
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:400;display:flex;align-items:flex-end;justify-content:center;padding:0 0 calc(16px + env(safe-area-inset-bottom,0px))';
-  overlay.onclick=function(e){ if(e.target===overlay) overlay.remove(); };
-  var html='<div onclick="event.stopPropagation()" style="background:var(--card);border:1px solid var(--line2);border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:24px 20px;max-height:80vh;overflow-y:auto">'+
-    '<div style="width:36px;height:4px;background:var(--line2);border-radius:2px;margin:0 auto 18px"></div>'+
-    '<div style="font-size:17px;font-weight:800;color:var(--txt);margin-bottom:16px">🏢 Empresas</div>'+
-    '<div id="company-list" style="margin-bottom:16px">'+
-      _companies.map(function(c){
-        var isCurrent=_currentCompany&&_currentCompany.id===c.id;
-        return '<div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:'+(isCurrent?'rgba(245,207,85,0.1)':'var(--card2)')+';margin-bottom:8px;border:1px solid '+(isCurrent?'rgba(245,207,85,0.3)':'var(--line)')+'">' +
-          '<div style="flex:1;font-size:14px;font-weight:700;color:'+(isCurrent?'var(--gold)':'var(--txt)')+'">'+c.nombre+'</div>'+
-          (isCurrent?'<span style="font-size:11px;color:var(--gold)">● Activa</span>':
-            '<button class="co-switch" data-cid="'+c.id+'" style="padding:6px 12px;border-radius:8px;border:none;background:rgba(106,170,255,0.15);color:#6aaaff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">Cambiar</button>')+
-          '<button class="co-del" data-cid="'+c.id+'" style="padding:6px 8px;border-radius:8px;border:none;background:rgba(255,107,107,0.12);color:var(--red);font-size:12px;font-family:inherit;cursor:pointer">🗑</button>'+
-        '</div>';
-      }).join('')+
-    '</div>'+
-    '<div style="background:var(--card2);border-radius:12px;padding:14px;border:1px solid var(--line)">'+
-      '<div style="font-size:13px;font-weight:700;color:var(--txt);margin-bottom:10px">Nueva empresa</div>'+
-      '<input id="new-company-name" type="text" class="fi" placeholder="Nombre de la empresa" style="margin-bottom:10px;display:block;width:100%;box-sizing:border-box">'+
-      '<button onclick="_createCompany()" style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--gold);color:#000;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">+ Crear empresa</button>'+
-    '</div>'+
-  '</div>';
-  overlay.innerHTML=html;
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(10px);z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))';
+
+  function buildContent(){
+    var current=_currentCompany?_currentCompany.id:'main';
+    var list=_companies.map(function(c,i){
+      var isActive=c.id===current;
+      return '<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;margin-bottom:8px;background:'+(isActive?'rgba(245,207,85,0.12)':'var(--card2)')+';border:1.5px solid '+(isActive?'rgba(245,207,85,0.4)':'var(--line)')+'">'
+        +'<div style="flex:1">'
+          +'<div style="font-size:14px;font-weight:700;color:'+(isActive?'var(--gold)':'var(--txt)')+'">'+c.nombre+'</div>'
+          +(isActive?'<div style="font-size:11px;color:var(--gold);margin-top:2px">● Empresa activa</div>':'')
+        +'</div>'
+        +(isActive?'':'<button data-action="switch" data-id="'+c.id+'" style="padding:7px 14px;border-radius:8px;border:none;background:rgba(106,170,255,0.15);color:#6aaaff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">Seleccionar</button>')
+        +(c.id!=='main'?'<button data-action="delete" data-id="'+c.id+'" style="width:32px;height:32px;border-radius:8px;border:none;background:rgba(255,107,107,0.12);color:var(--red);font-size:16px;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center">🗑</button>':'')
+      +'</div>';
+    }).join('');
+
+    return '<div onclick="event.stopPropagation()" style="background:var(--card);border:1px solid var(--line2);border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:24px 20px;max-height:75vh;overflow-y:auto">'
+      +'<div style="width:36px;height:4px;background:var(--line2);border-radius:2px;margin:0 auto 20px"></div>'
+      +'<div style="font-size:17px;font-weight:800;color:var(--txt);margin-bottom:16px">🏢 Empresas</div>'
+      +'<div id="co-list">'+list+'</div>'
+      +'<div style="border-top:1px solid var(--line);margin-top:16px;padding-top:16px">'
+        +'<div style="font-size:12px;color:var(--txt3);font-weight:700;margin-bottom:10px">NUEVA EMPRESA</div>'
+        +'<input id="co-new-name" type="text" class="fi" placeholder="Nombre de la empresa" style="display:block;width:100%;box-sizing:border-box;margin-bottom:10px">'
+        +'<button id="co-create-btn" style="width:100%;padding:13px;border-radius:12px;border:none;background:var(--gold);color:#000;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">+ Crear empresa</button>'
+      +'</div>'
+    +'</div>';
+  }
+
+  overlay.innerHTML=buildContent();
+  overlay.onclick=function(e){
+    if(e.target===overlay) overlay.remove();
+  };
   document.body.appendChild(overlay);
-  // Event delegation for company buttons
+
+  // Event delegation
   overlay.addEventListener('click',function(e){
-    var sw=e.target.closest('.co-switch');
-    var del=e.target.closest('.co-del');
-    if(sw){ switchCompany(sw.dataset.cid); overlay.remove(); }
-    if(del){ _deleteCompany(del.dataset.cid); }
+    var btn=e.target.closest('[data-action]');
+    if(!btn) return;
+    var action=btn.dataset.action;
+    var id=btn.dataset.id;
+
+    if(action==='switch'){
+      switchCompany(id);
+      overlay.remove();
+    }
+    if(action==='delete'){
+      if(id==='main'){ toast('No se puede eliminar la empresa principal','err'); return; }
+      confirmShow('¿Eliminar empresa?','Se eliminarán todos sus datos.',function(){
+        sbFetch('/rest/v1/imza_companies?id=eq.'+id,{method:'DELETE'}).then(function(){
+          _companies=_companies.filter(function(c){ return c.id!==id; });
+          if(_currentCompany&&_currentCompany.id===id) switchCompany('main');
+          toast('Empresa eliminada','ok');
+          overlay.remove();
+        }).catch(function(){ toast('Error al eliminar','err'); });
+      },'Eliminar','var(--red)','Cancelar');
+    }
+  });
+
+  // Create button
+  overlay.querySelector('#co-create-btn').addEventListener('click',function(e){
+    e.stopPropagation();
+    var nombre=(document.getElementById('co-new-name').value||'').trim();
+    if(!nombre){ toast('Escribe el nombre de la empresa','err'); return; }
+    var id='co_'+Date.now();
+    sbFetch('/rest/v1/imza_companies',{
+      method:'POST',
+      body:JSON.stringify({id:id,nombre:nombre,data:{proyectos:[],personal:[],actividades:{},estadoHistorial:{},deleted:{},exPersonal:{},deletedUsers:{}},updated_at:new Date().toISOString()})
+    }).then(function(){
+      _companies.push({id:id,nombre:nombre});
+      toast('Empresa "'+nombre+'" creada ✓','ok');
+      overlay.innerHTML=buildContent();
+      // Re-attach create button
+      overlay.querySelector('#co-create-btn').addEventListener('click',arguments.callee);
+    }).catch(function(){ toast('Error al crear empresa','err'); });
   });
 }
 
