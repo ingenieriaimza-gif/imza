@@ -1924,23 +1924,26 @@ function rInicio(){
     '<span style="opacity:0.5">—</span>';
 
   // Personal: use estadoHistorial for selected date
-  var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||null;
+  var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
+  var isFuture=selDate>today;
   var activos=[], vacs=[], falts=[];
-  if(historial){
-    S.personal.forEach(function(p){
-      var est=historial[p.id];
-      if(est==='activo') activos.push(p);
-      else if(est==='vacaciones') vacs.push(p);
-      else if(est==='falta') falts.push(p);
-    });
-  } else if(isToday){
-    // Today with no historial yet: use current estado
-    S.personal.forEach(function(p){
-      if(p.estado==='activo') activos.push(p);
-      else if(p.estado==='vacaciones') vacs.push(p);
-      else if(p.estado==='falta') falts.push(p);
-    });
-  }
+  S.personal.forEach(function(p){
+    var est;
+    if(isToday){
+      // Today: historial overrides p.estado, else use p.estado
+      est=historial[p.id]||p.estado||'activo';
+    } else if(isFuture){
+      // Future: historial if recorded, else assume activo
+      // (respects scheduled vacations/faults)
+      est=historial[p.id]||'activo';
+    } else {
+      // Past: only show if recorded in historial
+      est=historial[p.id]||null;
+    }
+    if(est==='activo') activos.push(p);
+    else if(est==='vacaciones') vacs.push(p);
+    else if(est==='falta') falts.push(p);
+  });
   document.getElementById('st-w').textContent=activos.length;
   var activosEl=document.getElementById('st-activos-names');
   if(activosEl) activosEl.innerHTML=activos.length?activos.map(function(p){ return '<div>'+p.nombre+'</div>'; }).join(''):'<span style="opacity:0.5">—</span>';
