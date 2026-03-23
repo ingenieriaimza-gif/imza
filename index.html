@@ -1718,6 +1718,11 @@ function savePers(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
   try{
     var wid2=document.getElementById('wid').value;
     var savedPers=wid2?(S.personal.find(function(p){ return p.id===wid2; })):S.personal[S.personal.length-1];
+    // Save estado to historial for today
+    var hDateP=td();
+    if(!S.estadoHistorial) S.estadoHistorial={};
+    if(!S.estadoHistorial[hDateP]) S.estadoHistorial[hDateP]={};
+    if(savedPers) S.estadoHistorial[hDateP][savedPers.id]=savedPers.estado||'activo';
     _lastSaveType='pers'; _lastSaveItem=savedPers;
     setAction(wid2?('Editó trabajador '+(savedPers?savedPers.nombre:'')):'Nuevo trabajador');
     save();
@@ -2012,14 +2017,12 @@ function renderVacList(){
   var today2=td();
   var historialVac=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
   // Build with DOM nodes — no inline onclick
-  c.innerHTML=S.personal.map((p,i)=>{
+  c.innerHTML=S.personal.filter(function(p){ return p.estado!=='inactivo'; }).map((p,i)=>{
     // Use historial for date — never fall back to p.estado for other dates
     var st;
     if(selDate===today2){
-      // Today: historial takes priority, then p.estado
       st=historialVac[p.id]||p.estado||'activo';
     } else {
-      // Past or future: only use historial, default activo if not set
       st=historialVac[p.id]||'activo';
     }
     const cfg=VAC_CFG[st]||VAC_CFG.activo;
@@ -2758,20 +2761,21 @@ function rPers(){
     } else {
       est=historial[p.id]||'activo';
     }
-    // Always show inactivos from p.estado (not date-specific)
-    if(p.estado==='inactivo') inactivos.push(p);
-    else if(est==='activo') activos.push(p);
+    if(est==='activo') activos.push(p);
     else if(est==='vacaciones') vacaciones.push(p);
     else if(est==='falta') faltas.push(p);
+    else if(est==='inactivo') inactivos.push(p);
     else activos.push(p);
   });
   let html='';
   var estMap={};
   S.personal.forEach(function(p){
     var est;
-    if(selDate===today){ est=historial[p.id]||p.estado||'activo'; }
-    else { est=historial[p.id]||'activo'; }
-    if(p.estado==='inactivo') est='inactivo';
+    if(selDate===today){
+      est=historial[p.id]||p.estado||'activo';
+    } else {
+      est=historial[p.id]||'activo';
+    }
     estMap[p.id]=est;
   });
   html += persGroup('Activos',    '✅', 'var(--green)', 'bgr', activos,    true,  estMap);
