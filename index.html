@@ -3637,69 +3637,80 @@ function getSbClient(){
   return _sbClient;
 }
 
+function enterApp(found, sessionData){
+  _currentUser=found;
+  localStorage.setItem('cp4_session',JSON.stringify(sessionData));
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='flex';
+  applyRoleRestrictions();
+}
+
 function initAuth(){
-  // Update app name
   var n=localStorage.getItem('cp4_appname')||'IMZA';
   var el=document.getElementById('login-appname');
   if(el) el.textContent=n;
 
-  // Check magic link in URL first
+  // 1. Magic link in URL (Safari just processed it)
   if(window.location.hash&&window.location.hash.includes('access_token')){
     handleMagicLinkCallback();
     return;
   }
 
-  // Try to restore saved session
+  // 2. Local session exists
   var ss=localStorage.getItem('cp4_session');
   if(ss){
     try{
       var u=JSON.parse(ss);
       if(u&&u.email){
-        // Session exists — enter app immediately with cached data
-        // Then verify in background
-        var bkUsers=localStorage.getItem('cp4_users_backup');
         var users=S.users||[];
-        if(!users.length&&bkUsers) try{ users=JSON.parse(bkUsers); S.users=users; }catch(e){}
-        var found=users.find(function(x){
-          return (x.email||'').toLowerCase()===u.email.toLowerCase();
-        });
-        if(!found){
-          // Create minimal user from session to enter app
-          found={id:u.id||'u1',nombre:u.nombre||'Usuario',rol:u.rol||'editor',email:u.email};
+        if(!users.length){
+          var bk=localStorage.getItem('cp4_users_backup');
+          if(bk) try{ users=JSON.parse(bk); S.users=users; }catch(e){}
         }
-        _currentUser=found;
-        document.getElementById('login-screen').style.display='none';
-        document.getElementById('app').style.display='flex';
-        applyRoleRestrictions();
+        var found=users.find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
+        if(!found) found={id:u.id||'u1',nombre:u.nombre||'Usuario',rol:u.rol||'editor',email:u.email};
+        enterApp(found, u);
         return;
       }
     }catch(e){}
   }
 
-  // No local session — check Supabase for session saved from Safari/browser
-  // Try each registered user's email as key
-  var emails=(S.users||[]).map(function(u){ return (u.email||'').toLowerCase(); }).filter(Boolean);
+  // 3. No local session — check Supabase imza_sessions (for PWA/Safari bridge)
+  // Sessions are stored by email as key so PWA can find them without device_id
+  var users=S.users||[];
+  if(!users.length){
+    var bk2=localStorage.getItem('cp4_users_backup');
+    if(bk2) try{ users=JSON.parse(bk2); S.users=users; }catch(e){}
+  }
+  var emails=users.map(function(u){ return (u.email||'').toLowerCase(); }).filter(Boolean);
+
   if(!emails.length){
-    showLoginScreen();
+    // Try fetching users from Supabase first, then retry
+    sbFetch('/rest/v1/imza_data?id=eq.main&select=data').then(function(rows){
+      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
+        S.users=rows[0].data.users;
+        localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+      }
+      showLoginScreen();
+    }).catch(function(){ showLoginScreen(); });
     return;
   }
-  var emailKeys=emails.map(function(e){ return encodeURIComponent(e); }).join(',');
-  sbFetch('/rest/v1/imza_sessions?device_id=in.('+emailKeys+')&select=session_data&order=updated_at.desc&limit=1').then(function(rows){
-    if(rows&&rows[0]&&rows[0].session_data){
+
+  // Check Supabase sessions for any of our registered emails
+  sbFetch('/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20').then(function(rows){
+    if(!rows||!rows.length){ showLoginScreen(); return; }
+    // Find a session that matches one of our registered users
+    for(var i=0;i<rows.length;i++){
       try{
-        var u=JSON.parse(rows[0].session_data);
-        if(u&&u.email){
-          var found=(S.users||[]).find(function(x){
-            return (x.email||'').toLowerCase()===u.email.toLowerCase();
-          });
-          if(found){
-            _currentUser=found;
-            localStorage.setItem('cp4_session',JSON.stringify(u));
-            document.getElementById('login-screen').style.display='none';
-            document.getElementById('app').style.display='flex';
-            applyRoleRestrictions();
-            return;
-          }
+        var sd=JSON.parse(rows[i].session_data||'{}');
+        if(!sd.email) continue;
+        var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
+        if(match){
+          // Check session is not too old (7 days)
+          var age=Date.now()-new Date(rows[i].updated_at).getTime();
+          if(age>7*24*60*60*1000) continue;
+          enterApp(match, sd);
+          return;
         }
       }catch(e){}
     }
