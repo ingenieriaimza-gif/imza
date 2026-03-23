@@ -523,7 +523,10 @@ if('serviceWorker' in navigator){
 
     <!-- PERSONAL -->
     <div id="s-personal" class="screen">
-      <div class="sec"><div class="sec-lbl">Personal</div><button class="sec-btn bp" onclick="openPersM()" style="color:#fff">+ Nuevo</button></div>
+      <div class="sec">
+        <div class="sec-lbl">Personal · <span id="pers-date-lbl" style="color:var(--txt2);font-weight:600;text-transform:none;letter-spacing:0"></span></div>
+        <button class="sec-btn bp" onclick="openPersM()" style="color:#fff">+ Nuevo</button>
+      </div>
       <div id="pers-list"></div>
     </div>
 
@@ -883,7 +886,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0323.1930';
+const APP_VERSION='2026.0323.1950';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -1382,7 +1385,7 @@ function navigate(p){
     }).catch(function(){});
   }
   // Hide date navigator on screens where it's not relevant
-  const hideTopCal=['personal','nomina','config'];
+  const hideTopCal=['nomina','config'];
   const db=document.getElementById('datebar');
   if(db) db.style.display=hideTopCal.includes(p)?'none':'flex';
   const cb=document.getElementById('cal-btn');
@@ -2882,6 +2885,9 @@ function rPers(){
     return;
   }
   var selDate=S.date||td();
+  // Actualizar label de fecha
+  var lbl=document.getElementById('pers-date-lbl');
+  if(lbl) lbl.textContent=selDate===td()?'Hoy':fmtD(selDate);
   function getEst(p){ return getEstFecha(p, selDate); }
   const activos    = S.personal.filter(p=>getEst(p)==='activo');
   const vacaciones = S.personal.filter(p=>getEst(p)==='vacaciones');
