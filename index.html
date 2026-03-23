@@ -883,7 +883,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0323.1700';
+const APP_VERSION='2026.0323.1720';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -1977,73 +1977,66 @@ const VAC_CFG={
   activo:     {label:'Activo',      emoji:'✅', cls:'bgr', bg:'rgba(61,214,140,0.06)',  border:'rgba(61,214,140,0.2)'},
   vacaciones: {label:'Vacaciones',  emoji:'🏖️', cls:'bg',  bg:'rgba(240,201,74,0.06)', border:'rgba(240,201,74,0.25)'},
   falta:      {label:'Falta',       emoji:'❌', cls:'br',  bg:'rgba(240,96,96,0.06)',   border:'rgba(240,96,96,0.25)'},
+  'sin-registro': {label:'Sin registro', emoji:'⚪', cls:'bb', bg:'rgba(90,106,136,0.06)', border:'rgba(90,106,136,0.2)'},
 };
-const VAC_CYCLE={activo:'vacaciones', vacaciones:'falta', falta:'activo'};
+// Ciclo completo: sin-registro → activo → vacaciones → falta → activo
+const VAC_CYCLE={'sin-registro':'activo', activo:'vacaciones', vacaciones:'falta', falta:'activo'};
 
 function renderVacList(){
   const c=document.getElementById('vac-list');
   if(!c) return;
-  const isFuture=S.date>td();
   const hint=document.getElementById('vac-cycle-hint');
-  if(hint){
-    hint.innerHTML=isFuture
-      ? 'Toca para ciclar: <b style="color:var(--green)">Activo</b> → <b style="color:var(--gold)">Vacaciones</b> <span style="color:var(--txt3);font-size:11px">(falta no disponible hoy)</span>'
-      : 'Toca para ciclar: <b style="color:var(--green)">Activo</b> → <b style="color:var(--gold)">Vacaciones</b> → <b style="color:var(--red)">Falta</b>';
-  }
+  if(hint) hint.innerHTML='⚪ Sin registro → toca para marcar <b style="color:var(--green)">Activo</b>. Activo cicla a Vacaciones → Falta.';
   if(!S.personal.length){
     c.innerHTML='<div class="empty"><p>Sin personal registrado</p></div>';
     return;
   }
-  // Get historial for selected date
   var selDate=S.date||td();
-  var today2=td();
+  var isFuture=selDate>td();
   var historialVac=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
-  // Separar activos/con-historial e inactivos-sin-registro
-  var activos=S.personal.filter(p=>historialVac[p.id]||p.estado!=='inactivo');
-  var inactivosSinReg=S.personal.filter(p=>!historialVac[p.id]&&p.estado==='inactivo');
 
-  var htmlActivos=activos.map((p,i)=>{
-    var st=historialVac[p.id]||'activo';
-    const cfg=VAC_CFG[st]||VAC_CFG.activo;
+  function renderRow(p, st){
     var globalIdx=S.personal.indexOf(p);
-    return `<div class="li" data-wid="${p.id}" style="cursor:pointer;border-color:${cfg.border};background:${cfg.bg}">
+    const cfg=VAC_CFG[st]||VAC_CFG['sin-registro'];
+    var esSinReg=st==='sin-registro';
+    var esInactivoBase=p.estado==='inactivo'&&esSinReg;
+    return `<div class="li" data-wid="${p.id}" ${esInactivoBase?'data-inactivo="1"':''} style="cursor:pointer;border-color:${cfg.border};background:${cfg.bg};${esSinReg?'opacity:0.55':''}">
       <div class="liav" style="background:${WC[globalIdx%WC.length]}22;color:${WC[globalIdx%WC.length]}">${inits(p.nombre)}</div>
       <div class="lib">
         <div class="liname">${p.nombre}</div>
         <div class="lisub">${p.cargo||'Sin cargo'}</div>
       </div>
       <div class="lir" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-        <span class="b ${cfg.cls}" style="font-size:12px">${cfg.emoji} ${cfg.label}</span>
-        <div style="font-size:10px;color:var(--txt3)">toca para cambiar</div>
+        <span class="b ${cfg.cls}" style="font-size:12px">${cfg.emoji} ${esInactivoBase?'+ Agregar':esSinReg?'Marcar activo':cfg.label}</span>
+        <div style="font-size:10px;color:var(--txt3)">${esSinReg?'1 toque':'toca para cambiar'}</div>
       </div>
     </div>`;
+  }
+
+  // Trabajadores activos/vacaciones/falta base primero, inactivos base al final
+  var principales=S.personal.filter(p=>p.estado!=='inactivo');
+  var inactivosBase=S.personal.filter(p=>p.estado==='inactivo');
+  // Inactivos con historial ese día se muestran junto a los principales
+  var inactivosConReg=inactivosBase.filter(p=>historialVac[p.id]);
+  var inactivosSinReg=inactivosBase.filter(p=>!historialVac[p.id]);
+
+  var htmlMain=[...principales,...inactivosConReg].map(p=>{
+    var st=historialVac[p.id]||'sin-registro';
+    return renderRow(p,st);
   }).join('');
 
   var htmlInactivos='';
   if(inactivosSinReg.length){
     htmlInactivos+=`<div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
       <div style="flex:1;height:1px;background:var(--line)"></div>
-      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:var(--txt3)">Inactivos — toca para agregar al día</div>
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:var(--txt3)">Inactivos</div>
       <div style="flex:1;height:1px;background:var(--line)"></div>
     </div>`;
-    htmlInactivos+=inactivosSinReg.map(p=>{
-      var globalIdx=S.personal.indexOf(p);
-      return `<div class="li" data-wid="${p.id}" data-inactivo="1" style="cursor:pointer;opacity:0.55;border-style:dashed">
-        <div class="liav" style="background:${WC[globalIdx%WC.length]}22;color:${WC[globalIdx%WC.length]}">${inits(p.nombre)}</div>
-        <div class="lib">
-          <div class="liname">${p.nombre}</div>
-          <div class="lisub">${p.cargo||'Sin cargo'}</div>
-        </div>
-        <div class="lir">
-          <span class="b bb" style="font-size:12px">+ Agregar</span>
-        </div>
-      </div>`;
-    }).join('');
+    htmlInactivos+=inactivosSinReg.map(p=>renderRow(p,'sin-registro')).join('');
   }
 
-  c.innerHTML=htmlActivos+htmlInactivos;
+  c.innerHTML=htmlMain+htmlInactivos;
 
-  // Event delegation: ciclo normal para activos, agregar al día para inactivos
   c.onclick=function(e){
     const li=e.target.closest('[data-wid]');
     if(!li) return;
@@ -2078,16 +2071,8 @@ function togVac(id){
   var today=td();
   // Get current estado for this date from historial or p.estado
   var historialDate=(S.estadoHistorial&&S.estadoHistorial[hDate])||{};
-  // For future dates, default is activo if no historial entry
-  var isFutureDate=hDate>today;
-  var currentEstado;
-  if(historialDate[id]){
-    currentEstado=historialDate[id];
-  } else if(hDate===today||!isFutureDate){
-    currentEstado=p.estado||'activo';
-  } else {
-    currentEstado='activo';
-  }
+  // Estado actual: lo que está en historial, o 'sin-registro' si no hay nada
+  var currentEstado=historialDate[id]||'sin-registro';
   var next=VAC_CYCLE[currentEstado]||'activo';
   if(next==='falta'&&hDate>today){
     toast('No se puede registrar falta en días futuros','err');
@@ -2097,8 +2082,8 @@ function togVac(id){
   if(!S.estadoHistorial) S.estadoHistorial={};
   if(!S.estadoHistorial[hDate]) S.estadoHistorial[hDate]={};
   S.estadoHistorial[hDate][id]=next;
-  // Only update p.estado if changing today's date
-  if(hDate===today){
+  // Only update p.estado if changing today's date (and worker is not inactivo base)
+  if(hDate===today && p.estado!=='inactivo'){
     p.estado=next;
     p._upd=Date.now();
     markChanged('personal');
