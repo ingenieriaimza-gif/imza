@@ -886,7 +886,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0323.2010';
+const APP_VERSION='2026.0323.2030';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -1275,15 +1275,57 @@ function startLiveSync(){
   if(_liveTimer) clearInterval(_liveTimer);
   _liveTimer=setInterval(function(){
     if(!_currentUser||_applyingCloudData) return;
-    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
-      if(!rows||!rows.length){ updateSyncUI(false); return; }
-      var t=rows[0].updated_at||'';
-      updateSyncUI(true);
-      if(t&&t!==_remoteUpdatedAt){
-        _remoteUpdatedAt=t;
-        pullFromCloud().then(function(updated){ if(updated) rAll(true); });
+    var email=(_currentUser.email||'').toLowerCase();
+    // Verificar logout forzado para este usuario
+    sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent('__logout__'+email)+'&select=session_data,updated_at').then(function(rows){
+      if(rows&&rows.length){
+        try{
+          var sd=JSON.parse(rows[0].session_data||'{}');
+          // Si el logout fue después de que iniciamos sesión, forzar logout
+          var logoutAt=sd.at||0;
+          var sessionStr=localStorage.getItem('cp4_session');
+          var sessionAge=sessionStr?0:Infinity; // sin sesión local = ya salió
+          // Usar updated_at del registro como referencia
+          var logoutTime=new Date(rows[0].updated_at).getTime();
+          var appStart=window._appStartTime||Date.now();
+          if(sd.forced_logout&&logoutTime>appStart-5000){
+            // Limpiar el registro de logout para no seguir disparando
+            sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent('__logout__'+email),{method:'DELETE'}).catch(function(){});
+            toast('Sesión cerrada en otro dispositivo','err');
+            setTimeout(function(){
+              localStorage.removeItem('cp4_session');
+              _currentUser=null;
+              if(_liveTimer){ clearInterval(_liveTimer); _liveTimer=null; }
+              if(_realtimeWs){ _realtimeWs.onclose=null; _realtimeWs.close(); _realtimeWs=null; }
+              getSbClient().auth.signOut();
+              showLogin();
+            },1500);
+            return;
+          }
+        }catch(e){}
       }
-    }).catch(function(){ updateSyncUI(false); });
+      // Sincronización normal de datos
+      sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows2){
+        if(!rows2||!rows2.length){ updateSyncUI(false); return; }
+        var t=rows2[0].updated_at||'';
+        updateSyncUI(true);
+        if(t&&t!==_remoteUpdatedAt){
+          _remoteUpdatedAt=t;
+          pullFromCloud().then(function(updated){ if(updated) rAll(true); });
+        }
+      }).catch(function(){ updateSyncUI(false); });
+    }).catch(function(){
+      // Si falla la verificación, seguir con sync normal
+      sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
+        if(!rows||!rows.length){ updateSyncUI(false); return; }
+        var t=rows[0].updated_at||'';
+        updateSyncUI(true);
+        if(t&&t!==_remoteUpdatedAt){
+          _remoteUpdatedAt=t;
+          pullFromCloud().then(function(updated){ if(updated) rAll(true); });
+        }
+      }).catch(function(){ updateSyncUI(false); });
+    });
   },2000);
 }
 
@@ -4474,11 +4516,31 @@ function applyRoleRestrictions(){
 var _visorInterval=null;
 
 function logout(){
+  var email=_currentUser?(_currentUser.email||''):'';
+  var deviceId=getDeviceId();
+
   _currentUser=null;
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   if(_realtimeWs){ _realtimeWs.onclose=null; _realtimeWs.close(); _realtimeWs=null; }
+  if(_liveTimer){ clearInterval(_liveTimer); _liveTimer=null; }
   localStorage.removeItem('cp4_session');
-  document.getElementById('app').style.display='none';
+
+  // Borrar sesión de este dispositivo en imza_sessions
+  sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(deviceId),{method:'DELETE'}).catch(function(){});
+
+  // Escribir logout forzado para todos los dispositivos de este usuario
+  if(email){
+    sbFetch('/rest/v1/imza_sessions',{
+      method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify({
+        device_id:'__logout__'+email.toLowerCase(),
+        session_data:JSON.stringify({forced_logout:true,email:email.toLowerCase(),at:Date.now()}),
+        updated_at:new Date().toISOString()
+      })
+    }).catch(function(){});
+  }
+
   getSbClient().auth.signOut();
   showLogin();
 }
@@ -5068,6 +5130,7 @@ window.addEventListener('pagehide',function(){
 
 // ── LOAD ─────────────────────────────────────────────────────────────────────
 
+window._appStartTime=Date.now();
 load();updDates();rAll();
 // Load custom app name
 (function(){
