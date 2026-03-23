@@ -1324,7 +1324,8 @@ function isDeleted(type,id){ return !!(S.deleted&&S.deleted[type+'_'+id]); }
 // ── LOCAL STORAGE ─────────────────────────────────────────────────────────────
 function getLocalData(){
   var d={};
-  ['proyectos','personal','actividades','estadoHistorial','deleted','exPersonal','users','deletedUsers'].forEach(function(k){ if(S[k]!==undefined) d[k]=S[k]; });
+  // Company data: no users (they're global in imza_data)
+  ['proyectos','personal','actividades','estadoHistorial','deleted','exPersonal'].forEach(function(k){ if(S[k]!==undefined) d[k]=S[k]; });
   return d;
 }
 function persistLocal(){
@@ -1348,9 +1349,18 @@ function pullFromCloud(){
       S.users=globalRows[0].data.users;
       localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
     }
-    if(!companyRows||!companyRows.length) return false;
+    if(!companyRows||!companyRows.length){
+      // Company row doesn't exist — create it silently
+      sbFetch('/rest/v1/imza_companies',{
+        method:'POST',
+        headers:{'Prefer':'resolution=ignore-duplicates'},
+        body:JSON.stringify({id:getCompanyId(),nombre:_currentCompany?_currentCompany.nombre:'IMZA',data:{proyectos:[],personal:[],actividades:{},estadoHistorial:{},deleted:{},exPersonal:{},deletedUsers:{}},updated_at:new Date().toISOString()})
+      }).catch(function(){});
+      // Still return true so initAuth proceeds with users already loaded
+      updateSyncUI(true);
+      return true;
+    }
     var rows=companyRows;
-    if(!rows||!rows.length) return false;
     var row=rows[0]; var remote=row.data||{};
     if(!remote) remote={};
     if(!remote.proyectos) remote.proyectos=[];
@@ -1372,7 +1382,8 @@ function pullFromCloud(){
         var acts=(remote.actividades[d]||[]).filter(function(a){ return !del['act_'+a.id]; });
         if(acts.length) S.actividades[d]=acts;
       });
-      if(remote.users&&remote.users.length) S.users=remote.users;
+      // Users come ONLY from imza_data (global), never from company data
+      // S.users already loaded at top of this function from globalRows
       S.deleted=del;
       S.exPersonal=remote.exPersonal||{};
       S.deletedUsers=remote.deletedUsers||{};
@@ -1411,12 +1422,7 @@ function pushToCloud(){
   patch._action=action;
   var changelog=loadChangeLog();
   var cid2=getCompanyId();
-  // Save users to global imza_data
-  var globalPatch={users:S.users||[],deletedUsers:S.deletedUsers||{}};
-  sbFetch('/rest/v1/imza_data?id=eq.main',{
-    method:'PATCH',
-    body:JSON.stringify({data:globalPatch,updated_at:now})
-  }).catch(function(){});
+  // Note: users saved to imza_data only when they change (via saveUsers())
   return sbFetch('/rest/v1/imza_companies?id=eq.'+cid2,{
     method:'PATCH',
     body:JSON.stringify({data:patch,updated_at:now,device:device,user_name:userName,last_action:action,changelog:changelog})
@@ -1441,6 +1447,18 @@ function pushToCloud(){
 // ── SAVE ─────────────────────────────────────────────────────────────────────
 // If online: save to cloud immediately, then update all screens
 // If offline: block the edit with a message
+function saveUsers(){
+  // Save users to global imza_data table
+  if(!S.users||!S.users.length) return;
+  var now=new Date().toISOString();
+  sbFetch('/rest/v1/imza_data?id=eq.main',{
+    method:'PATCH',
+    body:JSON.stringify({data:{users:S.users,deletedUsers:S.deletedUsers||{}},updated_at:now})
+  }).then(function(){
+    localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+  }).catch(function(){});
+}
+
 function save(){
   if(_applyingCloudData) return;
   // Always save locally first
@@ -1533,8 +1551,14 @@ function load(){
     return pullFromCloud();
   }).then(function(updated){
     if(updated) rAll();
+    // Always init auth — users loaded from imza_data regardless
     initAuth();
-  }).catch(function(){ initAuth(); });
+  }).catch(function(){
+    // Even on error, try to init auth with cached users
+    var bk=localStorage.getItem('cp4_users_backup');
+    if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
+    initAuth();
+  });
 }
 
 // ── LEGACY ALIASES ────────────────────────────────────────────────────────────
@@ -4589,8 +4613,10 @@ function logout(){
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   if(_realtimeWs){ _realtimeWs.onclose=null; _realtimeWs.close(); _realtimeWs=null; }
   localStorage.removeItem('cp4_session');
+  localStorage.removeItem('cp4_auth_token');
+  localStorage.removeItem('cp4_refresh_token');
   document.getElementById('app').style.display='none';
-  getSbClient().auth.signOut();
+  try{ getSbClient().auth.signOut(); }catch(e){}
   showLogin();
 }
 
