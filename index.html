@@ -862,51 +862,59 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
+const APP_VERSION='2026.0323.0455';
 
-// ── VERSION CONTROL ───────────────────────────────────────────────────────────
-// Increment this number with every new version uploaded to GitHub
-const APP_VERSION = '2026.0323.0444';
-
-(function cleanOldCache(){
-  var saved = localStorage.getItem('cp4_app_version');
-  if(saved !== APP_VERSION){
-    // New version — only clear non-essential cache, keep session and data
-    // Clear specific old keys that may conflict
-    var clearKeys = ['cp4_last_pull','cp4_v','cp4_changes','cp4_pending','cp4_lastsync'];
-    clearKeys.forEach(function(k){ localStorage.removeItem(k); });
-    // Mark new version
-    localStorage.setItem('cp4_app_version', APP_VERSION);
+// ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
+(function(){
+  if(localStorage.getItem('cp4_app_version')!==APP_VERSION){
+    ['cp4_last_pull','cp4_changes','cp4_pending','cp4_lastsync','cp4_pending_ts','cp4_last_event'].forEach(function(k){ localStorage.removeItem(k); });
+    localStorage.setItem('cp4_app_version',APP_VERSION);
   }
 })();
 
-// ── SYNC STATE ───────────────────────────────────────────────────────────────
-var _syncTimer=null;
+// ── STATE ─────────────────────────────────────────────────────────────────────
 var _lastSyncInfo=null;
 var _applyingCloudData=false;
-var _pendingPush=false;
-var _changeLog={};
 var _realtimeWs=null;
 var _realtimeHb=null;
-var _pingTimer=null;
+var _liveTimer=null;
+var _outbox=[];          // Events waiting to be sent: [{id,type,payload,status}]
+var _isFlushing=false;   // true while sending outbox to server
 
-// ── HELPERS ──────────────────────────────────────────────────────────────────
-function updateSyncDot(ok){
-  var dot=document.getElementById('sync-dot');
-  if(dot) dot.style.background=ok?'var(--green)':'var(--red)';
+// ── DEVICE ────────────────────────────────────────────────────────────────────
+function detectDevice(){
+  var uid=localStorage.getItem('cp4_device_id');
+  if(!uid){
+    var t=/iPhone|iPad/.test(navigator.userAgent)?'📱':'💻';
+    uid=t+'_'+Math.random().toString(36).slice(2,7);
+    localStorage.setItem('cp4_device_id',uid);
+  }
+  return uid;
 }
 
+// ── API ───────────────────────────────────────────────────────────────────────
+function sbFetch(path,opts){
+  opts=opts||{};
+  return fetch(SB_URL+path,Object.assign({},opts,{
+    credentials:'omit',
+    headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
+  })).then(function(res){
+    if(!res.ok) return res.text().then(function(t){ throw new Error(t); });
+    return res.text().then(function(t){ return t?JSON.parse(t):null; });
+  });
+}
+
+// ── UI ────────────────────────────────────────────────────────────────────────
 function fmtSyncTime(iso){
   try{
     var d=new Date(iso);
     var mo=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][d.getMonth()];
-    var dia=String(d.getDate()).padStart(2,'0');
-    var hr=String(d.getHours()).padStart(2,'0');
-    var mn=String(d.getMinutes()).padStart(2,'0');
-    var yr=d.getFullYear();
-    return {mini:hr+':'+mn, full:dia+' '+mo+' '+yr+' '+hr+':'+mn};
+    return {mini:String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'),
+            full:String(d.getDate()).padStart(2,'0')+' '+mo+' '+d.getFullYear()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
   }catch(e){ return {mini:'--:--',full:'—'}; }
 }
-
+function updateSyncDot(ok){ var d=document.getElementById('sync-dot'); if(d) d.style.background=ok?'var(--green)':'var(--red)'; }
+function updateSyncDotOnly(ok){ updateSyncDot(ok); }
 function updateSyncUI(ok){
   updateSyncDot(ok);
   var badge=document.getElementById('sync-status-badge');
@@ -914,9 +922,10 @@ function updateSyncUI(ok){
   var last=document.getElementById('sync-last');
   var cfgLast=document.getElementById('cfg-sync-last');
   if(badge){
-    badge.textContent=ok?'En línea':'Local';
-    badge.style.color=ok?'var(--green)':'var(--red)';
-    badge.style.background=ok?'rgba(61,214,140,0.12)':'rgba(240,96,96,0.12)';
+    var pCount=(_outbox||[]).filter(function(e){ return e.status==='pending'||e.status==='sending'; }).length;
+    badge.textContent=pCount>0?'Sincronizando...':ok?'En línea':'Local';
+    badge.style.color=pCount>0?'var(--gold)':ok?'var(--green)':'var(--red)';
+    badge.style.background=pCount>0?'rgba(245,207,85,0.12)':ok?'rgba(61,214,140,0.12)':'rgba(240,96,96,0.12)';
   }
   if(_lastSyncInfo&&_lastSyncInfo.time){
     var t=fmtSyncTime(_lastSyncInfo.time);
@@ -928,261 +937,288 @@ function updateSyncUI(ok){
   }
 }
 
-function updateSyncDotOnly(ok){
-  updateSyncDot(ok);
-}
-
-function markPendingPush(){
-  _pendingPush=true;
-  localStorage.setItem('cp4_pending','1');
-  localStorage.setItem('cp4_pending_ts',String(Date.now()));
-  updateSyncDot(false);
-}
-
-function markChanged(key){
-  _changeLog[key]=Date.now();
-  localStorage.setItem('cp4_changes',JSON.stringify(_changeLog));
-}
-
-function clearChanges(){
-  _changeLog={};
-  localStorage.removeItem('cp4_changes');
-  localStorage.removeItem('cp4_pending');
-  localStorage.removeItem('cp4_pending_ts');
-  _pendingPush=false;
-  _pushInProgress=false;
-}
-
-function loadChanges(){
-  try{ _changeLog=JSON.parse(localStorage.getItem('cp4_changes')||'{}'); }catch(e){}
-}
-
+// ── LOCAL STORAGE ─────────────────────────────────────────────────────────────
 function getLocalData(){
   var d={};
-  for(var k in S){ if(k!=='date'&&k!=='eAId'&&k!=='eADate') d[k]=S[k]; }
+  ['proyectos','personal','actividades','deleted','exPersonal','users','deletedUsers'].forEach(function(k){ if(S[k]!==undefined) d[k]=S[k]; });
   return d;
 }
-
-// ── API ──────────────────────────────────────────────────────────────────────
-function sbFetch(path, opts){
-  opts=opts||{};
-  return fetch(SB_URL+path, Object.assign({}, opts, {
-    credentials:'omit',
-    headers: Object.assign({
-      'apikey':SB_KEY,
-      'Authorization':'Bearer '+SB_KEY,
-      'Content-Type':'application/json',
-      'Prefer':'return=representation'
-    }, opts.headers||{})
-  })).then(function(res){
-    if(!res.ok) return res.text().then(function(t){ throw new Error(t); });
-    return res.text().then(function(t){ return t?JSON.parse(t):null; });
-  });
+function persistLocal(){
+  var d=getLocalData(); d._v=Date.now();
+  localStorage.setItem('cp4',JSON.stringify(d));
+}
+function saveOutbox(){
+  localStorage.setItem('cp4_outbox',JSON.stringify(_outbox));
+}
+function loadOutbox(){
+  try{ _outbox=JSON.parse(localStorage.getItem('cp4_outbox')||'[]'); }catch(e){ _outbox=[]; }
 }
 
-// ── MERGE ────────────────────────────────────────────────────────────────────
-function mergeArr(local, cloud){
-  var map={};
-  (cloud||[]).forEach(function(r){ if(r.id) map[r.id]=r; });
-  (local||[]).forEach(function(r){
-    if(!r.id) return;
-    if(!map[r.id]||(r._upd||0)>=(map[r.id]._upd||0)) map[r.id]=r;
-  });
-  return Object.values(map);
+// ── DELETED REGISTRY ──────────────────────────────────────────────────────────
+function recordDeleted(type,id){ if(!S.deleted) S.deleted={}; S.deleted[type+'_'+id]=Date.now(); }
+function isDeleted(type,id){ return !!(S.deleted&&S.deleted[type+'_'+id]); }
+
+// ── EVENT SYSTEM ─────────────────────────────────────────────────────────────
+// Each save creates an event with unique ID
+// Events are queued locally (outbox) and sent to server
+// Server accumulates all events — never overwrites
+// Other devices receive events and apply them in order
+
+function createEvent(type, payload){
+  return {
+    id: Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+    device_id: detectDevice(),
+    user_id: _currentUser?_currentUser.id:'',
+    type: type,       // 'set_proyectos' | 'set_personal' | 'set_actividades' | 'set_users' | 'delete_act' | 'delete_proj' | 'delete_pers'
+    payload: payload,
+    created_at: new Date().toISOString(),
+    status: 'pending' // pending → sending → sent
+  };
 }
 
-function mergeActs(local, cloud){
-  var res=Object.assign({},cloud||{});
-  Object.keys(local||{}).forEach(function(d){
-    if(!res[d]){ res[d]=local[d]; return; }
-    var map={};
-    (res[d]||[]).forEach(function(a){ map[a.id]=a; });
-    (local[d]||[]).forEach(function(a){
-      if(!map[a.id]||(a._upd||0)>=(map[a.id]._upd||0)) map[a.id]=a;
+// Apply a single event to local state S
+function applyEvent(ev){
+  if(!ev||!ev.type) return;
+  try{
+    var p=ev.payload||{};
+    if(ev.type==='set_proyectos'){
+      // Upsert each project
+      if(!S.proyectos) S.proyectos=[];
+      (p.items||[]).forEach(function(item){
+        var idx=S.proyectos.findIndex(function(x){ return x.id===item.id; });
+        if(idx===-1) S.proyectos.push(item);
+        else if((item._upd||0)>=(S.proyectos[idx]._upd||0)) S.proyectos[idx]=item;
+      });
+    } else if(ev.type==='set_personal'){
+      if(!S.personal) S.personal=[];
+      (p.items||[]).forEach(function(item){
+        var idx=S.personal.findIndex(function(x){ return x.id===item.id; });
+        if(idx===-1) S.personal.push(item);
+        else if((item._upd||0)>=(S.personal[idx]._upd||0)) S.personal[idx]=item;
+      });
+    } else if(ev.type==='set_actividades'){
+      if(!S.actividades) S.actividades={};
+      var date=p.date;
+      if(date){
+        if(!S.actividades[date]) S.actividades[date]=[];
+        (p.items||[]).forEach(function(item){
+          var idx=S.actividades[date].findIndex(function(x){ return x.id===item.id; });
+          if(idx===-1) S.actividades[date].push(item);
+          else if((item._upd||0)>=(S.actividades[date][idx]._upd||0)) S.actividades[date][idx]=item;
+        });
+      }
+    } else if(ev.type==='delete_item'){
+      if(!S.deleted) S.deleted={};
+      S.deleted[p.key]=p.ts||Date.now();
+      // Remove from arrays
+      if(p.key.startsWith('proj_')) S.proyectos=(S.proyectos||[]).filter(function(x){ return x.id!==p.id; });
+      if(p.key.startsWith('pers_')) S.personal=(S.personal||[]).filter(function(x){ return x.id!==p.id; });
+      if(p.key.startsWith('act_')&&p.date&&S.actividades[p.date]){
+        S.actividades[p.date]=S.actividades[p.date].filter(function(x){ return x.id!==p.id; });
+        if(!S.actividades[p.date].length) delete S.actividades[p.date];
+      }
+    } else if(ev.type==='set_users'){
+      if(p.users&&p.users.length) S.users=p.users;
+    }
+  }catch(e){}
+}
+
+// ── OUTBOX FLUSH ─────────────────────────────────────────────────────────────
+// Send all pending events to server, then update main record
+function flushOutbox(){
+  if(_isFlushing||!_outbox.length) return;
+  var pending=_outbox.filter(function(e){ return e.status==='pending'; });
+  if(!pending.length) return;
+
+  _isFlushing=true;
+  updateSyncDot(false);
+
+  // Mark as sending
+  pending.forEach(function(e){ e.status='sending'; });
+  saveOutbox();
+
+  // Insert events to Supabase (one by one to avoid conflicts)
+  var chain=Promise.resolve();
+  pending.forEach(function(ev){
+    chain=chain.then(function(){
+      return sbFetch('/rest/v1/imza_events',{
+        method:'POST',
+        headers:{'Prefer':'resolution=ignore-duplicates'},
+        body:JSON.stringify({
+          id:ev.id,
+          device_id:ev.device_id,
+          user_id:ev.user_id,
+          type:ev.type,
+          payload:ev.payload,
+          created_at:ev.created_at
+        })
+      }).then(function(){
+        ev.status='sent';
+        saveOutbox();
+      }).catch(function(){
+        ev.status='pending'; // retry
+      });
     });
-    res[d]=Object.values(map);
   });
-  return res;
+
+  chain.then(function(){
+    // After events sent, update main data record
+    return updateMainRecord();
+  }).then(function(){
+    // Remove sent events from outbox
+    _outbox=_outbox.filter(function(e){ return e.status!=='sent'; });
+    saveOutbox();
+    _isFlushing=false;
+    updateSyncUI(true);
+    // Update last sync info
+    _lastSyncInfo={time:new Date().toISOString(),device:detectDevice()};
+    localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
+    updateSyncUI(true);
+  }).catch(function(){
+    _isFlushing=false;
+    updateSyncUI(false);
+    // Retry in 3s
+    setTimeout(flushOutbox,3000);
+  });
 }
 
-// ── PUSH ─────────────────────────────────────────────────────────────────────
-function pushToCloud(){
-  if(_applyingCloudData) return Promise.resolve();
+// Update the main imza_data record with current state
+function updateMainRecord(){
   if(!S.users||!S.users.length){
     var bk=localStorage.getItem('cp4_users_backup');
     if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
-    if(!S.users||!S.users.length) return Promise.resolve();
   }
-  localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-  var changes=Object.keys(_changeLog);
-  if(!changes.length) return Promise.resolve();
-
-  var device=detectDevice();
-  var now=new Date().toISOString();
-
-  // Get cloud data first, merge by _upd (newest record wins), then upload
-  return sbFetch('/rest/v1/imza_data?id=eq.main&select=*').then(function(rows){
-    var cloud=(rows&&rows[0]&&rows[0].data)||{};
-
-    // Merge: for each array, compare record by record using _upd timestamp
-    var merged=Object.assign({},cloud);
-
-    // Proyectos: newest _upd per id wins
-    var projMap={};
-    (cloud.proyectos||[]).forEach(function(r){ projMap[r.id]=r; });
-    (S.proyectos||[]).forEach(function(r){
-      if(!projMap[r.id]||(r._upd||0)>=(projMap[r.id]._upd||0)) projMap[r.id]=r;
-    });
-    merged.proyectos=Object.values(projMap);
-
-    // Personal: newest _upd per id wins
-    var persMap={};
-    (cloud.personal||[]).forEach(function(r){ persMap[r.id]=r; });
-    (S.personal||[]).forEach(function(r){
-      if(!persMap[r.id]||(r._upd||0)>=(persMap[r.id]._upd||0)) persMap[r.id]=r;
-    });
-    merged.personal=Object.values(persMap);
-
-    // Actividades: newest _upd per activity id wins
-    merged.actividades=Object.assign({},cloud.actividades||{});
-    Object.keys(S.actividades||{}).forEach(function(date){
-      if(!merged.actividades[date]){
-        merged.actividades[date]=S.actividades[date];
-      } else {
-        var actMap={};
-        (merged.actividades[date]||[]).forEach(function(a){ actMap[a.id]=a; });
-        (S.actividades[date]||[]).forEach(function(a){
-          if(!actMap[a.id]||(a._upd||0)>=(actMap[a.id]._upd||0)) actMap[a.id]=a;
-        });
-        merged.actividades[date]=Object.values(actMap);
-      }
-    });
-
-    merged.users=S.users||[];
-    merged.deleted=Object.assign({},cloud.deleted||{},S.deleted||{});
-    merged.exPersonal=Object.assign({},cloud.exPersonal||{},S.exPersonal||{});
-    merged.deletedUsers=Object.assign({},cloud.deletedUsers||{},S.deletedUsers||{});
-    merged._device=device;
-
-    // Apply merged to local S
-    _applyingCloudData=true;
-    try{
-      S.proyectos=merged.proyectos;
-      S.personal=merged.personal;
-      S.actividades=merged.actividades;
-      S.deleted=merged.deleted;
-      S.exPersonal=merged.exPersonal;
-      localStorage.setItem('cp4',JSON.stringify(getLocalData()));
-    }finally{ _applyingCloudData=false; }
-
-    return sbFetch('/rest/v1/imza_data?id=eq.main',{
-      method:'PATCH',
-      body:JSON.stringify({data:merged,updated_at:now,device:device})
-    });
-  }).then(function(){
-    clearChanges();
-    return sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at');
-  }).then(function(rows){
-    if(rows&&rows[0]&&rows[0].updated_at){
-      var t=rows[0].updated_at;
-      _lastSyncInfo={time:t,device:device};
-      localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
-      localStorage.setItem('cp4_last_pull',String(new Date(t).getTime()));
-          _remoteUpdatedAt=t;
-        rAll(true);
-    }
-    updateSyncUI(true);
-  }).catch(function(){
-    markPendingPush();
-    updateSyncUI(false);
+  if(S.users&&S.users.length) localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+  var patch=getLocalData();
+  patch._device=detectDevice();
+  return sbFetch('/rest/v1/imza_data?id=eq.main',{
+    method:'PATCH',
+    body:JSON.stringify({data:patch,updated_at:new Date().toISOString(),device:detectDevice()})
   });
 }
 
-// ── PULL ─────────────────────────────────────────────────────────────────────
-function pullFromCloud(force){
-  // Never overwrite local data if we have unsaved changes
-  // Safety: if pending stuck >5s, clear it
-  if(_pendingPush&&(Date.now()-(parseInt(localStorage.getItem('cp4_pending_ts')||'0')))>5000){
-    _pendingPush=false;
-    _pushInProgress=false;
-    localStorage.removeItem('cp4_pending');
-  }
-  if(_pendingPush||Object.keys(_changeLog).length>0||_pushInProgress){
-    return Promise.resolve(false);
-  }
-  return sbFetch('/rest/v1/imza_data?id=eq.main&select=*').then(function(rows){
+// ── INBOX (receive events from other devices) ─────────────────────────────────
+function fetchNewEvents(){
+  if(_isFlushing) return Promise.resolve(false);
+  var lastEvent=localStorage.getItem('cp4_last_event')||'1970-01-01T00:00:00Z';
+  // Get events from other devices after our last seen event
+  return sbFetch('/rest/v1/imza_events?created_at=gt.'+encodeURIComponent(lastEvent)+'&device_id=neq.'+encodeURIComponent(detectDevice())+'&order=created_at.asc&limit=100').then(function(rows){
     if(!rows||!rows.length) return false;
-    var row=rows[0]; var remote=row.data||{};
-    if(!remote||!remote.proyectos) return false;
-    _lastSyncInfo={time:row.updated_at,device:row.device};
-    localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
-    updateSyncUI(true);
-    var remoteTime=row.updated_at?new Date(row.updated_at).getTime():0;
-    var lastPull=parseInt(localStorage.getItem('cp4_last_pull')||'0');
-    // Skip only if not forced AND already have this version
-    if(!force&&remoteTime>0&&remoteTime<=lastPull) return false;
-    // Apply cloud data directly - cloud is source of truth
+    // Apply each event in order
     _applyingCloudData=true;
     try{
-      var del=remote.deleted||{};
-      S.proyectos=(remote.proyectos||[]).filter(function(p){return !del['proj_'+p.id];});
-      S.personal=(remote.personal||[]).filter(function(p){return !del['pers_'+p.id];});
-      S.actividades={};
-      Object.keys(remote.actividades||{}).forEach(function(d){
-        var acts=(remote.actividades[d]||[]).filter(function(a){return !del['act_'+a.id];});
-        if(acts.length) S.actividades[d]=acts;
+      rows.forEach(function(ev){
+        applyEvent(ev);
       });
-      if(remote.users&&remote.users.length) S.users=remote.users;
-      S.deleted=del;
-      S.exPersonal=remote.exPersonal||{};
-      S.deletedUsers=remote.deletedUsers||{};
       S.date=td();
-      localStorage.setItem('cp4',JSON.stringify(getLocalData()));
-      localStorage.setItem('cp4_last_pull',String(remoteTime));
-      // Check if current user was deleted — force logout
-      if(_currentUser&&S.deletedUsers&&S.deletedUsers[_currentUser.id]){
-        setTimeout(function(){
-          toast('Tu cuenta fue eliminada','err');
-          setTimeout(logout, 1500);
-        },500);
-      }
-      // Also verify current user still exists in users list
-      if(_currentUser){
-        var stillExists=(S.users||[]).find(function(u){ return u.id===_currentUser.id; });
-        if(!stillExists){
-          setTimeout(function(){
-            toast('Tu sesión ya no es válida','err');
-            setTimeout(logout, 1500);
-          },500);
-        }
-      }
+      persistLocal();
+      // Update last event timestamp
+      localStorage.setItem('cp4_last_event',rows[rows.length-1].created_at);
     }finally{ _applyingCloudData=false; }
     return true;
-  }).catch(function(){ updateSyncUI(false); return false; });
+  }).catch(function(){ return false; });
 }
 
-// ── SYNC ─────────────────────────────────────────────────────────────────────
-function syncNow(){
-  var hasPending=_pendingPush||Object.keys(_changeLog).length>0||localStorage.getItem('cp4_pending')==='1';
-  if(hasPending){
-    pushToCloud().then(function(){ return pullFromCloud(false); })
-    .then(function(updated){ if(updated) rAll(true); })
-    .catch(function(){ updateSyncUI(false); });
+// ── SAVE (creates event + persists locally) ───────────────────────────────────
+var _saveTimer=null;
+function save(){
+  if(_applyingCloudData) return;
+  // 1. Persist locally IMMEDIATELY
+  persistLocal();
+  updateSyncDot(false);
+  // 2. Create events for changed data and queue them
+  clearTimeout(_saveTimer);
+  _saveTimer=setTimeout(function(){
+    _queueCurrentState();
+    flushOutbox();
+  },200);
+}
+
+// Queue event for a SPECIFIC changed item only
+function queueEvent(type, payload){
+  var ev=createEvent(type, payload);
+  _outbox.push(ev);
+  saveOutbox();
+}
+
+// Called by save() — only queues what actually changed
+// type: 'proj'|'pers'|'act'|'act_delete'|'proj_delete'|'pers_delete'|'users'|'full'
+// item: the specific record that changed
+// extra: {date} for activities
+var _lastSaveType=null;
+var _lastSaveItem=null;
+var _lastSaveExtra=null;
+
+function _queueCurrentState(){
+  var type=_lastSaveType;
+  var item=_lastSaveItem;
+  var extra=_lastSaveExtra;
+  _lastSaveType=null; _lastSaveItem=null; _lastSaveExtra=null;
+
+  if(type==='proj'&&item){
+    queueEvent('set_proyectos',{items:[item]});
+  } else if(type==='pers'&&item){
+    queueEvent('set_personal',{items:[item]});
+  } else if(type==='act'&&item&&extra&&extra.date){
+    queueEvent('set_actividades',{date:extra.date,items:[item]});
+  } else if(type==='act_date'&&extra&&extra.date){
+    // All activities for a date
+    queueEvent('set_actividades',{date:extra.date,items:S.actividades[extra.date]||[]});
+  } else if(type==='proj_delete'&&item){
+    queueEvent('delete_item',{key:'proj_'+item.id,id:item.id,ts:Date.now()});
+  } else if(type==='pers_delete'&&item){
+    queueEvent('delete_item',{key:'pers_'+item.id,id:item.id,ts:Date.now()});
+  } else if(type==='act_delete'&&item&&extra&&extra.date){
+    queueEvent('delete_item',{key:'act_'+item.id,id:item.id,date:extra.date,ts:Date.now()});
+  } else if(type==='users'){
+    queueEvent('set_users',{users:S.users||[]});
   } else {
-    pullFromCloud(false).then(function(updated){ if(updated) rAll(true); })
-    .catch(function(){ updateSyncUI(false); });
+    // Fallback: full state sync
+    if(S.proyectos&&S.proyectos.length) queueEvent('set_proyectos',{items:S.proyectos});
+    if(S.personal&&S.personal.length) queueEvent('set_personal',{items:S.personal});
+    Object.keys(S.actividades||{}).forEach(function(date){
+      var acts=S.actividades[date];
+      if(acts&&acts.length) queueEvent('set_actividades',{date:date,items:acts});
+    });
   }
 }
 
-// ── REALTIME ─────────────────────────────────────────────────────────────────
+// ── LIVE SYNC ─────────────────────────────────────────────────────────────────
+function startLiveSync(){
+  if(_liveTimer) clearInterval(_liveTimer);
+  _liveTimer=setInterval(function(){
+    if(!_currentUser||_applyingCloudData) return;
+    // Retry pending outbox
+    if(_outbox.filter(function(e){ return e.status==='pending'; }).length&&!_isFlushing){
+      flushOutbox(); return;
+    }
+    // Fetch new events from other devices
+    if(!_isFlushing){
+      fetchNewEvents().then(function(updated){ if(updated) rAll(true); });
+    }
+    // Also check main record for full sync every 10 cycles
+    updateSyncUI(true);
+  },2000);
+}
+
+function startPing(){ startLiveSync(); }
+
+function syncNow(){
+  if(!_isFlushing){
+    fetchNewEvents().then(function(u){ if(u) rAll(true); });
+  }
+}
+
+// ── WEBSOCKET ─────────────────────────────────────────────────────────────────
 function startRealtime(){
   if(_realtimeWs&&(_realtimeWs.readyState===0||_realtimeWs.readyState===1)) return;
   try{
     _realtimeWs=new WebSocket(SB_WS);
     _realtimeWs.onopen=function(){
+      // Listen for new events from other devices
       _realtimeWs.send(JSON.stringify({
-        topic:'realtime:public:imza_data',event:'phx_join',
-        payload:{config:{postgres_changes:[{event:'UPDATE',schema:'public',table:'imza_data'}]}},
+        topic:'realtime:public:imza_events',event:'phx_join',
+        payload:{config:{postgres_changes:[{event:'INSERT',schema:'public',table:'imza_events'}]}},
         ref:'1'
       }));
       if(_realtimeHb) clearInterval(_realtimeHb);
@@ -1190,19 +1226,18 @@ function startRealtime(){
         if(_realtimeWs&&_realtimeWs.readyState===1)
           _realtimeWs.send(JSON.stringify({topic:'phoenix',event:'heartbeat',payload:{},ref:'hb'}));
       },20000);
-      pullFromCloud(false).then(function(u){ if(u) rAll(true); });
+      // Fetch any missed events on connect
+      fetchNewEvents().then(function(u){ if(u) rAll(true); });
     };
     _realtimeWs.onmessage=function(e){
       try{
         var msg=JSON.parse(e.data);
-        var isChange=msg.event==='postgres_changes'||
-          (msg.payload&&msg.payload.data&&msg.payload.data.type==='UPDATE');
-        if(!isChange) return;
-        var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device)||'';
+        var isInsert=msg.event==='postgres_changes'||(msg.payload&&msg.payload.data&&msg.payload.data.type==='INSERT');
+        if(!isInsert||_isFlushing) return;
+        var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device_id)||'';
         if(dev&&dev===detectDevice()) return;
-        if(!_pendingPush&&!_pushInProgress&&Object.keys(_changeLog).length===0){
-          pullFromCloud(true).then(function(u){ if(u){ rAll(true); updateSyncUI(true); }});
-        }
+        // New event from another device — fetch and apply
+        fetchNewEvents().then(function(u){ if(u){ rAll(true); updateSyncUI(true); } });
       }catch(e){}
     };
     _realtimeWs.onclose=function(){
@@ -1214,89 +1249,32 @@ function startRealtime(){
   }catch(e){ setTimeout(startRealtime,3000); }
 }
 
-// ── PING every 3s ────────────────────────────────────────────────────────────
-// ── LIVE SYNC ────────────────────────────────────────────────────────────────
-// Checks Supabase every 3s for changes from other devices
-var _liveTimer=null;
-var _remoteUpdatedAt='';
-var _pushInProgress=false;
-
-function startLiveSync(){
-  if(_liveTimer) clearInterval(_liveTimer);
-  _liveTimer=setInterval(function(){
-    if(!_currentUser||_applyingCloudData) return;
-    // If we have pending changes or a push is in progress, skip pull
-    if(_pendingPush||Object.keys(_changeLog).length>0||_pushInProgress){
-      if(!_pushInProgress){
-        _pushInProgress=true;
-        pushToCloud().then(function(){
-          _pushInProgress=false;
-        }).catch(function(){ _pushInProgress=false; });
-      }
-      return;
-    }
-    // No pending changes — safe to check for remote updates
-    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
-      if(!rows||!rows.length){ updateSyncUI(false); return; }
-      var t=rows[0].updated_at||'';
-      updateSyncUI(true);
-      if(t && t!==_remoteUpdatedAt){
-        _remoteUpdatedAt=t;
-        // Only pull if we have NO pending changes
-        if(!_pendingPush&&Object.keys(_changeLog).length===0){
-          pullFromCloud(true).then(function(updated){
-            if(updated) rAll(true);
-          });
-        }
-      }
-    }).catch(function(){ updateSyncUI(false); });
-  },2000);
+// ── LOAD ──────────────────────────────────────────────────────────────────────
+function load(){
+  loadOutbox();
+  // Load local data first (instant, works offline)
+  var d=localStorage.getItem('cp4');
+  if(d){ try{ Object.assign(S,JSON.parse(d)); }catch(e){} }
+  S.date=td();
+  var ls=localStorage.getItem('cp4_lastsync');
+  if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
+  updateSyncUI(false);
+  // Fetch new events from server, then init auth
+  fetchNewEvents().then(function(updated){
+    if(updated) rAll();
+    initAuth();
+  }).catch(function(){ initAuth(); });
 }
 
-function startPing(){ startLiveSync(); }
-
-// ── DEVICE ───────────────────────────────────────────────────────────────────
-function detectDevice(){
-  var uid=localStorage.getItem('cp4_device_id');
-  if(!uid){
-    var ua=navigator.userAgent;
-    var type='🖥';
-    if(/iPhone|iPad|iPod/.test(ua)) type='📱';
-    else if(/Android/.test(ua)) type='📱';
-    else if(/Mac/.test(ua)) type='💻';
-    uid=type+'_'+Math.random().toString(36).slice(2,7);
-    localStorage.setItem('cp4_device_id',uid);
-  }
-  return uid;
-}
-
-// ── DELETED REGISTRY ─────────────────────────────────────────────────────────
-function recordDeleted(type,id){
-  if(!S.deleted) S.deleted={};
-  S.deleted[type+'_'+id]=Date.now();
-}
-function isDeleted(type,id){ return !!(S.deleted&&S.deleted[type+'_'+id]); }
-
-// ── SAVE ─────────────────────────────────────────────────────────────────────
-function save(){
-  if(_applyingCloudData) return;
-  var toSave=getLocalData();
-  toSave._v=Date.now();
-  localStorage.setItem('cp4',JSON.stringify(toSave));
-  // Always mark all data fields as changed so pushToCloud uploads everything
-  markChanged('proyectos');
-  markChanged('personal');
-  markChanged('actividades');
-  markPendingPush();
-  clearTimeout(_syncTimer);
-  // Push immediately - no delay to prevent race with liveSync pull
-  if(!_pushInProgress){
-    _pushInProgress=true;
-    pushToCloud().then(function(){
-      _pushInProgress=false;
-    }).catch(function(){ _pushInProgress=false; });
-  }
-}
+// ── LEGACY ALIASES (keep existing code working) ───────────────────────────────
+function markChanged(){}
+function clearChanges(){}
+function loadChanges(){}
+function markPendingPush(){}
+function pushToCloud(){ flushOutbox(); return Promise.resolve(); }
+function pullFromCloud(){ return fetchNewEvents(); }
+function mergeArr(a,b){ return a; }
+function mergeActs(a,b){ return a; }
 
 // DATE
 const MS=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -1500,9 +1478,11 @@ function saveAct(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permi
   if(S.eAId){const idx=S.actividades[date].findIndex(a=>a.id===S.eAId);if(idx!==-1)S.actividades[date][idx]={...S.actividades[date][idx],proyectoId:pId,notas:document.getElementById('a-n').value.trim(),trabajadores:selW,maquinaria:maq,gastos,horasExtras,upd:new Date().toISOString(),_upd:Date.now()};}
   else{const aid='a'+Date.now();S.actividades[date].push({id:aid,proyectoId:pId,notas:document.getElementById('a-n').value.trim(),trabajadores:selW,maquinaria:maq,gastos,horasExtras,cre:new Date().toISOString(),_upd:Date.now()});}
   try{
-    markChanged('actividades');
+    var actDate=S.eADate||S.date;
+    var savedAct=S.eAId?(S.actividades[actDate]||[]).find(function(a){ return a.id===S.eAId; }):(S.actividades[actDate]||[]).slice(-1)[0];
+    _lastSaveType='act'; _lastSaveItem=savedAct; _lastSaveExtra={date:actDate};
     save();
-  }catch(e){ console.error('save error',e); }
+  }catch(e){}
   document.getElementById('sov-act').classList.remove('open');
   toast('Actividad guardada ✓','ok');
   try{ rAll(); }catch(e){}
@@ -1575,7 +1555,12 @@ function saveProj(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
   };
   if(id){const i=S.proyectos.findIndex(p=>p.id===id);if(i!==-1)S.proyectos[i]={...S.proyectos[i],...d,_upd:Date.now()};}
   else S.proyectos.push({id:'p'+Date.now(),...d,_upd:Date.now()});
-  try{ markChanged('proyectos'); save(); }catch(e){}
+  try{
+    var pid2=document.getElementById('pid').value;
+    var savedProj=pid2?(S.proyectos.find(function(p){ return p.id===pid2; })):S.proyectos[S.proyectos.length-1];
+    _lastSaveType='proj'; _lastSaveItem=savedProj;
+    save();
+  }catch(e){}
   document.getElementById('sov-proj').classList.remove('open');
   toast('Proyecto guardado ✓','ok');
   try{ rAll(); }catch(e){}
@@ -1649,7 +1634,12 @@ function savePers(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
   // Always keep exPersonal updated with latest name+cargo for history
   if(!S.exPersonal) S.exPersonal={};
   S.exPersonal[wid]={nombre:d.nombre,cargo:d.cargo||''};
-  try{ markChanged('personal'); save(); }catch(e){}
+  try{
+    var wid2=document.getElementById('wid').value;
+    var savedPers=wid2?(S.personal.find(function(p){ return p.id===wid2; })):S.personal[S.personal.length-1];
+    _lastSaveType='pers'; _lastSaveItem=savedPers;
+    save();
+  }catch(e){}
   document.getElementById('sov-pers').classList.remove('open');
   toast('Trabajador guardado ✓','ok');
   try{ rAll(); }catch(e){}
@@ -1701,8 +1691,10 @@ function dAct(id,date){
   if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permisos para eliminar','err');return;}
   markChanged('actividades');
   confirmShow('¿Eliminar actividad?','Esta acción no se puede deshacer.',()=>{
+    var dAct2=(S.actividades[date]||[]).find(function(a){ return a.id===id; });
     S.actividades[date]=(S.actividades[date]||[]).filter(a=>a.id!==id);
     recordDeleted('act',id);
+    _lastSaveType='act_delete'; _lastSaveItem=dAct2; _lastSaveExtra={date:date};
     save();rAll();toast('Actividad eliminada','ok');
   });
 }
@@ -3534,31 +3526,56 @@ function startPresence(){
 function runDiag(){
   var out=document.getElementById('diag-output');
   if(!out) return;
+  out.textContent='Analizando...';
   var lines=[];
-  lines.push('Device: '+detectDevice());
-  lines.push('Session: '+(localStorage.getItem('cp4_session')?'OK':'NO'));
-  lines.push('Pending: '+(localStorage.getItem('cp4_pending')||'0'));
-  lines.push('Changes: '+JSON.stringify(Object.keys(_changeLog)));
-  lines.push('Local proyectos: '+(S.proyectos||[]).length);
-  lines.push('Local personal: '+(S.personal||[]).length);
+  var lastEvent=localStorage.getItem('cp4_last_event')||'nunca';
+  var pending=(_outbox||[]).filter(function(e){ return e.status==='pending'; }).length;
+  var sending=(_outbox||[]).filter(function(e){ return e.status==='sending'; }).length;
+  lines.push('── Dispositivo ──────────────────');
+  lines.push('ID: '+detectDevice());
+  lines.push('Sesión: '+(localStorage.getItem('cp4_session')?'✓ OK':'✗ Sin sesión'));
   lines.push('WS: '+(_realtimeWs?['CONNECTING','OPEN','CLOSING','CLOSED'][_realtimeWs.readyState]:'null'));
-  lines.push('remoteAt: '+_remoteUpdatedAt);
+  lines.push('');
+  lines.push('── Datos locales ────────────────');
+  lines.push('Proyectos: '+(S.proyectos||[]).length);
+  lines.push('Personal: '+(S.personal||[]).length);
+  lines.push('Días actividades: '+Object.keys(S.actividades||{}).length);
+  lines.push('');
+  lines.push('── Eventos ──────────────────────');
+  lines.push('Outbox pendientes: '+pending);
+  lines.push('Outbox enviando: '+sending);
+  lines.push('Último evento recibido: '+lastEvent.slice(0,19).replace('T',' '));
+  lines.push('Flush en progreso: '+(_isFlushing?'SÍ':'NO'));
   out.textContent=lines.join('\n');
-  sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at,data').then(function(rows){
-    if(!rows||!rows.length){ out.textContent+='\nSin respuesta'; return; }
+
+  // Check Supabase
+  Promise.all([
+    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at,data'),
+    sbFetch('/rest/v1/imza_events?order=created_at.desc&limit=1&select=created_at,device_id,type')
+  ]).then(function(results){
+    var rows=results[0]; var lastEvRow=results[1];
+    if(!rows||!rows.length){ lines.push('\n✗ Sin respuesta de Supabase'); out.textContent=lines.join('\n'); return; }
     var row=rows[0]; var remote=row.data||{};
-    lines.push('Supabase at: '+row.updated_at);
-    lines.push('Remote proyectos: '+(remote.proyectos||[]).length);
-    lines.push('Remote personal: '+(remote.personal||[]).length);
+    lines.push('');
+    lines.push('── Supabase ─────────────────────');
+    lines.push('Última actualización: '+( row.updated_at||'').slice(0,19).replace('T',' '));
+    lines.push('Proyectos: '+(remote.proyectos||[]).length);
+    lines.push('Personal: '+(remote.personal||[]).length);
+    lines.push('');
+    if(lastEvRow&&lastEvRow[0]){
+      lines.push('Último evento en servidor:');
+      lines.push('  '+lastEvRow[0].created_at.slice(0,19).replace('T',' ')+' · '+lastEvRow[0].type);
+      lines.push('  de: '+lastEvRow[0].device_id);
+    }
+    lines.push('');
+    lines.push('── Sincronización ───────────────');
     var pMatch=(remote.proyectos||[]).length===(S.proyectos||[]).length;
     var wMatch=(remote.personal||[]).length===(S.personal||[]).length;
-    lines.push('Proyectos: '+(pMatch?'OK':'DIFF local:'+(S.proyectos||[]).length+' remote:'+(remote.proyectos||[]).length));
-    lines.push('Personal: '+(wMatch?'OK':'DIFF local:'+(S.personal||[]).length+' remote:'+(remote.personal||[]).length));
-    var remoteMatch=_remoteUpdatedAt===row.updated_at;
-    lines.push('Sync state: '+(remoteMatch?'ACTUALIZADO':'PENDIENTE DESCARGA'));
-    lines.push('liveTimer: '+(_liveTimer?'CORRIENDO':'DETENIDO'));
+    lines.push('Proyectos: '+(pMatch?'✓ OK':'✗ DIFF local:'+(S.proyectos||[]).length+' remoto:'+(remote.proyectos||[]).length));
+    lines.push('Personal: '+(wMatch?'✓ OK':'✗ DIFF local:'+(S.personal||[]).length+' remoto:'+(remote.personal||[]).length));
+    lines.push('Estado: '+(pending>0?'⏳ Enviando cambios':(pMatch&&wMatch?'✓ SINCRONIZADO':'⚠ DESACTUALIZADO')));
     out.textContent=lines.join('\n');
-  }).catch(function(e){ out.textContent+='\nError: '+e.message; });
+  }).catch(function(e){ lines.push('\nError: '+e.message); out.textContent=lines.join('\n'); });
 }
 
 function rCfgStats(){
@@ -4679,25 +4696,6 @@ window.addEventListener('pagehide',function(){
 // ── OFFLINE QUEUE ─────────────────────────────────────────────────────────────
 
 // ── LOAD ─────────────────────────────────────────────────────────────────────
-function load(){
-  loadChanges();
-  S.date=td();
-
-  var ls=localStorage.getItem('cp4_lastsync');
-  if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
-  updateSyncUI(false);
-
-  pullFromCloud(true).then(function(updated){
-    rAll();
-    initAuth();
-  }).catch(function(){
-      var d=localStorage.getItem('cp4');
-    if(d){ try{ Object.assign(S,JSON.parse(d)); }catch(e){} }
-    S.date=td();
-    rAll();
-    initAuth();
-  });
-}
 
 load();updDates();rAll();
 // Load custom app name
