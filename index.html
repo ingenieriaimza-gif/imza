@@ -1181,7 +1181,8 @@ function pullFromCloud(){
       S.deleted=del;
       S.exPersonal=remote.exPersonal||{};
       S.deletedUsers=remote.deletedUsers||{};
-      S.date=td();
+      // Never reset S.date — keep user's selected date
+      if(!S.date) S.date=td();
       persistLocal();
     }finally{ _applyingCloudData=false; }
     return true;
@@ -1304,7 +1305,8 @@ function load(){
   loadSyncHistory();
   var d=localStorage.getItem('cp4');
   if(d){ try{ Object.assign(S,JSON.parse(d)); }catch(e){} }
-  S.date=td();
+  // Restore saved date or use today
+  if(!S.date) S.date=td();
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
   updateSyncUI(false);
