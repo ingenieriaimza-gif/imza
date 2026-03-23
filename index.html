@@ -1230,16 +1230,18 @@ function pushToCloud(){
 // If offline: block the edit with a message
 function save(){
   if(_applyingCloudData) return;
-  if(!_isOnline){
-    showNoConnection();
-    return;
-  }
+  // Always save locally first
   persistLocal();
-  // Always log to changelog
+  // Log to changelog
   if(_currentUser){
     var logAction=_lastAction||'Cambio realizado';
+    _lastAction='';
     addToChangeLog(new Date().toISOString(),_currentUser.nombre,logAction);
     renderChangeLog();
+  }
+  if(!_isOnline){
+    showNoConnection();
+    return; // saved locally, will push when back online
   }
   pushToCloud().then(function(ok){
     if(!ok) showNoConnection();
@@ -4371,13 +4373,14 @@ function openAddUser(){
   document.body.appendChild(overlay);
   document.getElementById('nu-save').addEventListener('click',function(){
     var nombre=(document.getElementById('nu-nombre').value||'').trim();
-    var pin=(document.getElementById('nu-pin').value||'').trim();
+    var email=(document.getElementById('nu-email').value||'').trim().toLowerCase();
     var rol=document.getElementById('nu-rol').value;
     if(!nombre){ toast('Nombre requerido','err'); return; }
-    if(!/^[0-9]{4}$/.test(pin)){ toast('Código debe ser 4 dígitos numéricos','err'); return; }
-    if((S.users||[]).some(function(u){ return u.pin===pin; })){ toast('Ese PIN ya existe','err'); return; }
+    if(!email||!email.includes('@')){ toast('Correo requerido','err'); return; }
+    if((S.users||[]).some(function(u){ return (u.email||'').toLowerCase()===email; })){ toast('Ese correo ya existe','err'); return; }
     if(!S.users) S.users=[];
-    S.users.push({id:'u'+Date.now(),nombre:nombre,rol:rol,pin:String(pin)});
+    S.users.push({id:'u'+Date.now(),nombre:nombre,rol:rol,email:email});
+    setAction('Agregó usuario '+nombre);
     save();
     rUsersConfig();
     overlay.remove();
@@ -4770,7 +4773,10 @@ window.addEventListener('orientationchange',function(){ setTimeout(fixHeight,100
 
 window.addEventListener('online',function(){
   updateSyncUI(true);
-  if(_currentUser){ toast('📶 Conexión restaurada','ok'); setTimeout(syncNow,300); }
+  if(_currentUser){
+    toast('📶 Conexión restaurada','ok');
+    setTimeout(function(){ pushToCloud().then(function(){ pullFromCloud().then(function(u){ if(u) rAll(true); }); }); },300);
+  }
 });
 window.addEventListener('offline',function(){
   updateSyncUI(false);
