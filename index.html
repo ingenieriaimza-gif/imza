@@ -1336,10 +1336,24 @@ function persistLocal(){
 function pullFromCloud(){
   if(_isPushing) return Promise.resolve(false);
   var cid=getCompanyId();
-  return sbFetch('/rest/v1/imza_companies?id=eq.'+cid+'&select=id,data,updated_at,device,user_name,last_action,changelog').then(function(rows){
+  // Fetch company data + global users in parallel
+  return Promise.all([
+    sbFetch('/rest/v1/imza_companies?id=eq.'+cid+'&select=id,data,updated_at,device,user_name,last_action,changelog'),
+    sbFetch('/rest/v1/imza_data?id=eq.main&select=data')
+  ]).then(function(results){
+    var companyRows=results[0];
+    var globalRows=results[1];
+    // Load global users from imza_data
+    if(globalRows&&globalRows[0]&&globalRows[0].data&&globalRows[0].data.users){
+      S.users=globalRows[0].data.users;
+      localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+    }
+    if(!companyRows||!companyRows.length) return false;
+    var rows=companyRows;
     if(!rows||!rows.length) return false;
     var row=rows[0]; var remote=row.data||{};
-    if(!remote||!remote.proyectos) return false;
+    if(!remote) remote={};
+    if(!remote.proyectos) remote.proyectos=[];
     var userName=row.user_name||(row.data&&row.data._user)||'';
     var action=row.last_action||(row.data&&row.data._action)||'';
     _lastSyncInfo={time:row.updated_at,device:row.device,user:userName,action:action};
@@ -1397,6 +1411,12 @@ function pushToCloud(){
   patch._action=action;
   var changelog=loadChangeLog();
   var cid2=getCompanyId();
+  // Save users to global imza_data
+  var globalPatch={users:S.users||[],deletedUsers:S.deletedUsers||{}};
+  sbFetch('/rest/v1/imza_data?id=eq.main',{
+    method:'PATCH',
+    body:JSON.stringify({data:globalPatch,updated_at:now})
+  }).catch(function(){});
   return sbFetch('/rest/v1/imza_companies?id=eq.'+cid2,{
     method:'PATCH',
     body:JSON.stringify({data:patch,updated_at:now,device:device,user_name:userName,last_action:action,changelog:changelog})
@@ -1497,12 +1517,21 @@ function load(){
   loadSyncHistory();
   var d=localStorage.getItem('cp4');
   if(d){ try{ Object.assign(S,JSON.parse(d)); }catch(e){} }
-  // Restore saved date or use today
   if(!S.date) S.date=td();
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
   updateSyncUI(false);
-  pullFromCloud().then(function(updated){
+
+  // Set default company before pulling
+  var savedCompanyId=localStorage.getItem('cp4_company_id')||'main';
+  _currentCompany={id:savedCompanyId,nombre:'IMZA'};
+
+  // Load companies then pull data
+  loadCompanies().then(function(companies){
+    var found=companies.find(function(c){ return c.id===savedCompanyId; });
+    _currentCompany=found||{id:'main',nombre:'IMZA'};
+    return pullFromCloud();
+  }).then(function(updated){
     if(updated) rAll();
     initAuth();
   }).catch(function(){ initAuth(); });
