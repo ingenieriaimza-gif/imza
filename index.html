@@ -4348,14 +4348,31 @@ function saveUser(uid){
   // because session restore always re-checks against latest S.users
 }
 
+function _doSaveNewUser(){
+  var nombre=(document.getElementById('nu-nombre').value||'').trim();
+  var email=(document.getElementById('nu-email').value||'').trim().toLowerCase();
+  var rol=document.getElementById('nu-rol').value;
+  if(!nombre){ toast('Nombre requerido','err'); return; }
+  if(!email||!email.includes('@')){ toast('Correo requerido','err'); return; }
+  if((S.users||[]).some(function(u){ return (u.email||'').toLowerCase()===email; })){ toast('Ese correo ya existe','err'); return; }
+  if(!S.users) S.users=[];
+  S.users.push({id:'u'+Date.now(),nombre:nombre,rol:rol,email:email,_upd:Date.now()});
+  setAction('Agregó usuario '+nombre);
+  save();
+  rUsersConfig();
+  closeAddUser();
+  toast('Usuario creado ✓','ok');
+}
+
 function openAddUser(){
   if(!_currentUser||_currentUser.rol!=='admin'){ toast('Solo el admin puede agregar usuarios','err'); return; }
+  closeAddUser();
   var overlay=document.createElement('div');
   overlay.id='adduser-overlay';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:400;display:flex;align-items:flex-end;justify-content:center;padding:0 0 calc(16px + env(safe-area-inset-bottom,0px))';
-  var sheet=document.createElement('div');
-  sheet.style.cssText='background:var(--card);border:1px solid var(--line2);border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:24px 20px;animation:sup 0.28s cubic-bezier(0.32,0.72,0,1)';
-  sheet.innerHTML='<div style="width:36px;height:4px;background:var(--line2);border-radius:2px;margin:0 auto 18px"></div>'+
+  overlay.onclick=function(e){ if(e.target===overlay) closeAddUser(); };
+  overlay.innerHTML='<div onclick="event.stopPropagation()" style="background:var(--card);border:1px solid var(--line2);border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:24px 20px;animation:sup 0.28s cubic-bezier(0.32,0.72,0,1)">'+
+    '<div style="width:36px;height:4px;background:var(--line2);border-radius:2px;margin:0 auto 18px"></div>'+
     '<div style="font-size:17px;font-weight:800;color:var(--txt);margin-bottom:16px">Nuevo usuario</div>'+
     '<input id="nu-nombre" type="text" class="fi" placeholder="Nombre" style="margin-bottom:10px;display:block;width:100%;box-sizing:border-box">'+
     '<input id="nu-email" type="email" class="fi" placeholder="correo@ejemplo.com" style="margin-bottom:10px;display:block;width:100%;box-sizing:border-box">'+
@@ -4366,29 +4383,11 @@ function openAddUser(){
     '</select>'+
     '<div style="display:flex;gap:10px">'+
       '<button onclick="closeAddUser()" style="flex:1;padding:14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt2);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">Cancelar</button>'+
-      '<button id="nu-save" style="flex:1;padding:14px;border-radius:12px;border:none;background:var(--gold);color:#000;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">Guardar</button>'+
-    '</div>';
-  overlay.appendChild(sheet);
-  overlay.addEventListener('click',function(e){ if(e.target===overlay) overlay.remove(); });
-  sheet.addEventListener('click',function(e){ e.stopPropagation(); });
+      '<button onclick="_doSaveNewUser()" style="flex:1;padding:14px;border-radius:12px;border:none;background:var(--gold);color:#000;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">Guardar</button>'+
+    '</div>'+
+  '</div>';
   document.body.appendChild(overlay);
-  document.getElementById('nu-save').addEventListener('click',function(e){
-    e.stopPropagation();
-    var nombre=(document.getElementById('nu-nombre').value||'').trim();
-    var email=(document.getElementById('nu-email').value||'').trim().toLowerCase();
-    var rol=document.getElementById('nu-rol').value;
-    if(!nombre){ toast('Nombre requerido','err'); return; }
-    if(!email||!email.includes('@')){ toast('Correo requerido','err'); return; }
-    if((S.users||[]).some(function(u){ return (u.email||'').toLowerCase()===email; })){ toast('Ese correo ya existe','err'); return; }
-    if(!S.users) S.users=[];
-    S.users.push({id:'u'+Date.now(),nombre:nombre,rol:rol,email:email,_upd:Date.now()});
-    setAction('Agregó usuario '+nombre);
-    save();
-    rUsersConfig();
-    overlay.remove();
-    toast('Usuario creado ✓','ok');
-  });
-  setTimeout(function(){ document.getElementById('nu-nombre').focus(); },100);
+  setTimeout(function(){ var el=document.getElementById('nu-nombre'); if(el) el.focus(); },100);
 }
 
 function editUser(uid){
