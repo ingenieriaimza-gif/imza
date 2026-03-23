@@ -883,7 +883,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0323.1500';
+const APP_VERSION='2026.0323.1700';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -1926,21 +1926,11 @@ function rInicio(){
   var isFuture=selDate>today;
   var activos=[], vacs=[], falts=[];
   S.personal.forEach(function(p){
-    var est;
-    if(isToday){
-      // Today: historial overrides p.estado, else use p.estado
-      est=historial[p.id]||p.estado||'activo';
-    } else if(isFuture){
-      // Future: historial if recorded, else assume activo
-      // (respects scheduled vacations/faults)
-      est=historial[p.id]||'activo';
-    } else {
-      // Past: only show if recorded in historial
-      est=historial[p.id]||null;
-    }
+    var est=historial[p.id]||(p.estado==='inactivo'?'inactivo':'activo');
     if(est==='activo') activos.push(p);
     else if(est==='vacaciones') vacs.push(p);
     else if(est==='falta') falts.push(p);
+    // inactivo: se omite de todos los grupos
   });
   document.getElementById('st-w').textContent=activos.length;
   var activosEl=document.getElementById('st-activos-names');
@@ -2008,20 +1998,16 @@ function renderVacList(){
   var selDate=S.date||td();
   var today2=td();
   var historialVac=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
-  // Build with DOM nodes — no inline onclick
-  c.innerHTML=S.personal.map((p,i)=>{
-    // Use historial for date, fallback depends on date type
-    var st;
-    if(selDate===today2){
-      st=historialVac[p.id]||p.estado||'activo';
-    } else if(selDate>today2){
-      st=historialVac[p.id]||'activo';
-    } else {
-      st=historialVac[p.id]||p.estado||'activo';
-    }
+  // Separar activos/con-historial e inactivos-sin-registro
+  var activos=S.personal.filter(p=>historialVac[p.id]||p.estado!=='inactivo');
+  var inactivosSinReg=S.personal.filter(p=>!historialVac[p.id]&&p.estado==='inactivo');
+
+  var htmlActivos=activos.map((p,i)=>{
+    var st=historialVac[p.id]||'activo';
     const cfg=VAC_CFG[st]||VAC_CFG.activo;
+    var globalIdx=S.personal.indexOf(p);
     return `<div class="li" data-wid="${p.id}" style="cursor:pointer;border-color:${cfg.border};background:${cfg.bg}">
-      <div class="liav" style="background:${WC[i%WC.length]}22;color:${WC[i%WC.length]}">${inits(p.nombre)}</div>
+      <div class="liav" style="background:${WC[globalIdx%WC.length]}22;color:${WC[globalIdx%WC.length]}">${inits(p.nombre)}</div>
       <div class="lib">
         <div class="liname">${p.nombre}</div>
         <div class="lisub">${p.cargo||'Sin cargo'}</div>
@@ -2032,11 +2018,57 @@ function renderVacList(){
       </div>
     </div>`;
   }).join('');
-  // Use event delegation - listener stays on stable container
+
+  var htmlInactivos='';
+  if(inactivosSinReg.length){
+    htmlInactivos+=`<div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
+      <div style="flex:1;height:1px;background:var(--line)"></div>
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:var(--txt3)">Inactivos — toca para agregar al día</div>
+      <div style="flex:1;height:1px;background:var(--line)"></div>
+    </div>`;
+    htmlInactivos+=inactivosSinReg.map(p=>{
+      var globalIdx=S.personal.indexOf(p);
+      return `<div class="li" data-wid="${p.id}" data-inactivo="1" style="cursor:pointer;opacity:0.55;border-style:dashed">
+        <div class="liav" style="background:${WC[globalIdx%WC.length]}22;color:${WC[globalIdx%WC.length]}">${inits(p.nombre)}</div>
+        <div class="lib">
+          <div class="liname">${p.nombre}</div>
+          <div class="lisub">${p.cargo||'Sin cargo'}</div>
+        </div>
+        <div class="lir">
+          <span class="b bb" style="font-size:12px">+ Agregar</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  c.innerHTML=htmlActivos+htmlInactivos;
+
+  // Event delegation: ciclo normal para activos, agregar al día para inactivos
   c.onclick=function(e){
     const li=e.target.closest('[data-wid]');
-    if(li) togVac(li.dataset.wid);
+    if(!li) return;
+    if(li.dataset.inactivo==='1'){
+      agregarInactivoAlDia(li.dataset.wid);
+    } else {
+      togVac(li.dataset.wid);
+    }
   };
+}
+
+function agregarInactivoAlDia(id){
+  const p=S.personal.find(x=>x.id===id);
+  if(!p) return;
+  var hDate=S.date||td();
+  if(!S.estadoHistorial) S.estadoHistorial={};
+  if(!S.estadoHistorial[hDate]) S.estadoHistorial[hDate]={};
+  S.estadoHistorial[hDate][id]='activo';
+  markChanged('estadoHistorial');
+  setAction((p.nombre||'Trabajador')+' → agregado al día ('+hDate+')');
+  save();
+  try{ renderVacList(); }catch(e){}
+  try{ rInicio(); }catch(e){}
+  try{ rPers(); }catch(e){}
+  toast(`${p.nombre} agregado al día ✅`,'ok');
 }
 
 function togVac(id){
@@ -2217,6 +2249,13 @@ function weekKey(dateStr){
 
 function rHistDia(){
   const c=document.getElementById('hist-list');
+  // Guardar qué días están abiertos antes de re-renderizar
+  var openDates={};
+  c.querySelectorAll('.hbody.open').forEach(function(b){
+    var h=b.previousElementSibling;
+    if(h&&h.dataset.date) openDates[h.dataset.date]=true;
+  });
+
   let dates=Object.keys(S.actividades).filter(d=>(S.actividades[d]||[]).length).sort((a,b)=>b.localeCompare(a));
   if(hf==='week'){const cut=new Date();cut.setDate(cut.getDate()-7);const cs=cut.toISOString().split('T')[0];dates=dates.filter(d=>d>=cs);}
   else if(hf==='month'){const cut=new Date();cut.setDate(cut.getDate()-30);const cs=cut.toISOString().split('T')[0];dates=dates.filter(d=>d>=cs);}
@@ -2267,9 +2306,10 @@ function rHistDia(){
       const gT=acts.reduce((s,a)=>s+sumG(a.gastos),0);
       const wC=new Set(acts.flatMap(a=>a.trabajadores||[])).size;
       const iT=date===td();
+      const wasOpen=openDates[date]?true:false;
 
       html+=`<div class="hday" style="border-color:${iT?'var(--gold)':pal.border};border-width:${iT?'2px':'1px'};margin-bottom:6px;${iT?'box-shadow:0 0 0 1px rgba(240,201,74,0.15)':''}">
-        <div class="hday-h" onclick="togH(this)" style="background:${iT?'rgba(240,201,74,0.06)':pal.hbg}">
+        <div class="hday-h" data-date="${date}" onclick="togH(this)" style="background:${iT?'rgba(240,201,74,0.06)':pal.hbg}">
           <div style="display:flex;align-items:center;gap:10px">
             ${iT?`<div style="width:6px;height:6px;border-radius:50%;background:var(--gold);flex-shrink:0;box-shadow:0 0 6px var(--gold)"></div>`:`<div style="width:6px;height:6px;border-radius:50%;background:${pal.border};opacity:0.5;flex-shrink:0"></div>`}
             <div>
@@ -2286,11 +2326,22 @@ function rHistDia(){
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
         </div>
-        <div class="hbody">${acts.map(a=>rACard(a,date)).join('')}</div>
+        <div class="hbody${wasOpen?' open':''}">${wasOpen?acts.map(a=>rACard(a,date)).join(''):''}</div>
       </div>`;
     });
   });
   c.innerHTML=html;
+
+  // Restaurar días que estaban abiertos pero necesitan contenido cargado
+  c.querySelectorAll('.hbody.open').forEach(function(b){
+    if(!b.innerHTML.trim()){
+      var h=b.previousElementSibling;
+      var date=h&&h.dataset.date;
+      if(date&&S.actividades[date]){
+        b.innerHTML=S.actividades[date].map(a=>rACard(a,date)).join('');
+      }
+    }
+  });
 }
 
 function rHistProj(){
@@ -2745,10 +2796,18 @@ function rPers(){
     c.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><p>Sin trabajadores. Toca "+ Nuevo".</p></div>';
     return;
   }
-  const activos    = S.personal.filter(p=>p.estado==='activo');
-  const vacaciones = S.personal.filter(p=>p.estado==='vacaciones');
-  const faltas     = S.personal.filter(p=>p.estado==='falta');
-  const inactivos  = S.personal.filter(p=>p.estado==='inactivo');
+  // Usar historial de la fecha seleccionada — default activo si no hay registro
+  var selDate=S.date||td();
+  var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
+  function getEst(p){
+    if(historial[p.id]) return historial[p.id];
+    if(p.estado==='inactivo') return 'inactivo';
+    return 'activo';
+  }
+  const activos    = S.personal.filter(p=>getEst(p)==='activo');
+  const vacaciones = S.personal.filter(p=>getEst(p)==='vacaciones');
+  const faltas     = S.personal.filter(p=>getEst(p)==='falta');
+  const inactivos  = S.personal.filter(p=>getEst(p)==='inactivo');
   let html='';
   html += persGroup('Activos',    '✅', 'var(--green)', 'bgr', activos,    true);
   html += persGroup('Vacaciones', '🏖️', 'var(--gold)',  'bg',  vacaciones, true);
@@ -2777,6 +2836,13 @@ function rNomPersonal(){
   const todos=S.personal.filter(p=>p.estado!=='inactivo');
   const c=document.getElementById('nom-list');
   if(!todos.length){c.innerHTML='<div class="empty"><p>Sin personal registrado</p></div>';return;}
+  var selDate=S.date||td();
+  var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
+  function getEst(p){
+    if(historial[p.id]) return historial[p.id];
+    if(p.estado==='inactivo') return 'inactivo';
+    return 'activo';
+  }
   const bm={activo:'bgr',vacaciones:'bg',falta:'br'};
   c.innerHTML=todos.map((p,i)=>`<div class="pcard">
     <div class="pinit" style="background:${WC[i%WC.length]}22;color:${WC[i%WC.length]}">${inits(p.nombre)}</div>
@@ -2784,7 +2850,7 @@ function rNomPersonal(){
       <div style="font-size:15px;font-weight:600">${p.nombre}</div>
       <div style="font-size:12px;color:var(--txt3)">${p.cargo||'Sin cargo'}${p.tel?' · '+p.tel:''}</div>
     </div>
-    <span class="b ${bm[p.estado]||'bb'}">${p.estado}</span>
+    <span class="b ${bm[getEst(p)]||'bb'}">${getEst(p)}</span>
   </div>`).join('');
 }
 
