@@ -1060,6 +1060,25 @@ function loadCompanies(){
   }).catch(function(){ _companies=[{id:'main',nombre:'IMZA'}]; return _companies; });
 }
 
+function _cSwitch(id){
+  var overlay=document.getElementById('company-overlay');
+  if(overlay) overlay.remove();
+  switchCompany(id);
+}
+
+function _cDelete(id){
+  if(id==='main'){ toast('No se puede eliminar la empresa principal','err'); return; }
+  var overlay=document.getElementById('company-overlay');
+  confirmShow('¿Eliminar empresa?','Se eliminarán todos sus datos permanentemente.',function(){
+    sbFetch('/rest/v1/imza_companies?id=eq.'+id,{method:'DELETE'}).then(function(){
+      _companies=_companies.filter(function(c){ return c.id!==id; });
+      if(_currentCompany&&_currentCompany.id===id) switchCompany('main');
+      toast('Empresa eliminada','ok');
+      if(overlay) overlay.remove();
+    }).catch(function(){ toast('Error al eliminar','err'); });
+  },'Eliminar','var(--red)','Cancelar');
+}
+
 function switchCompany(id){
   var company=_companies.find(function(c){ return c.id===id; });
   if(!company) return;
@@ -1095,15 +1114,17 @@ function openCompanyManager(){
 
   function buildContent(){
     var current=_currentCompany?_currentCompany.id:'main';
-    var list=_companies.map(function(c,i){
+    var list=_companies.map(function(c,ci){
       var isActive=c.id===current;
+      window._coIds=window._coIds||[];
+      window._coIds[ci]=c.id;
       return '<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;margin-bottom:8px;background:'+(isActive?'rgba(245,207,85,0.12)':'var(--card2)')+';border:1.5px solid '+(isActive?'rgba(245,207,85,0.4)':'var(--line)')+'">'
         +'<div style="flex:1">'
           +'<div style="font-size:14px;font-weight:700;color:'+(isActive?'var(--gold)':'var(--txt)')+'">'+c.nombre+'</div>'
           +(isActive?'<div style="font-size:11px;color:var(--gold);margin-top:2px">● Empresa activa</div>':'')
         +'</div>'
-        +(isActive?'':'<button data-action="switch" data-id="'+c.id+'" style="padding:7px 14px;border-radius:8px;border:none;background:rgba(106,170,255,0.15);color:#6aaaff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">Seleccionar</button>')
-        +(c.id!=='main'?'<button data-action="delete" data-id="'+c.id+'" style="width:32px;height:32px;border-radius:8px;border:none;background:rgba(255,107,107,0.12);color:var(--red);font-size:16px;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center">🗑</button>':'')
+        +(isActive?'':'<button onclick="_cSwitch(window._coIds['+ci+'])" style="padding:7px 14px;border-radius:8px;border:none;background:rgba(106,170,255,0.15);color:#6aaaff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">Seleccionar</button>')
+        +(c.id!=='main'?'<button onclick="_cDelete(window._coIds['+ci+'])" style="width:32px;height:32px;border-radius:8px;border:none;background:rgba(255,107,107,0.12);color:var(--red);font-size:16px;font-family:inherit;cursor:pointer">🗑</button>':'')
       +'</div>';
     }).join('');
 
@@ -1124,30 +1145,6 @@ function openCompanyManager(){
     if(e.target===overlay) overlay.remove();
   };
   document.body.appendChild(overlay);
-
-  // Event delegation
-  overlay.addEventListener('click',function(e){
-    var btn=e.target.closest('[data-action]');
-    if(!btn) return;
-    var action=btn.dataset.action;
-    var id=btn.dataset.id;
-
-    if(action==='switch'){
-      switchCompany(id);
-      overlay.remove();
-    }
-    if(action==='delete'){
-      if(id==='main'){ toast('No se puede eliminar la empresa principal','err'); return; }
-      confirmShow('¿Eliminar empresa?','Se eliminarán todos sus datos.',function(){
-        sbFetch('/rest/v1/imza_companies?id=eq.'+id,{method:'DELETE'}).then(function(){
-          _companies=_companies.filter(function(c){ return c.id!==id; });
-          if(_currentCompany&&_currentCompany.id===id) switchCompany('main');
-          toast('Empresa eliminada','ok');
-          overlay.remove();
-        }).catch(function(){ toast('Error al eliminar','err'); });
-      },'Eliminar','var(--red)','Cancelar');
-    }
-  });
 
   // Create button
   overlay.querySelector('#co-create-btn').addEventListener('click',function(e){
