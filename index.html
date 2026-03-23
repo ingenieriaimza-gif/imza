@@ -862,12 +862,12 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0323.0455';
+const APP_VERSION='2026.0323.0537';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
   if(localStorage.getItem('cp4_app_version')!==APP_VERSION){
-    ['cp4_last_pull','cp4_changes','cp4_pending','cp4_lastsync','cp4_pending_ts','cp4_last_event'].forEach(function(k){ localStorage.removeItem(k); });
+    ['cp4_last_pull','cp4_changes','cp4_pending','cp4_lastsync','cp4_last_event','cp4_outbox'].forEach(function(k){ localStorage.removeItem(k); });
     localStorage.setItem('cp4_app_version',APP_VERSION);
   }
 })();
@@ -875,11 +875,11 @@ const APP_VERSION='2026.0323.0455';
 // ── STATE ─────────────────────────────────────────────────────────────────────
 var _lastSyncInfo=null;
 var _applyingCloudData=false;
+var _isOnline=false;
 var _realtimeWs=null;
 var _realtimeHb=null;
 var _liveTimer=null;
-var _outbox=[];          // Events waiting to be sent: [{id,type,payload,status}]
-var _isFlushing=false;   // true while sending outbox to server
+var _remoteUpdatedAt='';
 
 // ── DEVICE ────────────────────────────────────────────────────────────────────
 function detectDevice(){
@@ -913,29 +913,45 @@ function fmtSyncTime(iso){
             full:String(d.getDate()).padStart(2,'0')+' '+mo+' '+d.getFullYear()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
   }catch(e){ return {mini:'--:--',full:'—'}; }
 }
+
 function updateSyncDot(ok){ var d=document.getElementById('sync-dot'); if(d) d.style.background=ok?'var(--green)':'var(--red)'; }
 function updateSyncDotOnly(ok){ updateSyncDot(ok); }
+
 function updateSyncUI(ok){
+  _isOnline=!!ok;
   updateSyncDot(ok);
   var badge=document.getElementById('sync-status-badge');
-  var mini=document.getElementById('sync-mini');
-  var last=document.getElementById('sync-last');
-  var cfgLast=document.getElementById('cfg-sync-last');
   if(badge){
-    var pCount=(_outbox||[]).filter(function(e){ return e.status==='pending'||e.status==='sending'; }).length;
-    badge.textContent=pCount>0?'Sincronizando...':ok?'En línea':'Local';
-    badge.style.color=pCount>0?'var(--gold)':ok?'var(--green)':'var(--red)';
-    badge.style.background=pCount>0?'rgba(245,207,85,0.12)':ok?'rgba(61,214,140,0.12)':'rgba(240,96,96,0.12)';
+    badge.textContent=ok?'En línea':'Sin conexión';
+    badge.style.color=ok?'var(--green)':'var(--red)';
+    badge.style.background=ok?'rgba(61,214,140,0.12)':'rgba(240,96,96,0.12)';
   }
   if(_lastSyncInfo&&_lastSyncInfo.time){
     var t=fmtSyncTime(_lastSyncInfo.time);
+    var mini=document.getElementById('sync-mini');
+    var last=document.getElementById('sync-last');
+    var cfgLast=document.getElementById('cfg-sync-last');
+    var devEl=document.getElementById('sync-device');
     if(mini) mini.textContent=t.mini;
     if(last) last.textContent=t.full;
     if(cfgLast) cfgLast.textContent=t.full;
-    var devEl=document.getElementById('sync-device');
     if(devEl) devEl.textContent=_lastSyncInfo.device||'';
   }
+  // Disable/enable all edit buttons based on connection
+  document.querySelectorAll('.edit-btn,.add-btn,[data-requires-online]').forEach(function(el){
+    el.style.opacity=ok?'1':'0.4';
+    el.style.pointerEvents=ok?'auto':'none';
+  });
 }
+
+// ── NO CONNECTION OVERLAY ─────────────────────────────────────────────────────
+function showNoConnection(){
+  toast('⚠️ Sin conexión — verifica tu red para editar','err');
+}
+
+// ── DELETED REGISTRY ──────────────────────────────────────────────────────────
+function recordDeleted(type,id){ if(!S.deleted) S.deleted={}; S.deleted[type+'_'+id]=Date.now(); }
+function isDeleted(type,id){ return !!(S.deleted&&S.deleted[type+'_'+id]); }
 
 // ── LOCAL STORAGE ─────────────────────────────────────────────────────────────
 function getLocalData(){
@@ -947,300 +963,105 @@ function persistLocal(){
   var d=getLocalData(); d._v=Date.now();
   localStorage.setItem('cp4',JSON.stringify(d));
 }
-function saveOutbox(){
-  localStorage.setItem('cp4_outbox',JSON.stringify(_outbox));
-}
-function loadOutbox(){
-  try{ _outbox=JSON.parse(localStorage.getItem('cp4_outbox')||'[]'); }catch(e){ _outbox=[]; }
-}
 
-// ── DELETED REGISTRY ──────────────────────────────────────────────────────────
-function recordDeleted(type,id){ if(!S.deleted) S.deleted={}; S.deleted[type+'_'+id]=Date.now(); }
-function isDeleted(type,id){ return !!(S.deleted&&S.deleted[type+'_'+id]); }
-
-// ── EVENT SYSTEM ─────────────────────────────────────────────────────────────
-// Each save creates an event with unique ID
-// Events are queued locally (outbox) and sent to server
-// Server accumulates all events — never overwrites
-// Other devices receive events and apply them in order
-
-function createEvent(type, payload){
-  return {
-    id: Date.now().toString(36)+Math.random().toString(36).slice(2,6),
-    device_id: detectDevice(),
-    user_id: _currentUser?_currentUser.id:'',
-    type: type,       // 'set_proyectos' | 'set_personal' | 'set_actividades' | 'set_users' | 'delete_act' | 'delete_proj' | 'delete_pers'
-    payload: payload,
-    created_at: new Date().toISOString(),
-    status: 'pending' // pending → sending → sent
-  };
-}
-
-// Apply a single event to local state S
-function applyEvent(ev){
-  if(!ev||!ev.type) return;
-  try{
-    var p=ev.payload||{};
-    if(ev.type==='set_proyectos'){
-      // Upsert each project
-      if(!S.proyectos) S.proyectos=[];
-      (p.items||[]).forEach(function(item){
-        var idx=S.proyectos.findIndex(function(x){ return x.id===item.id; });
-        if(idx===-1) S.proyectos.push(item);
-        else if((item._upd||0)>=(S.proyectos[idx]._upd||0)) S.proyectos[idx]=item;
-      });
-    } else if(ev.type==='set_personal'){
-      if(!S.personal) S.personal=[];
-      (p.items||[]).forEach(function(item){
-        var idx=S.personal.findIndex(function(x){ return x.id===item.id; });
-        if(idx===-1) S.personal.push(item);
-        else if((item._upd||0)>=(S.personal[idx]._upd||0)) S.personal[idx]=item;
-      });
-    } else if(ev.type==='set_actividades'){
-      if(!S.actividades) S.actividades={};
-      var date=p.date;
-      if(date){
-        if(!S.actividades[date]) S.actividades[date]=[];
-        (p.items||[]).forEach(function(item){
-          var idx=S.actividades[date].findIndex(function(x){ return x.id===item.id; });
-          if(idx===-1) S.actividades[date].push(item);
-          else if((item._upd||0)>=(S.actividades[date][idx]._upd||0)) S.actividades[date][idx]=item;
-        });
-      }
-    } else if(ev.type==='delete_item'){
-      if(!S.deleted) S.deleted={};
-      S.deleted[p.key]=p.ts||Date.now();
-      // Remove from arrays
-      if(p.key.startsWith('proj_')) S.proyectos=(S.proyectos||[]).filter(function(x){ return x.id!==p.id; });
-      if(p.key.startsWith('pers_')) S.personal=(S.personal||[]).filter(function(x){ return x.id!==p.id; });
-      if(p.key.startsWith('act_')&&p.date&&S.actividades[p.date]){
-        S.actividades[p.date]=S.actividades[p.date].filter(function(x){ return x.id!==p.id; });
-        if(!S.actividades[p.date].length) delete S.actividades[p.date];
-      }
-    } else if(ev.type==='set_users'){
-      if(p.users&&p.users.length) S.users=p.users;
-    }
-  }catch(e){}
-}
-
-// ── OUTBOX FLUSH ─────────────────────────────────────────────────────────────
-// Send all pending events to server, then update main record
-function flushOutbox(){
-  if(_isFlushing||!_outbox.length) return;
-  var pending=_outbox.filter(function(e){ return e.status==='pending'; });
-  if(!pending.length) return;
-
-  _isFlushing=true;
-  updateSyncDot(false);
-
-  // STEP 1: Fetch latest events from other devices FIRST
-  // This ensures our local state is up to date before we send
-  // So applyEvent comparisons use the latest _upd values
-  fetchNewEvents().then(function(){
-    // STEP 2: Re-queue with fresh state so _upd timestamps are current
-    // Any event whose payload has older _upd than what we just fetched
-    // will be correctly ignored by other devices via applyEvent
-    pending.forEach(function(e){ e.status='sending'; });
-    saveOutbox();
-
-    var chain=Promise.resolve();
-    pending.forEach(function(ev){
-      chain=chain.then(function(){
-        return sbFetch('/rest/v1/imza_events',{
-          method:'POST',
-          headers:{'Prefer':'resolution=ignore-duplicates'},
-          body:JSON.stringify({
-            id:ev.id,
-            device_id:ev.device_id,
-            user_id:ev.user_id,
-            type:ev.type,
-            payload:ev.payload,
-            created_at:ev.created_at
-          })
-        }).then(function(){
-          ev.status='sent';
-          saveOutbox();
-        }).catch(function(){
-          ev.status='pending';
-        });
-      });
-    });
-
-    return chain;
-  }).then(function(){
-    _outbox=_outbox.filter(function(e){ return e.status!=='sent'; });
-    saveOutbox();
-    // Update imza_data snapshot so new devices get good base state
-    var patch=getLocalData();
-    patch._device=detectDevice();
-    sbFetch('/rest/v1/imza_data?id=eq.main',{
-      method:'PATCH',
-      body:JSON.stringify({data:patch,updated_at:new Date().toISOString(),device:detectDevice()})
-    }).catch(function(){});
-    _isFlushing=false;
-    _lastSyncInfo={time:new Date().toISOString(),device:detectDevice()};
+// ── PULL FROM CLOUD ───────────────────────────────────────────────────────────
+function pullFromCloud(){
+  return sbFetch('/rest/v1/imza_data?id=eq.main&select=*').then(function(rows){
+    if(!rows||!rows.length) return false;
+    var row=rows[0]; var remote=row.data||{};
+    if(!remote||!remote.proyectos) return false;
+    _lastSyncInfo={time:row.updated_at,device:row.device};
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
+    _remoteUpdatedAt=row.updated_at||'';
     updateSyncUI(true);
-  }).catch(function(){
-    _isFlushing=false;
-    // Reset sending back to pending for retry
-    _outbox.forEach(function(e){ if(e.status==='sending') e.status='pending'; });
-    saveOutbox();
-    updateSyncUI(false);
-    setTimeout(flushOutbox,3000);
-  });
+    _applyingCloudData=true;
+    try{
+      var del=remote.deleted||{};
+      S.proyectos=(remote.proyectos||[]).filter(function(p){ return !del['proj_'+p.id]; });
+      S.personal=(remote.personal||[]).filter(function(p){ return !del['pers_'+p.id]; });
+      S.actividades={};
+      Object.keys(remote.actividades||{}).forEach(function(d){
+        var acts=(remote.actividades[d]||[]).filter(function(a){ return !del['act_'+a.id]; });
+        if(acts.length) S.actividades[d]=acts;
+      });
+      if(remote.users&&remote.users.length) S.users=remote.users;
+      S.deleted=del;
+      S.exPersonal=remote.exPersonal||{};
+      S.deletedUsers=remote.deletedUsers||{};
+      S.date=td();
+      persistLocal();
+    }finally{ _applyingCloudData=false; }
+    return true;
+  }).catch(function(){ updateSyncUI(false); return false; });
 }
 
-// Update the main imza_data record with current state
-function updateMainRecord(){
+// ── PUSH TO CLOUD ─────────────────────────────────────────────────────────────
+// Only called when user makes a change AND is online
+// Returns promise — resolves true if saved, false if failed
+function pushToCloud(){
   if(!S.users||!S.users.length){
     var bk=localStorage.getItem('cp4_users_backup');
     if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
   }
   if(S.users&&S.users.length) localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+  var device=detectDevice();
+  var now=new Date().toISOString();
   var patch=getLocalData();
-  patch._device=detectDevice();
+  patch._device=device;
   return sbFetch('/rest/v1/imza_data?id=eq.main',{
     method:'PATCH',
-    body:JSON.stringify({data:patch,updated_at:new Date().toISOString(),device:detectDevice()})
+    body:JSON.stringify({data:patch,updated_at:now,device:device})
+  }).then(function(){
+    _lastSyncInfo={time:now,device:device};
+    localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
+    _remoteUpdatedAt=now;
+    updateSyncUI(true);
+    return true;
+  }).catch(function(){
+    updateSyncUI(false);
+    return false;
   });
 }
 
-// ── INBOX (receive events from other devices) ─────────────────────────────────
-function fetchNewEvents(){
-  if(_isFlushing) return Promise.resolve(false);
-  var lastEvent=localStorage.getItem('cp4_last_event')||'1970-01-01T00:00:00Z';
-  return sbFetch('/rest/v1/imza_events?created_at=gt.'+encodeURIComponent(lastEvent)+'&order=created_at.asc&limit=200').then(function(rows){
-    if(!rows||!rows.length) return false;
-    _applyingCloudData=true;
-    try{
-      rows.forEach(function(ev){ applyEvent(ev); });
-      S.date=td();
-      persistLocal();
-      localStorage.setItem('cp4_last_event',rows[rows.length-1].created_at);
-    }finally{ _applyingCloudData=false; }
-    return true;
-  }).catch(function(){ return false; });
-}
-
-// Full rebuild from ALL events in server — used on first load or recovery
-function rebuildFromEvents(){
-  return sbFetch('/rest/v1/imza_events?order=created_at.asc&limit=1000').then(function(rows){
-    if(!rows||!rows.length) return false;
-    // Start fresh and apply all events in order
-    _applyingCloudData=true;
-    try{
-      // Keep users and session data
-      var savedUsers=S.users||[];
-      var savedDeleted=S.deleted||{};
-      // Reset data arrays
-      S.proyectos=[];
-      S.personal=[];
-      S.actividades={};
-      S.deleted={};
-      S.exPersonal={};
-      // Apply all events in chronological order
-      rows.forEach(function(ev){ applyEvent(ev); });
-      // Restore users if events didn't set them
-      if(!S.users||!S.users.length) S.users=savedUsers;
-      S.date=td();
-      persistLocal();
-      localStorage.setItem('cp4_last_event',rows[rows.length-1].created_at);
-    }finally{ _applyingCloudData=false; }
-    return true;
-  }).catch(function(){ return false; });
-}
-
-// ── SAVE (creates event + persists locally) ───────────────────────────────────
-var _saveTimer=null;
+// ── SAVE ─────────────────────────────────────────────────────────────────────
+// If online: save to cloud immediately, then update all screens
+// If offline: block the edit with a message
 function save(){
   if(_applyingCloudData) return;
-  // 1. Persist locally IMMEDIATELY
-  persistLocal();
-  updateSyncDot(false);
-  // 2. Create events for changed data and queue them
-  clearTimeout(_saveTimer);
-  _saveTimer=setTimeout(function(){
-    _queueCurrentState();
-    flushOutbox();
-  },200);
-}
-
-// Queue event for a SPECIFIC changed item only
-function queueEvent(type, payload){
-  var ev=createEvent(type, payload);
-  _outbox.push(ev);
-  saveOutbox();
-}
-
-// Called by save() — only queues what actually changed
-// type: 'proj'|'pers'|'act'|'act_delete'|'proj_delete'|'pers_delete'|'users'|'full'
-// item: the specific record that changed
-// extra: {date} for activities
-var _lastSaveType=null;
-var _lastSaveItem=null;
-var _lastSaveExtra=null;
-
-function _queueCurrentState(){
-  var type=_lastSaveType;
-  var item=_lastSaveItem;
-  var extra=_lastSaveExtra;
-  _lastSaveType=null; _lastSaveItem=null; _lastSaveExtra=null;
-
-  if(type==='proj'&&item){
-    queueEvent('set_proyectos',{items:[item]});
-  } else if(type==='pers'&&item){
-    queueEvent('set_personal',{items:[item]});
-  } else if(type==='act'&&item&&extra&&extra.date){
-    queueEvent('set_actividades',{date:extra.date,items:[item]});
-  } else if(type==='act_date'&&extra&&extra.date){
-    // All activities for a date
-    queueEvent('set_actividades',{date:extra.date,items:S.actividades[extra.date]||[]});
-  } else if(type==='proj_delete'&&item){
-    queueEvent('delete_item',{key:'proj_'+item.id,id:item.id,ts:Date.now()});
-  } else if(type==='pers_delete'&&item){
-    queueEvent('delete_item',{key:'pers_'+item.id,id:item.id,ts:Date.now()});
-  } else if(type==='act_delete'&&item&&extra&&extra.date){
-    queueEvent('delete_item',{key:'act_'+item.id,id:item.id,date:extra.date,ts:Date.now()});
-  } else if(type==='users'){
-    queueEvent('set_users',{users:S.users||[]});
-  } else {
-    // Fallback: full state sync
-    if(S.proyectos&&S.proyectos.length) queueEvent('set_proyectos',{items:S.proyectos});
-    if(S.personal&&S.personal.length) queueEvent('set_personal',{items:S.personal});
-    Object.keys(S.actividades||{}).forEach(function(date){
-      var acts=S.actividades[date];
-      if(acts&&acts.length) queueEvent('set_actividades',{date:date,items:acts});
-    });
+  if(!_isOnline){
+    showNoConnection();
+    return;
   }
+  // Save locally first (instant feedback)
+  persistLocal();
+  // Push to cloud
+  pushToCloud().then(function(ok){
+    if(!ok){
+      showNoConnection();
+    }
+  });
 }
 
 // ── LIVE SYNC ─────────────────────────────────────────────────────────────────
+// Check every 2s if Supabase has new data
 function startLiveSync(){
   if(_liveTimer) clearInterval(_liveTimer);
   _liveTimer=setInterval(function(){
     if(!_currentUser||_applyingCloudData) return;
-    // Retry pending outbox first
-    if(_outbox.filter(function(e){ return e.status==='pending'; }).length&&!_isFlushing){
-      flushOutbox();
-    }
-    // Fetch new events from all devices
-    if(!_isFlushing){
-      fetchNewEvents().then(function(updated){
-        if(updated) rAll(true);
-        updateSyncUI(true);
-      }).catch(function(){ updateSyncUI(false); });
-    }
+    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
+      if(!rows||!rows.length){ updateSyncUI(false); return; }
+      var t=rows[0].updated_at||'';
+      updateSyncUI(true);
+      if(t&&t!==_remoteUpdatedAt){
+        _remoteUpdatedAt=t;
+        pullFromCloud().then(function(updated){ if(updated) rAll(true); });
+      }
+    }).catch(function(){ updateSyncUI(false); });
   },2000);
 }
 
 function startPing(){ startLiveSync(); }
-
-function syncNow(){
-  if(!_isFlushing){
-    fetchNewEvents().then(function(u){ if(u) rAll(true); });
-  }
-}
+function syncNow(){ pullFromCloud().then(function(u){ if(u) rAll(true); }); }
 
 // ── WEBSOCKET ─────────────────────────────────────────────────────────────────
 function startRealtime(){
@@ -1248,35 +1069,19 @@ function startRealtime(){
   try{
     _realtimeWs=new WebSocket(SB_WS);
     _realtimeWs.onopen=function(){
-      // Listen for new events from other devices
-      _realtimeWs.send(JSON.stringify({
-        topic:'realtime:public:imza_events',event:'phx_join',
-        payload:{config:{postgres_changes:[{event:'INSERT',schema:'public',table:'imza_events'}]}},
-        ref:'1'
-      }));
-      // Also join imza_data for backup
-      _realtimeWs.send(JSON.stringify({
-        topic:'realtime:public:imza_data',event:'phx_join',
-        payload:{config:{postgres_changes:[{event:'UPDATE',schema:'public',table:'imza_data'}]}},
-        ref:'2'
-      }));
+      _realtimeWs.send(JSON.stringify({topic:'realtime:public:imza_data',event:'phx_join',payload:{config:{postgres_changes:[{event:'UPDATE',schema:'public',table:'imza_data'}]}},ref:'1'}));
       if(_realtimeHb) clearInterval(_realtimeHb);
-      _realtimeHb=setInterval(function(){
-        if(_realtimeWs&&_realtimeWs.readyState===1)
-          _realtimeWs.send(JSON.stringify({topic:'phoenix',event:'heartbeat',payload:{},ref:'hb'}));
-      },20000);
-      // Fetch any missed events on connect
-      fetchNewEvents().then(function(u){ if(u) rAll(true); });
+      _realtimeHb=setInterval(function(){ if(_realtimeWs&&_realtimeWs.readyState===1) _realtimeWs.send(JSON.stringify({topic:'phoenix',event:'heartbeat',payload:{},ref:'hb'})); },20000);
+      updateSyncUI(true);
     };
     _realtimeWs.onmessage=function(e){
       try{
         var msg=JSON.parse(e.data);
-        var isInsert=msg.event==='postgres_changes'||(msg.payload&&msg.payload.data&&msg.payload.data.type==='INSERT');
-        if(!isInsert||_isFlushing) return;
-        var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device_id)||'';
+        var isChange=msg.event==='postgres_changes'||(msg.payload&&msg.payload.data&&msg.payload.data.type==='UPDATE');
+        if(!isChange||_applyingCloudData) return;
+        var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device)||'';
         if(dev&&dev===detectDevice()) return;
-        // New event from another device — fetch and apply
-        fetchNewEvents().then(function(u){ if(u){ rAll(true); updateSyncUI(true); } });
+        pullFromCloud().then(function(u){ if(u){ rAll(true); updateSyncUI(true); } });
       }catch(e){}
     };
     _realtimeWs.onclose=function(){
@@ -1290,30 +1095,32 @@ function startRealtime(){
 
 // ── LOAD ──────────────────────────────────────────────────────────────────────
 function load(){
-  loadOutbox();
-  // Load local data first (instant, works offline)
   var d=localStorage.getItem('cp4');
   if(d){ try{ Object.assign(S,JSON.parse(d)); }catch(e){} }
   S.date=td();
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
   updateSyncUI(false);
-  // On startup: rebuild full state from all events
-  rebuildFromEvents().then(function(updated){
+  pullFromCloud().then(function(updated){
     if(updated) rAll();
     initAuth();
   }).catch(function(){ initAuth(); });
 }
 
-// ── LEGACY ALIASES (keep existing code working) ───────────────────────────────
+// ── LEGACY ALIASES ────────────────────────────────────────────────────────────
 function markChanged(){}
 function clearChanges(){}
 function loadChanges(){}
 function markPendingPush(){}
-function pushToCloud(){ flushOutbox(); return Promise.resolve(); }
-function pullFromCloud(){ return fetchNewEvents(); }
-function mergeArr(a,b){ return a; }
-function mergeActs(a,b){ return a; }
+function mergeArr(a){ return a; }
+function mergeActs(a){ return a; }
+function fetchNewEvents(){ return pullFromCloud(); }
+function applyEvent(){}
+function applyEventToState(){}
+function flushOutbox(){}
+function queueEvent(){}
+function saveOutbox(){}
+function loadOutbox(){}
 
 // DATE
 const MS=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
