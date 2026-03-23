@@ -641,7 +641,6 @@ if('serviceWorker' in navigator){
         <div id="diag-output" style="font-size:11px;color:var(--txt2);font-family:monospace;line-height:1.8;white-space:pre-wrap;background:var(--card2);border-radius:8px;padding:10px;min-height:40px"></div>
       </div>
 
-
     </div>
 
   </div><!-- /scroll -->
@@ -866,7 +865,7 @@ const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey
 
 // ── VERSION CONTROL ───────────────────────────────────────────────────────────
 // Increment this number with every new version uploaded to GitHub
-const APP_VERSION = '2026.0323.0436';
+const APP_VERSION = '2026.0323.0441';
 
 (function cleanOldCache(){
   var saved = localStorage.getItem('cp4_app_version');
@@ -877,7 +876,6 @@ const APP_VERSION = '2026.0323.0436';
     clearKeys.forEach(function(k){ localStorage.removeItem(k); });
     // Mark new version
     localStorage.setItem('cp4_app_version', APP_VERSION);
-    console.log('IMZA: actualizado a versión', APP_VERSION);
   }
 })();
 
@@ -1025,7 +1023,7 @@ function pushToCloud(){
 
     // Merge: for each array, compare record by record using _upd timestamp
     var merged=Object.assign({},cloud);
-    
+
     // Proyectos: newest _upd per id wins
     var projMap={};
     (cloud.proyectos||[]).forEach(function(r){ projMap[r.id]=r; });
@@ -1087,11 +1085,8 @@ function pushToCloud(){
       _lastSyncInfo={time:t,device:device};
       localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
       localStorage.setItem('cp4_last_pull',String(new Date(t).getTime()));
-      // Set _remoteUpdatedAt to THIS device's version
-      // Other devices have OLDER _remoteUpdatedAt so they WILL detect the change
-      _remoteUpdatedAt=t;
-      // Trigger rAll to show updated data on THIS device
-      rAll(true);
+          _remoteUpdatedAt=t;
+        rAll(true);
     }
     updateSyncUI(true);
   }).catch(function(){
@@ -1196,7 +1191,9 @@ function startRealtime(){
         if(!isChange) return;
         var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device)||'';
         if(dev&&dev===detectDevice()) return;
-        pullFromCloud(true).then(function(u){ if(u){ rAll(true); updateSyncUI(true); }});
+        if(!_pendingPush&&!_pushInProgress&&Object.keys(_changeLog).length===0){
+          pullFromCloud(true).then(function(u){ if(u){ rAll(true); updateSyncUI(true); }});
+        }
       }catch(e){}
     };
     _realtimeWs.onclose=function(){
@@ -1247,7 +1244,6 @@ function startLiveSync(){
   },2000);
 }
 
-// Keep old name for compatibility
 function startPing(){ startLiveSync(); }
 
 // ── DEVICE ───────────────────────────────────────────────────────────────────
@@ -1292,7 +1288,6 @@ function save(){
     }).catch(function(){ _pushInProgress=false; });
   }
 }
-
 
 // DATE
 const MS=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -2267,7 +2262,6 @@ function shareDay(date){
   if(totalG) L.push(`• Gastos totales: $${totalG.toLocaleString()}`);
   L.push('');
 
-
   const text=L.join('\n');
   // Copy to clipboard
   if(navigator.clipboard&&navigator.clipboard.writeText){
@@ -2548,7 +2542,6 @@ function rPers(){
   html += persGroup('Inactivos',  '⏸️', 'var(--txt2)',  'bb',  inactivos,  false);
   c.innerHTML=html||'<div class="empty"><p>Sin trabajadores</p></div>';
 }
-
 
 let _nomTab='personal';
 function setNomTab(tab){
@@ -2976,7 +2969,6 @@ function copyWeekHE(){
     navigator.clipboard.writeText(text).then(()=>toast('✓ Copiado — pégalo en WhatsApp','ok')).catch(()=>fallbackCopy(text));
   } else { fallbackCopy(text); }
 }
-
 
 // Get the Thursday date string for the week containing dateStr
 function getThuDate(dateStr){
@@ -3560,7 +3552,6 @@ function runDiag(){
   }).catch(function(e){ out.textContent+='\nError: '+e.message; });
 }
 
-
 function rCfgStats(){
   rUsersConfig();
   // Show diag panel for admin only
@@ -3610,7 +3601,6 @@ function toggleSyncBar(){
 
 var _currentUser=null;
 
-
 // ── MAGIC LINK AUTH ──────────────────────────────────────────────────────────
 var _sbClient=null;
 
@@ -3620,8 +3610,6 @@ function getSbClient(){
   }
   return _sbClient;
 }
-
-
 
 function initAuth(){
   // Update app name
@@ -3730,8 +3718,6 @@ function handleAuthSession(session){
 
 // ── MAGIC LINK AUTH ──────────────────────────────────────────────────────────
 
-
-
 function handleMagicLinkCallback(){
   // Check URL for magic link token from Supabase
   var hash=window.location.hash;
@@ -3811,7 +3797,6 @@ function handleMagicLinkCallback(){
   });
   return true;
 }
-
 
 // ── MAGIC LINK AUTH ───────────────────────────────────────────────────────────
 var _loginUser=null;
@@ -3928,7 +3913,6 @@ function loginGoBack(){ loginBack(); }
 function updatePinDots(){} // kept for compatibility
 function pinKey(){} // kept for compatibility
 function pinDel(){} // kept for compatibility
-
 
 // Stores which user was blocked (to assign new PIN)
 var _blockedUserAttempt=null;
@@ -4669,10 +4653,12 @@ document.addEventListener('visibilitychange',function(){
   if(document.visibilityState==='visible'){
     // Coming to foreground — force fresh pull
     _lastInteraction=0;
-    _remoteUpdatedAt=''; // force live sync to pull
+    _remoteUpdatedAt=''; // force live sync to pull on next tick
     setTimeout(function(){
-      pullFromCloud(true).then(function(u){ if(u) rAll(true); updateSyncUI(true); })
-      .catch(function(){ updateSyncUI(false); });
+      if(!_pendingPush&&!_pushInProgress&&Object.keys(_changeLog).length===0){
+        pullFromCloud(true).then(function(u){ if(u) rAll(true); updateSyncUI(true); })
+        .catch(function(){ updateSyncUI(false); });
+      }
     }, 200);
   }
 });
@@ -4693,21 +4679,17 @@ function load(){
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
   updateSyncUI(false);
 
-  // Always download fresh data from Supabase first
   pullFromCloud(true).then(function(updated){
     rAll();
     initAuth();
   }).catch(function(){
-    // Offline fallback: load from localStorage
-    var d=localStorage.getItem('cp4');
+      var d=localStorage.getItem('cp4');
     if(d){ try{ Object.assign(S,JSON.parse(d)); }catch(e){} }
     S.date=td();
     rAll();
     initAuth();
   });
 }
-
-
 
 load();updDates();rAll();
 // Load custom app name
