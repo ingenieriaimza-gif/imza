@@ -95,8 +95,8 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 /* SCREENS */
 .screen { display:none; }
 .screen.active { display:block; }
-.screen.syncing { opacity:0; transition:opacity 0.18s ease; }
-.screen.sync-done { opacity:1; transition:opacity 0.18s ease; }
+.screen.syncing { }
+.screen.sync-done { }
 
 /* SECTION HEAD */
 .sec { display:flex; align-items:center; justify-content:space-between; margin:16px 0 10px; }
@@ -618,8 +618,10 @@ if('serviceWorker' in navigator){
           <div style="font-size:14px;font-weight:800;color:var(--txt)">☁️ Sincronización</div>
           <div id="sync-dot" style="width:10px;height:10px;border-radius:50%;background:var(--txt3);transition:background .3s"></div>
         </div>
-        <div style="font-size:12px;color:var(--txt3);line-height:1.7;margin-bottom:4px">Última actualización:</div>
-        <div id="cfg-sync-last" style="font-size:13px;color:var(--txt);line-height:1.7;font-weight:600">—</div>
+        <div style="font-size:12px;color:var(--txt3);line-height:1.7;margin-bottom:8px">Últimas actualizaciones:</div>
+        <div id="cfg-sync-last" style="display:flex;flex-direction:column;gap:2px">—</div>
+        <div style="margin-top:10px;font-size:12px;font-weight:700;color:var(--txt2);margin-bottom:6px">Últimas 3 actualizaciones</div>
+        <div id="sync-history-list"></div>
 
       </div>
 
@@ -627,6 +629,15 @@ if('serviceWorker' in navigator){
       <div style="background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:18px;margin-bottom:12px">
         <div style="font-size:14px;font-weight:800;color:var(--txt);margin-bottom:12px">📊 Estadísticas</div>
         <div id="cfg-stats" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+
+      <!-- REGISTRO DE CAMBIOS (solo admin) -->
+      <div id="change-log-wrap" style="background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:18px;margin-bottom:12px;display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:14px;font-weight:800;color:var(--txt)">📋 Registro de cambios</div>
+          <span style="font-size:11px;color:var(--txt3)">Últimos 2 días</span>
+        </div>
+        <div id="change-log-body"></div>
       </div>
 
       <!-- DIAGNÓSTICO (solo admin) -->
@@ -880,6 +891,111 @@ var _realtimeWs=null;
 var _realtimeHb=null;
 var _liveTimer=null;
 var _remoteUpdatedAt='';
+var _lastAction='';
+var _syncHistory=[];  // Last 3 updates
+
+function setAction(desc){ _lastAction=desc; }
+
+function addToHistory(time, user, action){
+  if(!time) return;
+  var t=fmtSyncTime(time);
+  var entry=t.mini+(user?' · '+user:'')+(action?' — '+action:'');
+  _syncHistory=_syncHistory.filter(function(e){ return e!==entry; });
+  _syncHistory.unshift(entry);
+  if(_syncHistory.length>3) _syncHistory=_syncHistory.slice(0,3);
+  localStorage.setItem('cp4_sync_history',JSON.stringify(_syncHistory));
+  // Also add to change log (admin only)
+  addToChangeLog(time, user, action);
+}
+
+function loadHistory(){
+  try{ _syncHistory=JSON.parse(localStorage.getItem('cp4_sync_history')||'[]'); }catch(e){ _syncHistory=[]; }
+}
+
+// ── CHANGE LOG (admin) ────────────────────────────────────────────────────────
+// Format: {YYYY-MM-DD: [{time, user, action}]}
+// Max 2 days
+function addToChangeLog(time, user, action){
+  if(!time||!user||!action) return;
+  var log=loadChangeLog();
+  var date=time.slice(0,10); // YYYY-MM-DD
+  if(!log[date]) log[date]=[];
+  // Avoid exact duplicates
+  var exists=log[date].some(function(e){ return e.time===time&&e.user===user&&e.action===action; });
+  if(!exists){
+    log[date].unshift({time:time,user:user,action:action});
+  }
+  // Keep only last 2 days
+  var days=Object.keys(log).sort().reverse();
+  if(days.length>2){
+    days.slice(2).forEach(function(d){ delete log[d]; });
+  }
+  localStorage.setItem('cp4_change_log',JSON.stringify(log));
+}
+
+function loadChangeLog(){
+  try{ return JSON.parse(localStorage.getItem('cp4_change_log')||'{}'); }catch(e){ return {}; }
+}
+
+var _changeLogOpen={};
+function renderChangeLog(){
+  var wrap=document.getElementById('change-log-wrap');
+  if(!wrap) return;
+  if(!_currentUser||_currentUser.rol!=='admin'){ wrap.style.display='none'; return; }
+  wrap.style.display='block';
+  var log=loadChangeLog();
+  var days=Object.keys(log).sort().reverse();
+  if(!days.length){
+    wrap.querySelector('#change-log-body').innerHTML='<div style="font-size:12px;color:var(--txt3);padding:8px 0">Sin registros aún</div>';
+    return;
+  }
+  var html=days.map(function(date){
+    var entries=log[date]||[];
+    var isOpen=_changeLogOpen[date]!==false; // open by default
+    var dayLabel=fmtDate(date);
+    return '<div style="margin-bottom:8px">'+
+      '<div onclick="toggleLogDay(this.dataset.d)" data-d="'+date+'" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:8px 10px;background:var(--card2);border-radius:8px;user-select:none">'+
+        '<div style="font-size:13px;font-weight:700;color:var(--txt)">'+dayLabel+'</div>'+
+        '<div style="display:flex;align-items:center;gap:8px">'+
+          '<span style="font-size:11px;color:var(--txt3)">'+entries.length+' cambios</span>'+
+          '<span style="font-size:11px;color:var(--txt3);transition:transform .2s" id="log-chev-'+date+'">'+(isOpen?'▲':'▼')+'</span>'+
+        '</div>'+
+      '</div>'+
+      '<div id="log-day-'+date+'" style="display:'+(isOpen?'block':'none')+'">'+
+        entries.map(function(e){
+          var t=fmtSyncTime(e.time);
+          return '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line)">'+
+            '<div style="font-size:11px;color:var(--txt3);min-width:36px;padding-top:1px">'+t.mini+'</div>'+
+            '<div style="flex:1">'+
+              '<div style="font-size:12px;font-weight:700;color:var(--gold)">'+e.user+'</div>'+
+              '<div style="font-size:12px;color:var(--txt2)">'+e.action+'</div>'+
+            '</div>'+
+          '</div>';
+        }).join('')+
+      '</div>'+
+    '</div>';
+  }).join('');
+  document.getElementById('change-log-body').innerHTML=html;
+}
+
+function toggleLogDay(date){
+  if(!date) return;
+  _changeLogOpen[date]=(_changeLogOpen[date]===false)?true:false;
+  var body=document.getElementById('log-day-'+date);
+  var chev=document.getElementById('log-chev-'+date);
+  var isOpen=_changeLogOpen[date]!==false;
+  if(body) body.style.display=isOpen?'block':'none';
+  if(chev) chev.textContent=isOpen?'▲':'▼';
+}
+
+function renderHistory(){
+  var cfgLast=document.getElementById('cfg-sync-last');
+  if(!cfgLast) return;
+  if(!_syncHistory.length){ cfgLast.textContent='—'; return; }
+  cfgLast.innerHTML=_syncHistory.map(function(e,i){
+    return '<div style="padding:4px 0;'+(i<_syncHistory.length-1?'border-bottom:1px solid var(--line);':'')+'font-size:13px;color:'+(i===0?'var(--txt)':'var(--txt2)')+'">'+e+'</div>';
+  }).join('');
+}
 
 // ── DEVICE ────────────────────────────────────────────────────────────────────
 function detectDevice(){
@@ -917,6 +1033,35 @@ function fmtSyncTime(iso){
 function updateSyncDot(ok){ var d=document.getElementById('sync-dot'); if(d) d.style.background=ok?'var(--green)':'var(--red)'; }
 function updateSyncDotOnly(ok){ updateSyncDot(ok); }
 
+function addToSyncHistory(info){
+  if(!info||!info.time) return;
+  // Avoid duplicate entries with same timestamp
+  if(_syncHistory.length&&_syncHistory[0].time===info.time) return;
+  _syncHistory.unshift(info);
+  if(_syncHistory.length>3) _syncHistory=_syncHistory.slice(0,3);
+  localStorage.setItem('cp4_sync_history',JSON.stringify(_syncHistory));
+}
+
+function loadSyncHistory(){
+  try{ _syncHistory=JSON.parse(localStorage.getItem('cp4_sync_history')||'[]'); }catch(e){ _syncHistory=[]; }
+}
+
+function renderSyncHistory(){
+  var el=document.getElementById('sync-history-list');
+  if(!el) return;
+  if(!_syncHistory.length){ el.innerHTML='<div style="font-size:12px;color:var(--txt3)">Sin actividad reciente</div>'; return; }
+  el.innerHTML=_syncHistory.map(function(s){
+    var t=fmtSyncTime(s.time);
+    var user=s.user||'';
+    var action=s.action||'';
+    return '<div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:12px">'+
+      '<span style="color:var(--txt3)">'+t.mini+'</span>'+
+      (user?'<span style="color:var(--gold);margin-left:6px;font-weight:700">'+user+'</span>':'')+
+      (action?'<span style="color:var(--txt2);margin-left:6px">'+action+'</span>':'')+
+    '</div>';
+  }).join('');
+}
+
 function updateSyncUI(ok){
   _isOnline=!!ok;
   updateSyncDot(ok);
@@ -926,22 +1071,42 @@ function updateSyncUI(ok){
     badge.style.color=ok?'var(--green)':'var(--red)';
     badge.style.background=ok?'rgba(61,214,140,0.12)':'rgba(240,96,96,0.12)';
   }
+  // Always update time from latest _lastSyncInfo
   if(_lastSyncInfo&&_lastSyncInfo.time){
     var t=fmtSyncTime(_lastSyncInfo.time);
+    var user=_lastSyncInfo.user?(' · '+_lastSyncInfo.user):'';
+    var action=_lastSyncInfo.action?(' — '+_lastSyncInfo.action):'';
     var mini=document.getElementById('sync-mini');
     var last=document.getElementById('sync-last');
     var cfgLast=document.getElementById('cfg-sync-last');
     var devEl=document.getElementById('sync-device');
-    if(mini) mini.textContent=t.mini;
-    if(last) last.textContent=t.full;
-    if(cfgLast) cfgLast.textContent=t.full;
-    if(devEl) devEl.textContent=_lastSyncInfo.device||'';
+    if(mini) mini.textContent=t.mini+user;
+    if(last) last.textContent=t.full+user+action;
+    if(cfgLast) cfgLast.textContent=t.full+user+action;
+    if(devEl) devEl.textContent=(_lastSyncInfo.device||'')+user+action;
   }
-  // Disable/enable all edit buttons based on connection
   document.querySelectorAll('.edit-btn,.add-btn,[data-requires-online]').forEach(function(el){
     el.style.opacity=ok?'1':'0.4';
     el.style.pointerEvents=ok?'auto':'none';
   });
+}
+
+// Called after every pull to refresh the time display
+function refreshSyncTime(){
+  if(_lastSyncInfo&&_lastSyncInfo.time){
+    var t=fmtSyncTime(_lastSyncInfo.time);
+    var user=_lastSyncInfo.user?(' · '+_lastSyncInfo.user):'';
+    var action=_lastSyncInfo.action?(' — '+_lastSyncInfo.action):'';
+    var mini=document.getElementById('sync-mini');
+    var last=document.getElementById('sync-last');
+    var cfgLast=document.getElementById('cfg-sync-last');
+    var devEl=document.getElementById('sync-device');
+    if(mini) mini.textContent=t.mini+user;
+    if(last) last.textContent=t.full+user+action;
+    if(cfgLast) cfgLast.textContent=t.full+user+action;
+    if(devEl) devEl.textContent=(_lastSyncInfo.device||'')+user+action;
+  }
+  renderSyncHistory();
 }
 
 // ── NO CONNECTION OVERLAY ─────────────────────────────────────────────────────
@@ -966,14 +1131,18 @@ function persistLocal(){
 
 // ── PULL FROM CLOUD ───────────────────────────────────────────────────────────
 function pullFromCloud(){
-  return sbFetch('/rest/v1/imza_data?id=eq.main&select=*').then(function(rows){
+  return sbFetch('/rest/v1/imza_data?id=eq.main&select=id,data,updated_at,device,user_name,last_action').then(function(rows){
     if(!rows||!rows.length) return false;
     var row=rows[0]; var remote=row.data||{};
     if(!remote||!remote.proyectos) return false;
-    _lastSyncInfo={time:row.updated_at,device:row.device};
+    var userName=row.user_name||(row.data&&row.data._user)||'';
+    var action=row.last_action||(row.data&&row.data._action)||'';
+    _lastSyncInfo={time:row.updated_at,device:row.device,user:userName,action:action};
+    addToSyncHistory(_lastSyncInfo);
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     _remoteUpdatedAt=row.updated_at||'';
     updateSyncUI(true);
+    refreshSyncTime();
     _applyingCloudData=true;
     try{
       var del=remote.deleted||{};
@@ -1006,13 +1175,21 @@ function pushToCloud(){
   if(S.users&&S.users.length) localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
   var device=detectDevice();
   var now=new Date().toISOString();
+  var userName=_currentUser?_currentUser.nombre:'';
+  var action=_lastAction||'';
+  _lastAction='';
   var patch=getLocalData();
   patch._device=device;
+  patch._user=userName;
+  patch._action=action;
   return sbFetch('/rest/v1/imza_data?id=eq.main',{
     method:'PATCH',
-    body:JSON.stringify({data:patch,updated_at:now,device:device})
+    body:JSON.stringify({data:patch,updated_at:now,device:device,user_name:userName,last_action:action})
   }).then(function(){
-    _lastSyncInfo={time:now,device:device};
+    _lastSyncInfo={time:now,device:device,user:userName,action:action};
+    addToHistory(now,userName,action);
+    renderHistory();
+    addToSyncHistory(_lastSyncInfo);
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     _remoteUpdatedAt=now;
     updateSyncUI(true);
@@ -1095,6 +1272,7 @@ function startRealtime(){
 
 // ── LOAD ──────────────────────────────────────────────────────────────────────
 function load(){
+  loadSyncHistory();
   var d=localStorage.getItem('cp4');
   if(d){ try{ Object.assign(S,JSON.parse(d)); }catch(e){} }
   S.date=td();
@@ -1327,6 +1505,7 @@ function saveAct(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permi
     var actDate=S.eADate||S.date;
     var savedAct=S.eAId?(S.actividades[actDate]||[]).find(function(a){ return a.id===S.eAId; }):(S.actividades[actDate]||[]).slice(-1)[0];
     _lastSaveType='act'; _lastSaveItem=savedAct; _lastSaveExtra={date:actDate};
+    setAction(S.eAId?'Editó actividad':'Nueva actividad');
     save();
   }catch(e){}
   document.getElementById('sov-act').classList.remove('open');
@@ -1405,6 +1584,7 @@ function saveProj(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
     var pid2=document.getElementById('pid').value;
     var savedProj=pid2?(S.proyectos.find(function(p){ return p.id===pid2; })):S.proyectos[S.proyectos.length-1];
     _lastSaveType='proj'; _lastSaveItem=savedProj;
+    setAction(pid2?('Editó proyecto '+(savedProj?savedProj.nombre||savedProj.folio:'')):'Nuevo proyecto');
     save();
   }catch(e){}
   document.getElementById('sov-proj').classList.remove('open');
@@ -1484,6 +1664,7 @@ function savePers(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
     var wid2=document.getElementById('wid').value;
     var savedPers=wid2?(S.personal.find(function(p){ return p.id===wid2; })):S.personal[S.personal.length-1];
     _lastSaveType='pers'; _lastSaveItem=savedPers;
+    setAction(wid2?('Editó trabajador '+(savedPers?savedPers.nombre:'')):'Nuevo trabajador');
     save();
   }catch(e){}
   document.getElementById('sov-pers').classList.remove('open');
@@ -1541,6 +1722,7 @@ function dAct(id,date){
     S.actividades[date]=(S.actividades[date]||[]).filter(a=>a.id!==id);
     recordDeleted('act',id);
     _lastSaveType='act_delete'; _lastSaveItem=dAct2; _lastSaveExtra={date:date};
+    setAction('Eliminó actividad');
     save();rAll();toast('Actividad eliminada','ok');
   });
 }
@@ -3431,6 +3613,9 @@ function rCfgStats(){
   if(diagWrap) diagWrap.style.display=(_currentUser&&_currentUser.rol==='admin')?'block':'none';
   // Load online users for admin
   loadOnlineUsers();
+  renderHistory();
+  renderChangeLog();
+  renderSyncHistory();
   // Only show last CONFIRMED sync with Supabase
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
