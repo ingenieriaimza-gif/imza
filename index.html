@@ -883,7 +883,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0323.1910';
+const APP_VERSION='2026.0323.1930';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -1981,11 +1981,9 @@ function rInicio(){
     '<span style="opacity:0.5">—</span>';
 
   // Personal: use estadoHistorial for selected date
-  var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
   var activos=[], vacs=[], falts=[];
   S.personal.forEach(function(p){
-    var est=historial[p.id]||p.estado||'activo';
-    if(est==='sin-registro') est='activo';
+    var est=getEstFecha(p, selDate);
     if(est==='activo') activos.push(p);
     else if(est==='vacaciones') vacs.push(p);
     else if(est==='falta') falts.push(p);
@@ -2032,6 +2030,14 @@ function rInicio(){
 }
 
 // ── VAC/FALTA CONFIG (module-level) ────────────────────────────────────────
+// ── ESTADO POR FECHA — función única usada en todas las pantallas ──────────
+function getEstFecha(p, fecha){
+  var h=(S.estadoHistorial&&S.estadoHistorial[fecha])||{};
+  var est=h[p.id]||p.estado||'activo';
+  if(est==='sin-registro') est='activo';
+  return est; // 'activo' | 'vacaciones' | 'falta' | 'inactivo'
+}
+
 const VAC_CFG={
   activo:     {label:'Activo',      emoji:'✅', cls:'bgr', bg:'rgba(61,214,140,0.06)',  border:'rgba(61,214,140,0.2)'},
   vacaciones: {label:'Vacaciones',  emoji:'🏖️', cls:'bg',  bg:'rgba(240,201,74,0.06)', border:'rgba(240,201,74,0.25)'},
@@ -2080,7 +2086,16 @@ function renderVacList(){
   var inactivosSinReg=inactivosBase.filter(p=>!historialVac[p.id]);
 
   var htmlMain=[...principales,...inactivosConReg].map(p=>{
-    var st=historialVac[p.id]||'sin-registro';
+    // Si hay entrada manual en historial, úsala directamente
+    // Si no, usar p.estado para mostrar estado real (falta/vacaciones base visible)
+    var st;
+    if(historialVac[p.id]){
+      st=historialVac[p.id];
+    } else if(p.estado==='falta'||p.estado==='vacaciones'){
+      st=p.estado; // respetar estado base
+    } else {
+      st='sin-registro'; // activo/inactivo sin historial = sin-registro en esta modal
+    }
     return renderRow(p,st);
   }).join('');
 
@@ -2866,14 +2881,8 @@ function rPers(){
     c.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><p>Sin trabajadores. Toca "+ Nuevo".</p></div>';
     return;
   }
-  // Usar historial de la fecha seleccionada — default activo si no hay registro
   var selDate=S.date||td();
-  var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
-  function getEst(p){
-    var est=historial[p.id]||p.estado||'activo';
-    if(est==='sin-registro') est='activo';
-    return est;
-  }
+  function getEst(p){ return getEstFecha(p, selDate); }
   const activos    = S.personal.filter(p=>getEst(p)==='activo');
   const vacaciones = S.personal.filter(p=>getEst(p)==='vacaciones');
   const faltas     = S.personal.filter(p=>getEst(p)==='falta');
@@ -2907,12 +2916,7 @@ function rNomPersonal(){
   const c=document.getElementById('nom-list');
   if(!todos.length){c.innerHTML='<div class="empty"><p>Sin personal registrado</p></div>';return;}
   var selDate=S.date||td();
-  var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
-  function getEst(p){
-    var est=historial[p.id]||p.estado||'activo';
-    if(est==='sin-registro') est='activo';
-    return est;
-  }
+  function getEst(p){ return getEstFecha(p, selDate); }
   const bm={activo:'bgr',vacaciones:'bg',falta:'br'};
   c.innerHTML=todos.map((p,i)=>`<div class="pcard">
     <div class="pinit" style="background:${WC[i%WC.length]}22;color:${WC[i%WC.length]}">${inits(p.nombre)}</div>
