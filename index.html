@@ -2700,8 +2700,9 @@ function rProj(){
   c.innerHTML = html;
 }
 
-function persCard(p,i){
-  const bm={activo:'bgr',inactivo:'br',vacaciones:'bg',falta:'br'};
+function persCard(p,i,estOverride){
+  const est=estOverride||p.estado||'activo';
+  const bm={activo:'bgr',inactivo:'bb',vacaciones:'bg',falta:'br'};
   return`<div class="li">
     <div class="liav" style="background:${WC[i%WC.length]}22;color:${WC[i%WC.length]}">${inits(p.nombre)}</div>
     <div class="lib">
@@ -2709,7 +2710,7 @@ function persCard(p,i){
       <div class="lisub">${p.cargo||'Sin cargo'}${p.tel?' · '+p.tel:''}</div>
     </div>
     <div class="lir" style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
-      <span class="b ${bm[p.estado]||'bb'}">${p.estado}</span>
+      <span class="b ${bm[est]||'bb'}">${est}</span>
       <div style="display:flex;gap:6px">
         <button class="ibtn ibe" onclick="openPersM('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
         <button class="ibtn ibd" onclick="dPers('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></button>
@@ -2718,9 +2719,9 @@ function persCard(p,i){
   </div>`;
 }
 
-function persGroup(label, emoji, color, badgeCls, workers, openByDefault){
+function persGroup(label, emoji, color, badgeCls, workers, openByDefault, estMap){
   if(!workers.length) return '';
-  const items=workers.map(p=>persCard(p, S.personal.indexOf(p))).join('');
+  const items=workers.map(p=>persCard(p, S.personal.indexOf(p), estMap?estMap[p.id]:null)).join('');
   return`<div class="hday" style="margin-bottom:8px;border-color:${color}40">
     <div class="hday-h" onclick="togH(this)" style="background:${color}0a">
       <div style="display:flex;align-items:center;gap:10px">
@@ -2765,10 +2766,18 @@ function rPers(){
     else activos.push(p);
   });
   let html='';
-  html += persGroup('Activos',    '✅', 'var(--green)', 'bgr', activos,    true);
-  html += persGroup('Vacaciones', '🏖️', 'var(--gold)',  'bg',  vacaciones, true);
-  html += persGroup('Falta',      '❌', 'var(--red)',   'br',  faltas,     true);
-  html += persGroup('Inactivos',  '⏸️', 'var(--txt2)',  'bb',  inactivos,  false);
+  var estMap={};
+  S.personal.forEach(function(p){
+    var est;
+    if(selDate===today){ est=historial[p.id]||p.estado||'activo'; }
+    else { est=historial[p.id]||'activo'; }
+    if(p.estado==='inactivo') est='inactivo';
+    estMap[p.id]=est;
+  });
+  html += persGroup('Activos',    '✅', 'var(--green)', 'bgr', activos,    true,  estMap);
+  html += persGroup('Vacaciones', '🏖️', 'var(--gold)',  'bg',  vacaciones, true,  estMap);
+  html += persGroup('Falta',      '❌', 'var(--red)',   'br',  faltas,     true,  estMap);
+  html += persGroup('Inactivos',  '⏸️', 'var(--txt2)',  'bb',  inactivos,  true,  estMap);
   c.innerHTML=html||'<div class="empty"><p>Sin trabajadores</p></div>';
 }
 
