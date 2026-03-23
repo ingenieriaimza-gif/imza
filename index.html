@@ -1033,51 +1033,55 @@ function flushOutbox(){
   _isFlushing=true;
   updateSyncDot(false);
 
-  // Mark as sending
-  pending.forEach(function(e){ e.status='sending'; });
-  saveOutbox();
+  // STEP 1: Fetch latest events from other devices FIRST
+  // This ensures our local state is up to date before we send
+  // So applyEvent comparisons use the latest _upd values
+  fetchNewEvents().then(function(){
+    // STEP 2: Re-queue with fresh state so _upd timestamps are current
+    // Any event whose payload has older _upd than what we just fetched
+    // will be correctly ignored by other devices via applyEvent
+    pending.forEach(function(e){ e.status='sending'; });
+    saveOutbox();
 
-  // Insert events to Supabase (one by one to avoid conflicts)
-  var chain=Promise.resolve();
-  pending.forEach(function(ev){
-    chain=chain.then(function(){
-      return sbFetch('/rest/v1/imza_events',{
-        method:'POST',
-        headers:{'Prefer':'resolution=ignore-duplicates'},
-        body:JSON.stringify({
-          id:ev.id,
-          device_id:ev.device_id,
-          user_id:ev.user_id,
-          type:ev.type,
-          payload:ev.payload,
-          created_at:ev.created_at
-        })
-      }).then(function(){
-        ev.status='sent';
-        saveOutbox();
-      }).catch(function(){
-        ev.status='pending'; // retry
+    var chain=Promise.resolve();
+    pending.forEach(function(ev){
+      chain=chain.then(function(){
+        return sbFetch('/rest/v1/imza_events',{
+          method:'POST',
+          headers:{'Prefer':'resolution=ignore-duplicates'},
+          body:JSON.stringify({
+            id:ev.id,
+            device_id:ev.device_id,
+            user_id:ev.user_id,
+            type:ev.type,
+            payload:ev.payload,
+            created_at:ev.created_at
+          })
+        }).then(function(){
+          ev.status='sent';
+          saveOutbox();
+        }).catch(function(){
+          ev.status='pending';
+        });
       });
     });
-  });
 
-  chain.then(function(){
-    // After events sent, update main data record
+    return chain;
+  }).then(function(){
     return updateMainRecord();
   }).then(function(){
-    // Remove sent events from outbox
     _outbox=_outbox.filter(function(e){ return e.status!=='sent'; });
     saveOutbox();
     _isFlushing=false;
-    updateSyncUI(true);
-    // Update last sync info
     _lastSyncInfo={time:new Date().toISOString(),device:detectDevice()};
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     updateSyncUI(true);
   }).catch(function(){
     _isFlushing=false;
+    // Reset sending back to pending for retry
+    _outbox.forEach(function(e){ if(e.status==='sending') e.status='pending'; });
+    saveOutbox();
     updateSyncUI(false);
-    // Retry in 3s
     setTimeout(flushOutbox,3000);
   });
 }
