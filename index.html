@@ -431,17 +431,17 @@ if('serviceWorker' in navigator){
     <div id="s-inicio" class="screen active">
       <div class="sec"><div class="sec-lbl">Resumen del día</div></div>
       <div class="stats" style="margin-bottom:10px">
-        <div class="sbox" style="cursor:pointer" onclick="">
+        <div class="sbox" style="cursor:pointer" onclick="toggleStBox('proj')">
           <div class="slbl">Proyectos</div>
           <div class="sval cg" id="st-p">0</div>
-          <div class="ssub">activos</div>
-          <div id="st-proj-names" style="font-size:11px;color:var(--txt2);margin-top:5px;line-height:1.6;text-align:left"></div>
+          <div class="ssub">activos <span id="st-proj-chev" style="font-size:9px">▼</span></div>
+          <div id="st-proj-names" style="display:none;font-size:11px;color:var(--txt2);margin-top:8px;line-height:1.8;text-align:left;border-top:1px solid var(--line);padding-top:8px"></div>
         </div>
-        <div class="sbox" style="cursor:pointer" onclick="">
+        <div class="sbox" style="cursor:pointer" onclick="toggleStBox('pers')">
           <div class="slbl">Personal</div>
           <div class="sval ct" id="st-w">0</div>
-          <div class="ssub">activos</div>
-          <div id="st-activos-names" style="font-size:11px;color:var(--txt2);margin-top:5px;line-height:1.6;text-align:left"></div>
+          <div class="ssub">activos <span id="st-pers-chev" style="font-size:9px">▼</span></div>
+          <div id="st-activos-names" style="display:none;font-size:11px;color:var(--txt2);margin-top:8px;line-height:1.8;text-align:left;border-top:1px solid var(--line);padding-top:8px"></div>
         </div>
         <div class="sbox" id="st-vac-box" onclick="openVacM()" style="cursor:pointer;grid-column:1/-1;padding:16px 18px;border-color:rgba(240,201,74,0.1)">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -457,7 +457,7 @@ if('serviceWorker' in navigator){
                 <div style="font-size:26px;font-weight:900;letter-spacing:-1px;color:var(--gold)" id="st-v">0</div>
                 <div style="font-size:11px;color:var(--txt3)">personas</div>
               </div>
-              <div id="st-vac-names" style="font-size:11px;color:var(--txt2);margin-top:5px;line-height:1.6"></div>
+              <div id="st-vac-names" style="font-size:11px;color:var(--txt2);margin-top:5px;line-height:1.8"></div>
             </div>
             <div style="background:var(--card2);border-radius:10px;padding:12px">
               <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--txt3);margin-bottom:4px">Faltas</div>
@@ -465,7 +465,7 @@ if('serviceWorker' in navigator){
                 <div style="font-size:26px;font-weight:900;letter-spacing:-1px;color:var(--red)" id="st-f">0</div>
                 <div style="font-size:11px;color:var(--txt3)">personas</div>
               </div>
-              <div id="st-falt-names" style="font-size:11px;color:var(--txt2);margin-top:5px;line-height:1.6"></div>
+              <div id="st-falt-names" style="font-size:11px;color:var(--txt2);margin-top:5px;line-height:1.8"></div>
             </div>
           </div>
         </div>
@@ -1884,6 +1884,16 @@ function rAll(fromSync){
     try{ rNom(); }catch(e){}
     if(scroll) scroll.scrollTop=scrollTop;
   }
+}
+
+var _stBoxOpen={};
+function toggleStBox(key){
+  _stBoxOpen[key]=!_stBoxOpen[key];
+  var id=key==='proj'?'st-proj-names':'st-activos-names';
+  var el=document.getElementById(id);
+  var chev=document.getElementById('st-'+key+'-chev');
+  if(el) el.style.display=_stBoxOpen[key]?'block':'none';
+  if(chev) chev.textContent=_stBoxOpen[key]?'▲':'▼';
 }
 
 function rInicio(){
