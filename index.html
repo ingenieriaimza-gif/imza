@@ -4370,8 +4370,10 @@ function openAddUser(){
     '</div>';
   overlay.appendChild(sheet);
   overlay.addEventListener('click',function(e){ if(e.target===overlay) overlay.remove(); });
+  sheet.addEventListener('click',function(e){ e.stopPropagation(); });
   document.body.appendChild(overlay);
-  document.getElementById('nu-save').addEventListener('click',function(){
+  document.getElementById('nu-save').addEventListener('click',function(e){
+    e.stopPropagation();
     var nombre=(document.getElementById('nu-nombre').value||'').trim();
     var email=(document.getElementById('nu-email').value||'').trim().toLowerCase();
     var rol=document.getElementById('nu-rol').value;
@@ -4379,7 +4381,7 @@ function openAddUser(){
     if(!email||!email.includes('@')){ toast('Correo requerido','err'); return; }
     if((S.users||[]).some(function(u){ return (u.email||'').toLowerCase()===email; })){ toast('Ese correo ya existe','err'); return; }
     if(!S.users) S.users=[];
-    S.users.push({id:'u'+Date.now(),nombre:nombre,rol:rol,email:email});
+    S.users.push({id:'u'+Date.now(),nombre:nombre,rol:rol,email:email,_upd:Date.now()});
     setAction('Agregó usuario '+nombre);
     save();
     rUsersConfig();
