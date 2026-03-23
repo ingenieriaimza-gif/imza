@@ -405,6 +405,7 @@ if('serviceWorker' in navigator){
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         <div id="sync-role-badge" style="display:none;font-size:10px;font-weight:800;padding:3px 8px;border-radius:6px;letter-spacing:0.3px"></div>
+        <div id="company-switcher" onclick="event.stopPropagation();openCompanyManager()" style="display:none;align-items:center;gap:4px;cursor:pointer;padding:3px 8px;border-radius:6px;background:rgba(181,157,255,0.12);color:var(--purp);font-size:10px;font-weight:800">&#127970; <span id="company-name">&#8212;</span></div>
         <svg id="sync-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;color:var(--txt3);transition:transform .25s"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
     </div>
