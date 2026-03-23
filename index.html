@@ -95,8 +95,8 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 /* SCREENS */
 .screen { display:none; }
 .screen.active { display:block; }
-.screen { transition:opacity 0.15s ease; }
-.screen.syncing { opacity:0.98; }
+.screen.syncing { opacity:0; transition:opacity 0.18s ease; }
+.screen.sync-done { opacity:1; transition:opacity 0.18s ease; }
 
 /* SECTION HEAD */
 .sec { display:flex; align-items:center; justify-content:space-between; margin:16px 0 10px; }
@@ -271,7 +271,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 .empty p { font-size:14px; }
 
 @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-.screen.active .sbox,.screen.active .atile,.screen.active .acard,.screen.active .li,.screen.active .pcard,.screen.active .hday { animation:fadeUp 0.25s ease both; }
+/* No animation on sync - prevents flicker */
 
 /* ── CUSTOM CALENDAR ── */
 .cal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.65);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);z-index:150;display:none;align-items:flex-end;justify-content:center; }
