@@ -919,9 +919,8 @@ function addToChangeLog(time, user, action){
   if(!time||!user) return;
   action=action||'Actualización';
   var log=loadChangeLog();
-  var date=time.slice(0,10); // YYYY-MM-DD
+  var date=time.slice(0,10);
   if(!log[date]) log[date]=[];
-  // Avoid exact duplicates
   var exists=log[date].some(function(e){ return e.time===time&&e.user===user&&e.action===action; });
   if(!exists){
     log[date].unshift({time:time,user:user,action:action});
@@ -932,6 +931,34 @@ function addToChangeLog(time, user, action){
     days.slice(2).forEach(function(d){ delete log[d]; });
   }
   localStorage.setItem('cp4_change_log',JSON.stringify(log));
+  // Persist to Supabase so admin sees all devices' changes
+  sbFetch('/rest/v1/imza_data?id=eq.main',{
+    method:'PATCH',
+    body:JSON.stringify({changelog:log})
+  }).catch(function(){});
+}
+
+function loadChangeLogFromCloud(remoteData){
+  if(!remoteData||!remoteData.changelog) return;
+  // Merge cloud changelog with local
+  var local=loadChangeLog();
+  var cloud=remoteData.changelog;
+  var merged=Object.assign({},local);
+  Object.keys(cloud||{}).forEach(function(date){
+    if(!merged[date]){
+      merged[date]=cloud[date];
+    } else {
+      // Merge by time dedup
+      var map={};
+      merged[date].forEach(function(e){ map[e.time+'_'+e.user]=e; });
+      (cloud[date]||[]).forEach(function(e){ map[e.time+'_'+e.user]=e; });
+      merged[date]=Object.values(map).sort(function(a,b){ return b.time.localeCompare(a.time); });
+    }
+  });
+  // Keep only 2 days
+  var days=Object.keys(merged).sort().reverse();
+  if(days.length>2) days.slice(2).forEach(function(d){ delete merged[d]; });
+  localStorage.setItem('cp4_change_log',JSON.stringify(merged));
 }
 
 function loadChangeLog(){
@@ -947,7 +974,7 @@ function renderChangeLog(){
   var log=loadChangeLog();
   var days=Object.keys(log).sort().reverse();
   if(!days.length){
-    wrap.querySelector('#change-log-body').innerHTML='<div style="font-size:12px;color:var(--txt3);padding:8px 0">Sin registros aún</div>';
+    var b=document.getElementById('change-log-body'); if(b) b.innerHTML='<div style="font-size:12px;color:var(--txt3);padding:8px 0">Sin registros aún</div>';
     return;
   }
   var html=days.map(function(date){
@@ -976,7 +1003,7 @@ function renderChangeLog(){
       '</div>'+
     '</div>';
   }).join('');
-  document.getElementById('change-log-body').innerHTML=html;
+  var clb=document.getElementById('change-log-body'); if(clb) clb.innerHTML=html;
 }
 
 function toggleLogDay(date){
@@ -1132,7 +1159,7 @@ function persistLocal(){
 
 // ── PULL FROM CLOUD ───────────────────────────────────────────────────────────
 function pullFromCloud(){
-  return sbFetch('/rest/v1/imza_data?id=eq.main&select=id,data,updated_at,device,user_name,last_action').then(function(rows){
+  return sbFetch('/rest/v1/imza_data?id=eq.main&select=id,data,updated_at,device,user_name,last_action,changelog').then(function(rows){
     if(!rows||!rows.length) return false;
     var row=rows[0]; var remote=row.data||{};
     if(!remote||!remote.proyectos) return false;
@@ -1183,9 +1210,10 @@ function pushToCloud(){
   patch._device=device;
   patch._user=userName;
   patch._action=action;
+  var changelog=loadChangeLog();
   return sbFetch('/rest/v1/imza_data?id=eq.main',{
     method:'PATCH',
-    body:JSON.stringify({data:patch,updated_at:now,device:device,user_name:userName,last_action:action})
+    body:JSON.stringify({data:patch,updated_at:now,device:device,user_name:userName,last_action:action,changelog:changelog})
   }).then(function(){
     _lastSyncInfo={time:now,device:device,user:userName,action:action};
     addToHistory(now,userName,action);
