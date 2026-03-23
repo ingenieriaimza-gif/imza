@@ -883,7 +883,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0323.1800';
+const APP_VERSION='2026.0323.1830';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -1714,6 +1714,50 @@ function savePers(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
   // Always keep exPersonal updated with latest name+cargo for history
   if(!S.exPersonal) S.exPersonal={};
   S.exPersonal[wid]={nombre:d.nombre,cargo:d.cargo||''};
+
+  // Escribir vacaciones en estadoHistorial para cada día del rango
+  if(vacIni&&vacFin&&vacFin>=vacIni){
+    if(!S.estadoHistorial) S.estadoHistorial={};
+    // Primero limpiar días anteriores de este trabajador que ya no estén en el rango
+    if(existing&&existing.vacIni&&existing.vacFin){
+      var oldD=new Date(existing.vacIni+'T12:00:00');
+      var oldEnd=new Date(existing.vacFin+'T12:00:00');
+      while(oldD<=oldEnd){
+        var ds=oldD.toISOString().split('T')[0];
+        if((ds<vacIni||ds>vacFin)&&S.estadoHistorial[ds]&&S.estadoHistorial[ds][wid]==='vacaciones'){
+          delete S.estadoHistorial[ds][wid];
+        }
+        oldD.setDate(oldD.getDate()+1);
+      }
+    }
+    // Escribir nuevo rango
+    var cur=new Date(vacIni+'T12:00:00');
+    var end=new Date(vacFin+'T12:00:00');
+    while(cur<=end){
+      var ds=cur.toISOString().split('T')[0];
+      if(!S.estadoHistorial[ds]) S.estadoHistorial[ds]={};
+      // Solo escribir si no hay un estado manual diferente ya registrado
+      if(!S.estadoHistorial[ds][wid]||S.estadoHistorial[ds][wid]==='vacaciones'){
+        S.estadoHistorial[ds][wid]='vacaciones';
+      }
+      cur.setDate(cur.getDate()+1);
+    }
+    markChanged('estadoHistorial');
+  } else if(existing&&existing.vacIni&&existing.vacFin&&(!vacIni||!vacFin)){
+    // Se borraron las vacaciones: limpiar el rango anterior
+    if(!S.estadoHistorial) S.estadoHistorial={};
+    var oldD=new Date(existing.vacIni+'T12:00:00');
+    var oldEnd=new Date(existing.vacFin+'T12:00:00');
+    while(oldD<=oldEnd){
+      var ds=oldD.toISOString().split('T')[0];
+      if(S.estadoHistorial[ds]&&S.estadoHistorial[ds][wid]==='vacaciones'){
+        delete S.estadoHistorial[ds][wid];
+      }
+      oldD.setDate(oldD.getDate()+1);
+    }
+    markChanged('estadoHistorial');
+  }
+
   try{
     var wid2=document.getElementById('wid').value;
     var savedPers=wid2?(S.personal.find(function(p){ return p.id===wid2; })):S.personal[S.personal.length-1];
