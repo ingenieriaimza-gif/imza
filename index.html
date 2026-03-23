@@ -2745,10 +2745,25 @@ function rPers(){
     c.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><p>Sin trabajadores. Toca "+ Nuevo".</p></div>';
     return;
   }
-  const activos    = S.personal.filter(p=>p.estado==='activo');
-  const vacaciones = S.personal.filter(p=>p.estado==='vacaciones');
-  const faltas     = S.personal.filter(p=>p.estado==='falta');
-  const inactivos  = S.personal.filter(p=>p.estado==='inactivo');
+  // Use estadoHistorial for selected date
+  var selDate=S.date||td();
+  var today=td();
+  var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
+  var activos=[], vacaciones=[], faltas=[], inactivos=[];
+  S.personal.forEach(function(p){
+    var est;
+    if(selDate===today){
+      est=historial[p.id]||p.estado||'activo';
+    } else {
+      est=historial[p.id]||'activo';
+    }
+    // Always show inactivos from p.estado (not date-specific)
+    if(p.estado==='inactivo') inactivos.push(p);
+    else if(est==='activo') activos.push(p);
+    else if(est==='vacaciones') vacaciones.push(p);
+    else if(est==='falta') faltas.push(p);
+    else activos.push(p);
+  });
   let html='';
   html += persGroup('Activos',    '✅', 'var(--green)', 'bgr', activos,    true);
   html += persGroup('Vacaciones', '🏖️', 'var(--gold)',  'bg',  vacaciones, true);
