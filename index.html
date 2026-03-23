@@ -2008,14 +2008,14 @@ function renderVacList(){
   var historialVac=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
   // Build with DOM nodes — no inline onclick
   c.innerHTML=S.personal.map((p,i)=>{
-    // Use historial for date, fallback depends on date type
+    // Use historial for date — never fall back to p.estado for other dates
     var st;
     if(selDate===today2){
+      // Today: historial takes priority, then p.estado
       st=historialVac[p.id]||p.estado||'activo';
-    } else if(selDate>today2){
-      st=historialVac[p.id]||'activo';
     } else {
-      st=historialVac[p.id]||p.estado||'activo';
+      // Past or future: only use historial, default activo if not set
+      st=historialVac[p.id]||'activo';
     }
     const cfg=VAC_CFG[st]||VAC_CFG.activo;
     return `<div class="li" data-wid="${p.id}" style="cursor:pointer;border-color:${cfg.border};background:${cfg.bg}">
