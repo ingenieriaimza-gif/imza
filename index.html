@@ -872,7 +872,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-let S={date:td(),proyectos:[],personal:[],actividades:{},eAId:null,eADate:null};
+let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
 function td(){
@@ -1155,7 +1155,7 @@ function isDeleted(type,id){ return !!(S.deleted&&S.deleted[type+'_'+id]); }
 // ── LOCAL STORAGE ─────────────────────────────────────────────────────────────
 function getLocalData(){
   var d={};
-  ['proyectos','personal','actividades','deleted','exPersonal','users','deletedUsers'].forEach(function(k){ if(S[k]!==undefined) d[k]=S[k]; });
+  ['proyectos','personal','actividades','estadoHistorial','deleted','exPersonal','users','deletedUsers'].forEach(function(k){ if(S[k]!==undefined) d[k]=S[k]; });
   return d;
 }
 function persistLocal(){
@@ -1191,6 +1191,7 @@ function pullFromCloud(){
       S.deleted=del;
       S.exPersonal=remote.exPersonal||{};
       S.deletedUsers=remote.deletedUsers||{};
+      S.estadoHistorial=remote.estadoHistorial||{};
       // Never reset S.date — keep user's selected date
       if(!S.date) S.date=td();
       persistLocal();
