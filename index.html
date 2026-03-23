@@ -883,7 +883,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0323.1720';
+const APP_VERSION='2026.0323.1800';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -1405,7 +1405,11 @@ function openS(id){
 }
 function closeS(id){
   document.getElementById(id).classList.remove('open');
-  // Always try to push (save already stored locally, push is non-blocking)
+  // Si hay render pendiente del sync, ejecutarlo ahora que no hay sheets abiertos
+  if(_pendingRender && !isSheetOpen()){
+    setTimeout(function(){ _doRender(); }, 50);
+  }
+  // Always try to push
   clearTimeout(_syncTimer);
   pushToCloud().catch(function(){});
 }
@@ -1823,31 +1827,45 @@ var _lastInteraction=0;
 var _applyingCloudData=false; // blocks save/push while applying cloud data
 
 var _rAllTimer=null;
+var _pendingRender=false; // hay un re-render pendiente esperando que cierren los sheets
+
 function isSheetOpen(){
-  // Check if any overlay/sheet is open
   return document.querySelectorAll('.sov.open').length > 0 ||
          document.querySelectorAll('.cal-overlay.open').length > 0;
 }
 
 function isUserInteracting(){
-  // Don't interrupt if sheet open or user interacted in last 3s
   return isSheetOpen() || (Date.now()-_lastInteraction < 3000);
+}
+
+function _doRender(){
+  var scroll=document.getElementById('scroll');
+  var scrollTop=scroll?scroll.scrollTop:0;
+  try{ rInicio(); }catch(e){}
+  try{ rAct(); }catch(e){}
+  try{ rHist(); }catch(e){}
+  try{ rProj(); }catch(e){}
+  try{ rPers(); }catch(e){}
+  try{ rNom(); }catch(e){}
+  if(scroll) scroll.scrollTop=scrollTop;
+  _pendingRender=false;
 }
 
 function rAll(fromSync){
   var scroll=document.getElementById('scroll');
   var scrollTop=scroll?scroll.scrollTop:0;
-  var savedStep=typeof aCurStep!=='undefined'?aCurStep:1;
-  var sheetWasOpen=isSheetOpen();
 
   if(fromSync){
+    // Si hay sheet abierto, no tocar el DOM — marcar render pendiente
+    if(isSheetOpen()){
+      _pendingRender=true;
+      return;
+    }
     if(_rAllTimer) clearTimeout(_rAllTimer);
     _rAllTimer=setTimeout(function(){
       _syncRendering=true;
-      // Freeze scroll before update
       if(scroll) scroll.style.overflow='hidden';
       requestAnimationFrame(function(){
-        // Update only current screen — minimal DOM change
         try{
           switch(curP){
             case 'inicio':    rInicio(); break;
@@ -1859,7 +1877,6 @@ function rAll(fromSync){
             case 'config':    rCfgStats(); break;
           }
         }catch(e){}
-        // Also update other screens silently
         requestAnimationFrame(function(){
           try{
             if(curP!=='inicio') rInicio();
@@ -1869,12 +1886,10 @@ function rAll(fromSync){
             if(curP!=='personal') rPers();
             if(curP!=='nomina') rNom();
           }catch(e){}
-          // Restore scroll silently
           if(scroll){
             scroll.scrollTop=scrollTop;
             scroll.style.overflow='';
           }
-          if(sheetWasOpen) try{ shStep(savedStep); }catch(e){}
           _syncRendering=false;
           _rAllTimer=null;
         });
@@ -1883,13 +1898,7 @@ function rAll(fromSync){
   } else {
     if(_rAllTimer){ clearTimeout(_rAllTimer); _rAllTimer=null; }
     _syncRendering=false;
-    try{ rInicio(); }catch(e){}
-    try{ rAct(); }catch(e){}
-    try{ rHist(); }catch(e){}
-    try{ rProj(); }catch(e){}
-    try{ rPers(); }catch(e){}
-    try{ rNom(); }catch(e){}
-    if(scroll) scroll.scrollTop=scrollTop;
+    _doRender();
   }
 }
 
@@ -2331,6 +2340,17 @@ function rHistDia(){
 
 function rHistProj(){
   const c=document.getElementById('hist-list');
+
+  // Guardar qué elementos están abiertos antes de re-renderizar
+  var openGroups={};   // 'activos'|'completados' → bool
+  var openProjs={};    // proyectoId → bool
+  c.querySelectorAll('.hbody.open').forEach(function(b){
+    var h=b.previousElementSibling;
+    if(!h) return;
+    if(h.dataset.group) openGroups[h.dataset.group]=true;
+    if(h.dataset.projId) openProjs[h.dataset.projId]=true;
+  });
+
   if(!S.proyectos.length){c.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/></svg><p>Sin proyectos registrados</p></div>';return;}
 
   // Build map: proyectoId -> [{date, act}]
@@ -2375,7 +2395,7 @@ function rHistProj(){
     }
 
     return`<div class="hday" style="margin-bottom:6px">
-      <div class="hday-h" onclick="togH(this)" style="padding:12px 14px">
+      <div class="hday-h" data-proj-id="${proj.id}" onclick="togH(this)" style="padding:12px 14px">
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
           <div style="width:34px;height:34px;border-radius:9px;background:${projColor}22;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${projColor};flex-shrink:0">${pCode}</div>
           <div style="min-width:0">
@@ -2390,21 +2410,22 @@ function rHistProj(){
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
       </div>
-      <div class="hbody">
-        ${entries.map(({date,a})=>`
+      <div class="hbody${openProjs[proj.id]?' open':''}">
+        ${openProjs[proj.id]?entries.map(({date,a})=>`
           <div style="margin-bottom:8px">
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--txt3);padding:4px 0 6px">${fmtD(date)} ${date===td()?'<span class="b bg" style="font-size:9px;padding:1px 5px">Hoy</span>':''}</div>
             ${rACard(a,date)}
-          </div>`).join('')}
+          </div>`).join(''):''}
       </div>
     </div>`;
   }
 
-  function buildGroup(icon,label,color,badgeCls,projects,subtitle){
+  function buildGroup(icon,label,color,badgeCls,projects,subtitle,groupKey){
     const count=projects.length;
     const cards=projects.map(p=>buildProjCard(p)).join('');
+    const isOpen=openGroups[groupKey]||false;
     return`<div class="hday" style="margin-bottom:12px;border-color:${color}40;overflow:visible">
-      <div class="hday-h" onclick="togH(this)" style="background:${color}0a;border-radius:var(--r) var(--r) 0 0">
+      <div class="hday-h" data-group="${groupKey}" onclick="togH(this)" style="background:${color}0a;border-radius:var(--r) var(--r) 0 0">
         <div style="display:flex;align-items:center;gap:10px">
           <div style="width:38px;height:38px;border-radius:11px;background:${color}18;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">${icon}</div>
           <div>
@@ -2417,7 +2438,7 @@ function rHistProj(){
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;color:${color}"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
       </div>
-      <div class="hbody" style="padding:8px 6px 4px;background:${color}04">
+      <div class="hbody${isOpen?' open':''}" style="padding:8px 6px 4px;background:${color}04">
         ${count?cards:'<div style="color:var(--txt3);font-size:13px;text-align:center;padding:16px">Sin proyectos en esta categoría</div>'}
       </div>
     </div>`;
@@ -2432,11 +2453,25 @@ function rHistProj(){
   const compSubtitle = completados.length+' proyecto'+(completados.length!==1?'s':'')+' terminados';
 
   c.innerHTML =
-    buildGroup('🏗️','Activos y Pausados','var(--green)','bgr', actPaus, apSubtitle) +
-    buildGroup('✅','Completados','var(--blue)','bb', completados, compSubtitle);
+    buildGroup('🏗️','Activos y Pausados','var(--green)','bgr', actPaus, apSubtitle, 'activos') +
+    buildGroup('✅','Completados','var(--blue)','bb', completados, compSubtitle, 'completados');
 }
 
-function togH(head){head.nextElementSibling.classList.toggle('open');}
+function togH(head){
+  var body=head.nextElementSibling;
+  body.classList.toggle('open');
+  // Lazy-load: si el body quedó abierto y está vacío, cargar contenido
+  if(body.classList.contains('open')&&!body.innerHTML.trim()){
+    // Para días (data-date en el header)
+    if(head.dataset.date&&S.actividades[head.dataset.date]){
+      body.innerHTML=S.actividades[head.dataset.date].map(a=>rACard(a,head.dataset.date)).join('');
+    }
+    // Para proyectos (data-proj-id en el header) — re-render del proyecto
+    if(head.dataset.projId){
+      try{ rHistProj(); }catch(e){}
+    }
+  }
+}
 
 function shareDay(date){
   const acts=S.actividades[date]||[];
