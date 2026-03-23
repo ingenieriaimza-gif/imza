@@ -883,7 +883,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0323.1830';
+const APP_VERSION='2026.0323.1850';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -1517,8 +1517,14 @@ function chgHrs(id,delta){
 function bldWG(){
   const date=S.eADate||S.date;const dActs=S.actividades[date]||[];const eid=S.eAId;
   const g=document.getElementById('wg');
-  const ac=S.personal.filter(p=>p.estado==='activo');
-  if(!ac.length){g.innerHTML='<div style="grid-column:1/-1;color:var(--txt3);text-align:center;padding:24px;font-size:13px">Sin personal activo.</div>';return;}
+  const historial=(S.estadoHistorial&&S.estadoHistorial[date])||{};
+  const ac=S.personal.filter(p=>{
+    var est=historial[p.id]||'sin-registro';
+    // sin-registro o activo = disponible; vacaciones/falta/inactivo = no aparece
+    if(p.estado==='inactivo' && !historial[p.id]) return false;
+    return est==='activo'||est==='sin-registro';
+  });
+  if(!ac.length){g.innerHTML='<div style="grid-column:1/-1;color:var(--txt3);text-align:center;padding:24px;font-size:13px">Sin personal activo este día.</div>';return;}
   g.innerHTML=ac.map(p=>{
     const aa=dActs.find(a=>a.id!==eid&&a.trabajadores?.includes(p.id));
     const iS=selW.includes(p.id),iB=!!aa;
