@@ -2013,22 +2013,27 @@ function renderVacList(){
 function togVac(id){
   const p=S.personal.find(x=>x.id===id);
   if(!p) return;
-  const prev=p.estado||'activo';
-  let next=VAC_CYCLE[prev]||'activo';
-  if(next==='falta'&&S.date>td()){
+  var hDate=S.date||td();
+  var today=td();
+  // Get current estado for this date from historial or p.estado
+  var historialDate=(S.estadoHistorial&&S.estadoHistorial[hDate])||{};
+  var currentEstado=historialDate[id]||p.estado||'activo';
+  var next=VAC_CYCLE[currentEstado]||'activo';
+  if(next==='falta'&&hDate>today){
     toast('No se puede registrar falta en días futuros','err');
     return;
   }
-  p.estado=next;
-  p._upd=Date.now();
-  // Save to estadoHistorial for selected date
-  var hDate=S.date||td();
+  // Save to historial for selected date
   if(!S.estadoHistorial) S.estadoHistorial={};
   if(!S.estadoHistorial[hDate]) S.estadoHistorial[hDate]={};
   S.estadoHistorial[hDate][id]=next;
-  // Also mark estadoHistorial as changed
+  // Only update p.estado if changing today's date
+  if(hDate===today){
+    p.estado=next;
+    p._upd=Date.now();
+    markChanged('personal');
+  }
   markChanged('estadoHistorial');
-  markChanged('personal');
   var estadoLabels={activo:'Activo',vacaciones:'Vacaciones',falta:'Falta',inactivo:'Inactivo'};
   setAction((p.nombre||'Trabajador')+' → '+(estadoLabels[next]||next)+' ('+hDate+')');
   save();
