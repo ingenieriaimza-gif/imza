@@ -931,11 +931,7 @@ function addToChangeLog(time, user, action){
     days.slice(2).forEach(function(d){ delete log[d]; });
   }
   localStorage.setItem('cp4_change_log',JSON.stringify(log));
-  // Persist to Supabase so admin sees all devices' changes
-  sbFetch('/rest/v1/imza_data?id=eq.main',{
-    method:'PATCH',
-    body:JSON.stringify({changelog:log})
-  }).catch(function(){});
+  // pushToCloud will include changelog in next push
 }
 
 function loadChangeLogFromCloud(remoteData){
@@ -1205,7 +1201,6 @@ function pushToCloud(){
   var now=new Date().toISOString();
   var userName=_currentUser?_currentUser.nombre:'';
   var action=_lastAction||'';
-  _lastAction='';
   var patch=getLocalData();
   patch._device=device;
   patch._user=userName;
@@ -1215,6 +1210,7 @@ function pushToCloud(){
     method:'PATCH',
     body:JSON.stringify({data:patch,updated_at:now,device:device,user_name:userName,last_action:action,changelog:changelog})
   }).then(function(){
+    _lastAction=''; // Clear after successful push
     _lastSyncInfo={time:now,device:device,user:userName,action:action};
     addToHistory(now,userName,action);
     renderHistory();
@@ -1238,13 +1234,13 @@ function save(){
     showNoConnection();
     return;
   }
-  // Save locally first (instant feedback)
   persistLocal();
-  // Push to cloud
+  // Log action immediately to local changelog
+  if(_lastAction&&_currentUser){
+    addToChangeLog(new Date().toISOString(),_currentUser.nombre,_lastAction);
+  }
   pushToCloud().then(function(ok){
-    if(!ok){
-      showNoConnection();
-    }
+    if(!ok) showNoConnection();
   });
 }
 
