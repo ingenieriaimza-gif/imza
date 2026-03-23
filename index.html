@@ -2006,9 +2006,21 @@ function renderVacList(){
     c.innerHTML='<div class="empty"><p>Sin personal registrado</p></div>';
     return;
   }
+  // Get historial for selected date
+  var selDate=S.date||td();
+  var today2=td();
+  var historialVac=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
   // Build with DOM nodes — no inline onclick
   c.innerHTML=S.personal.map((p,i)=>{
-    const st=p.estado||'activo';
+    // Use historial for date, fallback depends on date type
+    var st;
+    if(selDate===today2){
+      st=historialVac[p.id]||p.estado||'activo';
+    } else if(selDate>today2){
+      st=historialVac[p.id]||'activo';
+    } else {
+      st=historialVac[p.id]||p.estado||'activo';
+    }
     const cfg=VAC_CFG[st]||VAC_CFG.activo;
     return `<div class="li" data-wid="${p.id}" style="cursor:pointer;border-color:${cfg.border};background:${cfg.bg}">
       <div class="liav" style="background:${WC[i%WC.length]}22;color:${WC[i%WC.length]}">${inits(p.nombre)}</div>
@@ -2036,7 +2048,16 @@ function togVac(id){
   var today=td();
   // Get current estado for this date from historial or p.estado
   var historialDate=(S.estadoHistorial&&S.estadoHistorial[hDate])||{};
-  var currentEstado=historialDate[id]||p.estado||'activo';
+  // For future dates, default is activo if no historial entry
+  var isFutureDate=hDate>today;
+  var currentEstado;
+  if(historialDate[id]){
+    currentEstado=historialDate[id];
+  } else if(hDate===today||!isFutureDate){
+    currentEstado=p.estado||'activo';
+  } else {
+    currentEstado='activo';
+  }
   var next=VAC_CYCLE[currentEstado]||'activo';
   if(next==='falta'&&hDate>today){
     toast('No se puede registrar falta en días futuros','err');
