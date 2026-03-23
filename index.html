@@ -897,6 +897,7 @@ const APP_VERSION='2026.0323.0537';
 var _lastSyncInfo=null;
 var _applyingCloudData=false;
 var _isOnline=false;
+var _isPushing=false;
 var _realtimeWs=null;
 var _realtimeHb=null;
 var _liveTimer=null;
@@ -1165,6 +1166,7 @@ function persistLocal(){
 
 // ── PULL FROM CLOUD ───────────────────────────────────────────────────────────
 function pullFromCloud(){
+  if(_isPushing) return Promise.resolve(false);
   return sbFetch('/rest/v1/imza_data?id=eq.main&select=id,data,updated_at,device,user_name,last_action,changelog').then(function(rows){
     if(!rows||!rows.length) return false;
     var row=rows[0]; var remote=row.data||{};
@@ -1210,6 +1212,7 @@ function pullFromCloud(){
 // Only called when user makes a change AND is online
 // Returns promise — resolves true if saved, false if failed
 function pushToCloud(){
+  _isPushing=true;
   if(!S.users||!S.users.length){
     var bk=localStorage.getItem('cp4_users_backup');
     if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
@@ -1235,9 +1238,11 @@ function pushToCloud(){
     addToSyncHistory(_lastSyncInfo);
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     _remoteUpdatedAt=now;
+    _isPushing=false;
     updateSyncUI(true);
     return true;
   }).catch(function(){
+    _isPushing=false;
     updateSyncUI(false);
     return false;
   });
