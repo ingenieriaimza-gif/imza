@@ -1191,15 +1191,13 @@ function pullFromCloud(){
       S.deleted=del;
       S.exPersonal=remote.exPersonal||{};
       S.deletedUsers=remote.deletedUsers||{};
-      // Merge estadoHistorial — don't overwrite, merge by date
-      var remoteH=remote.estadoHistorial||{};
-      var localH=S.estadoHistorial||{};
-      var mergedH=Object.assign({},remoteH);
-      Object.keys(localH).forEach(function(d){
-        if(!mergedH[d]) mergedH[d]=localH[d];
-        else mergedH[d]=Object.assign({},remoteH[d]||{},localH[d]);
+      // Cloud is source of truth for estadoHistorial
+      S.estadoHistorial=remote.estadoHistorial||{};
+      // Sync today's historial to p.estado
+      var todayH=S.estadoHistorial[td()]||{};
+      S.personal.forEach(function(p){
+        if(todayH[p.id]) p.estado=todayH[p.id];
       });
-      S.estadoHistorial=mergedH;
       // Never reset S.date — keep user's selected date
       if(!S.date) S.date=td();
       persistLocal();
