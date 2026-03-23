@@ -1210,12 +1210,10 @@ function startLiveSync(){
   if(_liveTimer) clearInterval(_liveTimer);
   _liveTimer=setInterval(function(){
     if(!_currentUser||_applyingCloudData) return;
-    // Skip if user just interacted (avoid interrupting edits)
-    if(Date.now()-_lastInteraction < 1000) return;
     // If we have pending changes, push first
     if(_pendingPush||Object.keys(_changeLog).length>0){
       pushToCloud().then(function(){
-        clearChanges();
+        // Don't clearChanges here - pushToCloud does it internally
         return pullFromCloud(false);
       }).then(function(u){ if(u) rAll(true); updateSyncUI(true); })
       .catch(function(){ updateSyncUI(false); });
@@ -1274,8 +1272,10 @@ function save(){
   markPendingPush();
   clearTimeout(_syncTimer);
   _syncTimer=setTimeout(function(){
-    pushToCloud().catch(function(){});
-  },300);
+    pushToCloud().then(function(){
+      // After push, update _remoteUpdatedAt so we don't re-download our own data
+    }).catch(function(){});
+  },100);
 }
 
 
