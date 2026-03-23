@@ -1235,9 +1235,11 @@ function save(){
     return;
   }
   persistLocal();
-  // Log action immediately to local changelog
-  if(_lastAction&&_currentUser){
-    addToChangeLog(new Date().toISOString(),_currentUser.nombre,_lastAction);
+  // Always log to changelog
+  if(_currentUser){
+    var logAction=_lastAction||'Cambio realizado';
+    addToChangeLog(new Date().toISOString(),_currentUser.nombre,logAction);
+    renderChangeLog();
   }
   pushToCloud().then(function(ok){
     if(!ok) showNoConnection();
@@ -1914,6 +1916,8 @@ function togVac(id){
   p.estado=next;
   p._upd=Date.now();
   markChanged('personal');
+  var estadoLabels={activo:'Activo',vacaciones:'Vacaciones',falta:'Falta',inactivo:'Inactivo'};
+  setAction((p.nombre||'Trabajador')+' → '+(estadoLabels[next]||next));
   save();
   // Update immediately without debounce
   try{ renderVacList(); }catch(e){}
