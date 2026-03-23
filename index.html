@@ -1068,8 +1068,6 @@ function flushOutbox(){
 
     return chain;
   }).then(function(){
-    return updateMainRecord();
-  }).then(function(){
     _outbox=_outbox.filter(function(e){ return e.status!=='sent'; });
     saveOutbox();
     _isFlushing=false;
@@ -1105,8 +1103,8 @@ function updateMainRecord(){
 function fetchNewEvents(){
   if(_isFlushing) return Promise.resolve(false);
   var lastEvent=localStorage.getItem('cp4_last_event')||'1970-01-01T00:00:00Z';
-  // Get events from other devices after our last seen event
-  return sbFetch('/rest/v1/imza_events?created_at=gt.'+encodeURIComponent(lastEvent)+'&device_id=neq.'+encodeURIComponent(detectDevice())+'&order=created_at.asc&limit=100').then(function(rows){
+  // Get ALL events after last seen (from ALL devices including own sent events)
+  return sbFetch('/rest/v1/imza_events?created_at=gt.'+encodeURIComponent(lastEvent)+'&order=created_at.asc&limit=200').then(function(rows){
     if(!rows||!rows.length) return false;
     // Apply each event in order
     _applyingCloudData=true;
