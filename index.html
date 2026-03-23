@@ -1915,23 +1915,39 @@ function rInicio(){
   if(dateLabel) dateLabel.textContent=isToday?'Hoy — '+fmtD(selDate):fmtD(selDate);
 
   // Stats for selected date
-  var activosProj=S.proyectos.filter(p=>p.estado==='activo')
+  var activosProj=S.proyectos.filter(function(p){ return p.estado==='activo'; })
     .sort(function(a,b){ return (b._upd||0)-(a._upd||0); });
   document.getElementById('st-p').textContent=activosProj.length;
   var projNamesEl=document.getElementById('st-proj-names');
   if(projNamesEl) projNamesEl.innerHTML=activosProj.length?
-    activosProj.map(p=>'<div>'+p.folio+' '+p.nombre+'</div>').join(''):
+    activosProj.map(function(p){ return '<div>'+p.folio+' '+p.nombre+'</div>'; }).join(''):
     '<span style="opacity:0.5">—</span>';
-  const activos=S.personal.filter(p=>p.estado==='activo');
+
+  // Personal: use estadoHistorial for selected date
+  var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||null;
+  var activos=[], vacs=[], falts=[];
+  if(historial){
+    S.personal.forEach(function(p){
+      var est=historial[p.id];
+      if(est==='activo') activos.push(p);
+      else if(est==='vacaciones') vacs.push(p);
+      else if(est==='falta') falts.push(p);
+    });
+  } else if(isToday){
+    // Today with no historial yet: use current estado
+    S.personal.forEach(function(p){
+      if(p.estado==='activo') activos.push(p);
+      else if(p.estado==='vacaciones') vacs.push(p);
+      else if(p.estado==='falta') falts.push(p);
+    });
+  }
   document.getElementById('st-w').textContent=activos.length;
   var activosEl=document.getElementById('st-activos-names');
-  if(activosEl) activosEl.innerHTML=activos.length?activos.map(p=>'<div>'+p.nombre+'</div>').join(''):'<span style="opacity:0.5">—</span>';
-  const vacs=S.personal.filter(p=>p.estado==='vacaciones');
-  const falts=S.personal.filter(p=>p.estado==='falta');
+  if(activosEl) activosEl.innerHTML=activos.length?activos.map(function(p){ return '<div>'+p.nombre+'</div>'; }).join(''):'<span style="opacity:0.5">—</span>';
   document.getElementById('st-v').textContent=vacs.length;
   document.getElementById('st-f').textContent=falts.length;
-  document.getElementById('st-vac-names').innerHTML=vacs.length?vacs.map(p=>`<div>${p.nombre}</div>`).join(''):'<span style="opacity:0.5">—</span>';
-  document.getElementById('st-falt-names').innerHTML=falts.length?falts.map(p=>`<div>${p.nombre}</div>`).join(''):'<span style="opacity:0.5">—</span>';
+  document.getElementById('st-vac-names').innerHTML=vacs.length?vacs.map(function(p){ return '<div>'+p.nombre+'</div>'; }).join(''):'<span style="opacity:0.5">—</span>';
+  document.getElementById('st-falt-names').innerHTML=falts.length?falts.map(function(p){ return '<div>'+p.nombre+'</div>'; }).join(''):'<span style="opacity:0.5">—</span>';
 
   // Activities: show selected date first, then recent dates
   const rc=document.getElementById('rc-list');
