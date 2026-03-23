@@ -1061,107 +1061,112 @@ function loadCompanies(){
 }
 
 function _cSwitch(id){
-  var overlay=document.getElementById('company-overlay');
-  if(overlay) overlay.remove();
   switchCompany(id);
+  var ov=document.getElementById('company-overlay');
+  if(ov) ov.remove();
 }
 
 function _cDelete(id){
   if(id==='main'){ toast('No se puede eliminar la empresa principal','err'); return; }
-  var overlay=document.getElementById('company-overlay');
-  confirmShow('¿Eliminar empresa?','Se eliminarán todos sus datos permanentemente.',function(){
+  confirmShow('¿Eliminar empresa?','Se eliminarán todos sus datos.',function(){
     sbFetch('/rest/v1/imza_companies?id=eq.'+id,{method:'DELETE'}).then(function(){
       _companies=_companies.filter(function(c){ return c.id!==id; });
       if(_currentCompany&&_currentCompany.id===id) switchCompany('main');
       toast('Empresa eliminada','ok');
-      if(overlay) overlay.remove();
+      var ov=document.getElementById('company-overlay');
+      if(ov) ov.remove();
     }).catch(function(){ toast('Error al eliminar','err'); });
   },'Eliminar','var(--red)','Cancelar');
 }
 
-function switchCompany(id){
-  var company=_companies.find(function(c){ return c.id===id; });
-  if(!company) return;
-  _currentCompany=company;
-  localStorage.setItem('cp4_company_id',id);
-  // Reset S data
-  S.proyectos=[];S.personal=[];S.actividades={};
-  S.estadoHistorial={};S.deleted={};S.exPersonal={};
-  S.deletedUsers={};S.date=td();
-  // Pull fresh data for this company
-  pullFromCloud().then(function(u){ rAll(); updateCompanyUI(); });
-}
-
-function updateCompanyUI(){
-  var nameEl=document.getElementById('company-name');
-  var switcherEl=document.getElementById('company-switcher');
-  if(nameEl) nameEl.textContent=_currentCompany?_currentCompany.nombre:'IMZA';
-  if(switcherEl){
-    var isAdmin=_currentUser&&_currentUser.rol==='admin';
-    switcherEl.style.display=isAdmin?'flex':'none';
-  }
+function _cRename(id){
+  var c=_companies.find(function(x){ return x.id===id; });
+  if(!c) return;
+  var nombre=prompt('Nuevo nombre para "'+c.nombre+'":', c.nombre);
+  if(!nombre||!nombre.trim()) return;
+  nombre=nombre.trim();
+  sbFetch('/rest/v1/imza_companies?id=eq.'+id,{
+    method:'PATCH',
+    body:JSON.stringify({nombre:nombre})
+  }).then(function(){
+    c.nombre=nombre;
+    if(_currentCompany&&_currentCompany.id===id) _currentCompany.nombre=nombre;
+    updateCompanyUI();
+    openCompanyManager();
+    toast('Empresa renombrada ✓','ok');
+  }).catch(function(){ toast('Error al renombrar','err'); });
 }
 
 function openCompanyManager(){
   if(!_currentUser||_currentUser.rol!=='admin') return;
-  // Remove existing overlay
-  var existing=document.getElementById('company-overlay');
-  if(existing) existing.remove();
+  var ov=document.getElementById('company-overlay');
+  if(ov) ov.remove();
+
+  // Sort: main first, then rest
+  var sorted=[].concat(
+    _companies.filter(function(c){ return c.id==='main'; }),
+    _companies.filter(function(c){ return c.id!=='main'; })
+  );
+
+  var current=_currentCompany?_currentCompany.id:'main';
+  var listHtml=sorted.map(function(c){
+    var isActive=c.id===current;
+    return '<div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:12px;margin-bottom:8px;'
+      +'background:'+(isActive?'rgba(245,207,85,0.1)':'var(--card2)')
+      +';border:1.5px solid '+(isActive?'rgba(245,207,85,0.4)':'var(--line)')+'">'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:14px;font-weight:700;color:'+(isActive?'var(--gold)':'var(--txt)')
+          +';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+
+          (c.id==='main'?'⭐ ':'')+c.nombre+
+        '</div>'+
+        (isActive?'<div style="font-size:11px;color:var(--gold);margin-top:2px">● Activa</div>':'')+
+      '</div>'+
+      '<div style="display:flex;gap:6px;flex-shrink:0">'+
+        (!isActive?'<button data-co-switch="'+c.id+'" style="padding:6px 12px;border-radius:8px;border:none;background:rgba(66,224,144,0.15);color:var(--green);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">✓ Usar</button>':'')+
+        '<button data-co-rename="'+c.id+'" style="padding:6px 10px;border-radius:8px;border:none;background:rgba(106,170,255,0.12);color:#6aaaff;font-size:12px;font-family:inherit;cursor:pointer">✏️</button>'+
+        (c.id!=='main'?'<button data-co-delete="'+c.id+'" style="padding:6px 10px;border-radius:8px;border:none;background:rgba(255,107,107,0.12);color:var(--red);font-size:12px;font-family:inherit;cursor:pointer">🗑</button>':'')+
+      '</div>'+
+    '</div>';
+  }).join('');
 
   var overlay=document.createElement('div');
   overlay.id='company-overlay';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(10px);z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))';
+  overlay.onclick=function(e){ if(e.target===overlay) overlay.remove(); };
 
-  function buildContent(){
-    var current=_currentCompany?_currentCompany.id:'main';
-    var list=_companies.map(function(c,ci){
-      var isActive=c.id===current;
-      window._coIds=window._coIds||[];
-      window._coIds[ci]=c.id;
-      return '<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;margin-bottom:8px;background:'+(isActive?'rgba(245,207,85,0.12)':'var(--card2)')+';border:1.5px solid '+(isActive?'rgba(245,207,85,0.4)':'var(--line)')+'">'
-        +'<div style="flex:1">'
-          +'<div style="font-size:14px;font-weight:700;color:'+(isActive?'var(--gold)':'var(--txt)')+'">'+c.nombre+'</div>'
-          +(isActive?'<div style="font-size:11px;color:var(--gold);margin-top:2px">● Empresa activa</div>':'')
-        +'</div>'
-        +(isActive?'':'<button onclick="_cSwitch(window._coIds['+ci+'])" style="padding:7px 14px;border-radius:8px;border:none;background:rgba(106,170,255,0.15);color:#6aaaff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">Seleccionar</button>')
-        +(c.id!=='main'?'<button onclick="_cDelete(window._coIds['+ci+'])" style="width:32px;height:32px;border-radius:8px;border:none;background:rgba(255,107,107,0.12);color:var(--red);font-size:16px;font-family:inherit;cursor:pointer">🗑</button>':'')
-      +'</div>';
-    }).join('');
+  overlay.innerHTML='<div onclick="event.stopPropagation()" style="background:var(--card);border:1px solid var(--line2);border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:24px 20px;max-height:75vh;overflow-y:auto">'
+    +'<div style="width:36px;height:4px;background:var(--line2);border-radius:2px;margin:0 auto 18px"></div>'
+    +'<div style="font-size:17px;font-weight:800;color:var(--txt);margin-bottom:16px">🏢 Empresas</div>'
+    +listHtml
+    +'<div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px;display:flex;gap:8px">'
+      +'<input id="co-new-name" type="text" class="fi" placeholder="Nueva empresa..." style="flex:1;box-sizing:border-box">'
+      +'<button id="co-create-btn" style="padding:0 16px;border-radius:12px;border:none;background:var(--gold);color:#000;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;white-space:nowrap">+ Crear</button>'
+    +'</div>'
+  +'</div>';
 
-    return '<div onclick="event.stopPropagation()" style="background:var(--card);border:1px solid var(--line2);border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:24px 20px;max-height:75vh;overflow-y:auto">'
-      +'<div style="width:36px;height:4px;background:var(--line2);border-radius:2px;margin:0 auto 20px"></div>'
-      +'<div style="font-size:17px;font-weight:800;color:var(--txt);margin-bottom:16px">🏢 Empresas</div>'
-      +'<div id="co-list">'+list+'</div>'
-      +'<div style="border-top:1px solid var(--line);margin-top:16px;padding-top:16px">'
-        +'<div style="font-size:12px;color:var(--txt3);font-weight:700;margin-bottom:10px">NUEVA EMPRESA</div>'
-        +'<input id="co-new-name" type="text" class="fi" placeholder="Nombre de la empresa" style="display:block;width:100%;box-sizing:border-box;margin-bottom:10px">'
-        +'<button id="co-create-btn" style="width:100%;padding:13px;border-radius:12px;border:none;background:var(--gold);color:#000;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">+ Crear empresa</button>'
-      +'</div>'
-    +'</div>';
-  }
-
-  overlay.innerHTML=buildContent();
-  overlay.onclick=function(e){
-    if(e.target===overlay) overlay.remove();
-  };
   document.body.appendChild(overlay);
-
-  // Create button
-  overlay.querySelector('#co-create-btn').addEventListener('click',function(e){
-    e.stopPropagation();
-    var nombre=(document.getElementById('co-new-name').value||'').trim();
-    if(!nombre){ toast('Escribe el nombre de la empresa','err'); return; }
-    var id='co_'+Date.now();
-    sbFetch('/rest/v1/imza_companies',{
-      method:'POST',
-      body:JSON.stringify({id:id,nombre:nombre,data:{proyectos:[],personal:[],actividades:{},estadoHistorial:{},deleted:{},exPersonal:{},deletedUsers:{}},updated_at:new Date().toISOString()})
-    }).then(function(){
-      _companies.push({id:id,nombre:nombre});
-      toast('Empresa "'+nombre+'" creada ✓','ok');
-      overlay.innerHTML=buildContent();
-      // Re-attach create button
-      overlay.querySelector('#co-create-btn').addEventListener('click',arguments.callee);
-    }).catch(function(){ toast('Error al crear empresa','err'); });
+  overlay.addEventListener('click',function(e){
+    var sw=e.target.closest('[data-co-switch]');
+    var rn=e.target.closest('[data-co-rename]');
+    var dl=e.target.closest('[data-co-delete]');
+    var cr=e.target.closest('#co-create-btn');
+    if(sw){ _cSwitch(sw.dataset.coSwitch); }
+    if(rn){ _cRename(rn.dataset.coRename); }
+    if(dl){ _cDelete(dl.dataset.coDelete); }
+    if(cr){
+      var n=(document.getElementById('co-new-name').value||'').trim();
+      if(!n){ toast('Escribe el nombre','err'); return; }
+      var id='co_'+Date.now();
+      sbFetch('/rest/v1/imza_companies',{
+        method:'POST',
+        body:JSON.stringify({id:id,nombre:n,data:{proyectos:[],personal:[],actividades:{},estadoHistorial:{},deleted:{},exPersonal:{},deletedUsers:{}},updated_at:new Date().toISOString()})
+      }).then(function(){
+        _companies.push({id:id,nombre:n});
+        toast('Empresa "'+n+'" creada ✓','ok');
+        overlay.remove();
+        openCompanyManager();
+      }).catch(function(){ toast('Error al crear','err'); });
+    }
   });
 }
 
