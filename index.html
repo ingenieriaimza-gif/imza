@@ -99,41 +99,41 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 .screen.sync-done { }
 
 /* SECTION HEAD */
-.sec { display:flex; align-items:center; justify-content:space-between; margin:20px 0 12px; }
-.sec-lbl { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:1.2px; color:var(--txt3); }
-.sec-btn { padding:8px 16px; border-radius:100px; border:none; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer; min-height:34px; }
+.sec { display:flex; align-items:center; justify-content:space-between; margin:16px 0 10px; }
+.sec-lbl { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--txt3); }
+.sec-btn { padding:6px 14px; border-radius:100px; border:none; font-size:12px; font-weight:700; font-family:inherit; cursor:pointer; }
 .sec-btn:active { opacity:0.8; }
 
 /* STATS */
 .stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.sbox { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:18px; }
-.slbl { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.9px; color:var(--txt3); margin-bottom:6px; }
-.sval { font-size:32px; font-weight:900; line-height:1; letter-spacing:-1px; }
-.ssub { font-size:13px; color:var(--txt2); margin-top:5px; line-height:1.4; }
+.sbox { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:16px; }
+.slbl { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:var(--txt3); margin-bottom:5px; }
+.sval { font-size:30px; font-weight:900; line-height:1; letter-spacing:-1px; }
+.ssub { font-size:12px; color:var(--txt2); margin-top:4px; }
 .cg { color:var(--gold); } .cgr { color:var(--green); } .cr { color:var(--red); } .cb { color:var(--blue); } .cp { color:var(--purp); } .ct { color:var(--txt); }
 
 /* ACTION GRID */
 .agrid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.atile { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:20px 16px; cursor:pointer; display:flex; flex-direction:column; gap:12px; transition:border-color 0.15s; -webkit-user-select:none; min-height:110px; }
+.atile { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:18px 14px; cursor:pointer; display:flex; flex-direction:column; gap:10px; transition:border-color 0.15s; -webkit-user-select:none; }
 .atile:active { border-color:var(--line2); background:var(--card2); }
-.aicon { width:44px; height:44px; border-radius:13px; display:flex; align-items:center; justify-content:center; }
-.aicon svg { width:22px; height:22px; }
-.aname { font-size:15px; font-weight:700; letter-spacing:-0.2px; }
-.adesc { font-size:12px; color:var(--txt2); margin-top:2px; line-height:1.4; }
+.aicon { width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; }
+.aicon svg { width:20px; height:20px; }
+.aname { font-size:15px; font-weight:700; }
+.adesc { font-size:12px; color:var(--txt2); margin-top:1px; line-height:1.3; }
 
 /* LIST ITEM */
-.li { background:var(--card); border:1px solid var(--line); border-radius:var(--r2); padding:16px; margin-bottom:10px; display:flex; align-items:center; gap:14px; min-height:70px; }
+.li { background:var(--card); border:1px solid var(--line); border-radius:var(--r2); padding:14px 16px; margin-bottom:8px; display:flex; align-items:center; gap:12px; }
 .li:active { background:var(--card2); }
-.liav { width:44px; height:44px; border-radius:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:15px; font-weight:800; }
+.liav { width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:14px; font-weight:800; }
 .lib { flex:1; min-width:0; }
-.liname { font-size:16px; font-weight:600; color:var(--txt); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; letter-spacing:-0.2px; }
-.lisub { font-size:13px; color:var(--txt2); margin-top:3px; line-height:1.4; }
+.liname { font-size:15px; font-weight:600; color:var(--txt); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lisub { font-size:12px; color:var(--txt2); margin-top:2px; }
 .lir { text-align:right; flex-shrink:0; }
-.lival { font-size:16px; font-weight:700; }
-.lival2 { font-size:12px; color:var(--txt3); margin-top:2px; line-height:1.3; }
+.lival { font-size:15px; font-weight:700; }
+.lival2 { font-size:11px; color:var(--txt3); margin-top:1px; }
 
 /* BADGE */
-.b { display:inline-flex; align-items:center; padding:4px 10px; border-radius:100px; font-size:12px; font-weight:700; line-height:1.3; }
+.b { display:inline-flex; align-items:center; padding:3px 9px; border-radius:100px; font-size:11px; font-weight:700; }
 .bg { background:rgba(240,201,74,0.15); color:var(--gold); }
 .bgr { background:rgba(61,214,140,0.15); color:var(--green); }
 .br { background:rgba(240,96,96,0.15); color:var(--red); }
@@ -141,40 +141,40 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 .bp { background:rgba(167,139,250,0.15); color:var(--purp); }
 
 /* ACT CARD */
-.acard { background:var(--card); border:1px solid var(--line); border-radius:var(--r); margin-bottom:12px; overflow:hidden; }
-.acard-h { padding:16px 16px 14px; display:flex; align-items:flex-start; justify-content:space-between; }
-.aproj { font-size:17px; font-weight:800; letter-spacing:-0.3px; line-height:1.3; }
-.anote { font-size:14px; color:var(--txt2); margin-top:4px; line-height:1.5; }
-.abtns { display:flex; gap:8px; flex-shrink:0; margin-left:10px; }
-.ibtn { width:40px; height:40px; border-radius:12px; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.acard { background:var(--card); border:1px solid var(--line); border-radius:var(--r); margin-bottom:10px; overflow:hidden; }
+.acard-h { padding:14px 16px 12px; display:flex; align-items:flex-start; justify-content:space-between; }
+.aproj { font-size:17px; font-weight:800; letter-spacing:-0.3px; }
+.anote { font-size:13px; color:var(--txt2); margin-top:3px; line-height:1.4; }
+.abtns { display:flex; gap:6px; flex-shrink:0; margin-left:8px; }
+.ibtn { width:34px; height:34px; border-radius:10px; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 .ibtn:active { opacity:0.7; }
-.ibtn svg { width:16px; height:16px; }
+.ibtn svg { width:14px; height:14px; }
 .ibe { background:var(--card2); color:var(--txt2); }
 .ibd { background:rgba(240,96,96,0.1); color:var(--red); }
 .adiv { border:none; border-top:1px solid var(--line); margin:0 16px; }
-.asec { padding:12px 16px; }
-.aseclbl { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.9px; color:var(--txt3); margin-bottom:8px; }
-.chips { display:flex; flex-wrap:wrap; gap:6px; }
-.chip { padding:5px 12px; border-radius:100px; font-size:13px; font-weight:500; background:var(--card2); color:var(--txt2); border:1px solid var(--line); line-height:1.3; }
+.asec { padding:10px 16px; }
+.aseclbl { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--txt3); margin-bottom:6px; }
+.chips { display:flex; flex-wrap:wrap; gap:5px; }
+.chip { padding:4px 10px; border-radius:100px; font-size:12px; font-weight:500; background:var(--card2); color:var(--txt2); border:1px solid var(--line); }
 .chipy { background:rgba(240,201,74,0.08); color:var(--gold); border-color:rgba(240,201,74,0.2); }
 .chipp { background:rgba(167,139,250,0.08); color:var(--purp); border-color:rgba(167,139,250,0.2); }
 .chipg { background:rgba(61,214,140,0.08); color:var(--green); border-color:rgba(61,214,140,0.2); }
 
 /* HISTORY */
-.hday { background:var(--card); border:1px solid var(--line); border-radius:var(--r); margin-bottom:12px; overflow:hidden; }
-.hday-h { padding:16px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; -webkit-user-select:none; min-height:56px; }
+.hday { background:var(--card); border:1px solid var(--line); border-radius:var(--r); margin-bottom:10px; overflow:hidden; }
+.hday-h { padding:14px 16px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; -webkit-user-select:none; }
 .hday-h:active { background:var(--card2); }
-.hday-date { font-size:16px; font-weight:700; letter-spacing:-0.2px; }
-.hday-meta { display:flex; align-items:center; gap:8px; }
-.hbody { display:none; padding:0 14px 14px; }
+.hday-date { font-size:15px; font-weight:700; }
+.hday-meta { display:flex; align-items:center; gap:6px; }
+.hbody { display:none; padding:0 12px 12px; }
 .hbody.open { display:block; }
 
 /* BOTTOM NAV */
-.bnav { flex-shrink:0; background:var(--bg); border-top:1px solid rgba(255,255,255,0.06); padding:8px 4px 8px; display:flex; gap:2px; }
-.ntab { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 2px 7px; cursor:pointer; border:none; background:none; border-radius:14px; -webkit-user-select:none; transition:background .15s; min-height:52px; }
+.bnav { flex-shrink:0; background:var(--bg); border-top:1px solid rgba(255,255,255,0.06); padding:6px 8px 8px; display:flex; gap:4px; }
+.ntab { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 2px 6px; cursor:pointer; border:none; background:none; border-radius:14px; -webkit-user-select:none; transition:background .15s; }
 .ntab:active { background:rgba(255,255,255,0.05); }
 .ntab svg { width:22px; height:22px; color:var(--txt3); transition:color 0.15s; }
-.ntab span { font-size:9px; font-weight:700; color:var(--txt3); letter-spacing:0.3px; text-transform:uppercase; transition:color 0.15s; line-height:1; }
+.ntab span { font-size:9px; font-weight:700; color:var(--txt3); letter-spacing:0.3px; text-transform:uppercase; transition:color 0.15s; }
 .ntab.active { background:rgba(240,201,74,0.08); }
 .ntab.active svg { color:var(--gold); }
 .ntab.active span { color:var(--gold); }
@@ -184,91 +184,91 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 .sov.open { display:flex; }
 .sheet { background:var(--card); border-radius:24px 24px 0 0; width:100%; max-width:430px; margin:0 auto; max-height:93dvh; display:flex; flex-direction:column; padding-bottom:var(--safe-b); animation:sup 0.3s cubic-bezier(0.32,0.72,0,1); }
 @keyframes sup { from{transform:translateY(100%)} to{transform:translateY(0)} }
-.shandle { width:36px; height:4px; border-radius:2px; background:var(--line2); margin:12px auto 0; flex-shrink:0; }
-.shdr { display:flex; align-items:center; justify-content:space-between; padding:18px 20px 0; flex-shrink:0; }
+.shandle { width:36px; height:4px; border-radius:2px; background:var(--line2); margin:10px auto 0; flex-shrink:0; }
+.shdr { display:flex; align-items:center; justify-content:space-between; padding:16px 20px 0; flex-shrink:0; }
 .shtitle { font-size:20px; font-weight:800; letter-spacing:-0.4px; }
-.shclose { width:36px; height:36px; border-radius:50%; background:var(--card2); border:none; color:var(--txt2); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:18px; }
+.shclose { width:32px; height:32px; border-radius:50%; background:var(--card2); border:none; color:var(--txt2); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:18px; }
 .shclose:active { background:var(--line2); }
-.shbody { flex:1; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; padding:20px 20px 24px; }
+.shbody { flex:1; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; padding:16px 20px 20px; }
 .shbody::-webkit-scrollbar { display:none; }
 
 /* STEPS */
-.sdots { display:flex; gap:6px; margin-bottom:20px; }
+.sdots { display:flex; gap:5px; margin-bottom:16px; }
 .sd { flex:1; height:4px; border-radius:2px; background:var(--line2); transition:background 0.3s; }
 .sd.done { background:var(--green); }
 .sd.active { background:var(--gold); }
-.slabel { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--txt3); margin-bottom:18px; }
+.slabel { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:var(--txt3); margin-bottom:16px; }
 
 /* FORM */
-.fg { margin-bottom:18px; }
-.fl { display:block; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--txt3); margin-bottom:8px; }
-.fi,.fsel,.fta { width:100%; padding:15px 14px; background:var(--card2); border:1.5px solid var(--line); border-radius:var(--r2); color:var(--txt); font-size:16px; font-family:inherit; outline:none; transition:border 0.15s; -webkit-appearance:none; appearance:none; line-height:1.4; }
+.fg { margin-bottom:14px; }
+.fl { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:var(--txt3); margin-bottom:7px; }
+.fi,.fsel,.fta { width:100%; padding:14px; background:var(--card2); border:1.5px solid var(--line); border-radius:var(--r2); color:var(--txt); font-size:16px; font-family:inherit; outline:none; transition:border 0.15s; -webkit-appearance:none; appearance:none; }
 .fi:focus,.fsel:focus,.fta:focus { border-color:var(--gold); }
-.fta { resize:none; min-height:90px; }
+.fta { resize:none; min-height:80px; }
 .fsel option { background:#1e222c; }
-.frow { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.frow { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 
 /* WORKER GRID */
-.wgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; max-height:260px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.wgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; max-height:250px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
 .wgrid::-webkit-scrollbar { display:none; }
-.wc { background:var(--card2); border:1.5px solid var(--line); border-radius:var(--r2); padding:14px; cursor:pointer; user-select:none; position:relative; transition:all 0.15s; min-height:68px; }
+.wc { background:var(--card2); border:1.5px solid var(--line); border-radius:var(--r2); padding:12px; cursor:pointer; user-select:none; position:relative; transition:all 0.15s; }
 .wc:active { opacity:0.8; }
 .wc.sel { border-color:var(--gold); background:rgba(240,201,74,0.08); }
 .wc.busy { border-color:rgba(91,156,246,0.4); }
-.wname { font-size:14px; font-weight:600; color:var(--txt); line-height:1.3; }
-.wrole { font-size:12px; color:var(--txt3); margin-top:3px; }
-.wproj { font-size:11px; color:var(--blue); margin-top:4px; }
-.wchk { position:absolute; top:8px; right:8px; width:20px; height:20px; border-radius:50%; background:var(--gold); display:none; align-items:center; justify-content:center; }
+.wname { font-size:13px; font-weight:600; color:var(--txt); }
+.wrole { font-size:11px; color:var(--txt3); margin-top:2px; }
+.wproj { font-size:10px; color:var(--blue); margin-top:3px; }
+.wchk { position:absolute; top:8px; right:8px; width:18px; height:18px; border-radius:50%; background:var(--gold); display:none; align-items:center; justify-content:center; }
 .wc.sel .wchk { display:flex; }
-.wchk svg { width:11px; height:11px; color:#000; }
+.wchk svg { width:10px; height:10px; color:#000; }
 
 /* MACH ROWS */
-.mrow { display:flex; gap:8px; margin-bottom:10px; align-items:center; }
+.mrow { display:flex; gap:8px; margin-bottom:8px; align-items:center; }
 .mrow .fi { flex:1; }
 
 /* EXP CARD */
-.ecard { background:var(--card2); border:1px solid var(--line); border-radius:var(--r3); padding:14px; margin-bottom:10px; }
-.ecard .frow { margin-bottom:10px; }
-.edel { width:100%; padding:11px; background:rgba(240,96,96,0.08); border:1px solid rgba(240,96,96,0.2); border-radius:10px; color:var(--red); font-size:14px; font-weight:600; font-family:inherit; cursor:pointer; }
+.ecard { background:var(--card2); border:1px solid var(--line); border-radius:var(--r3); padding:12px; margin-bottom:8px; }
+.ecard .frow { margin-bottom:8px; }
+.edel { width:100%; padding:9px; background:rgba(240,96,96,0.08); border:1px solid rgba(240,96,96,0.2); border-radius:8px; color:var(--red); font-size:13px; font-weight:600; font-family:inherit; cursor:pointer; }
 .edel:active { background:rgba(240,96,96,0.15); }
 
 /* BUTTONS */
-.bfull { width:100%; padding:17px; border-radius:var(--r2); border:none; font-size:16px; font-weight:700; font-family:inherit; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; min-height:54px; letter-spacing:-0.2px; }
+.bfull { width:100%; padding:16px; border-radius:var(--r2); border:none; font-size:16px; font-weight:700; font-family:inherit; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; }
 .bfull:active { opacity:0.85; transform:scale(0.99); }
 .bgold { background:var(--gold); color:#000; }
 .bghost { background:var(--card2); color:var(--txt2); border:1.5px solid var(--line); }
-.brow { display:flex; gap:10px; margin-top:18px; }
+.brow { display:flex; gap:8px; margin-top:16px; }
 .brow .bfull { flex:1; }
 
 /* PAY CARD */
-.pcard { background:var(--card); border:1px solid var(--line); border-radius:var(--r2); padding:16px; display:flex; align-items:center; gap:14px; margin-bottom:10px; min-height:76px; }
-.pinit { width:46px; height:46px; border-radius:13px; display:flex; align-items:center; justify-content:center; font-size:17px; font-weight:800; flex-shrink:0; }
-.pamount { font-size:19px; font-weight:800; color:var(--green); }
-.pperiod { font-size:12px; color:var(--txt3); margin-top:2px; }
+.pcard { background:var(--card); border:1px solid var(--line); border-radius:var(--r2); padding:14px 16px; display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+.pinit { width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:800; flex-shrink:0; }
+.pamount { font-size:18px; font-weight:800; color:var(--green); }
+.pperiod { font-size:11px; color:var(--txt3); }
 
 /* TOAST */
-.toast { position:fixed; bottom:calc(80px + var(--safe-b)); left:50%; transform:translateX(-50%) translateY(20px); background:var(--card2); border:1px solid var(--line2); border-radius:100px; padding:12px 22px; font-size:14px; font-weight:600; white-space:nowrap; box-shadow:0 8px 32px rgba(0,0,0,0.5); z-index:200; opacity:0; transition:all 0.28s cubic-bezier(0.32,0.72,0,1); display:flex; align-items:center; gap:9px; max-width:calc(100vw - 40px); line-height:1.3; }
+.toast { position:fixed; bottom:calc(80px + var(--safe-b)); left:50%; transform:translateX(-50%) translateY(20px); background:var(--card2); border:1px solid var(--line2); border-radius:100px; padding:10px 20px; font-size:14px; font-weight:600; white-space:nowrap; box-shadow:0 8px 32px rgba(0,0,0,0.5); z-index:200; opacity:0; transition:all 0.28s cubic-bezier(0.32,0.72,0,1); display:flex; align-items:center; gap:8px; max-width:calc(100vw - 40px); }
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
-.tdot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.tdot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
 .toast.ok .tdot { background:var(--green); }
 .toast.err .tdot { background:var(--red); }
 
 /* WEEKEND TAG */
-.weekend-tag { display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:100px;font-size:12px;font-weight:700;background:rgba(240,96,96,0.15);color:var(--red);border:1px solid rgba(240,96,96,0.25); }
+.weekend-tag { display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:100px;font-size:11px;font-weight:700;background:rgba(240,96,96,0.15);color:var(--red);border:1px solid rgba(240,96,96,0.25); }
 /* HOURS ROW */
-.hrs-row { display:flex;align-items:center;justify-content:space-between;background:var(--card2);border:1px solid var(--line);border-radius:var(--r3);padding:13px 14px;margin-bottom:10px;min-height:64px; }
-.hrs-name { font-size:15px;font-weight:600;color:var(--txt);line-height:1.3; }
-.hrs-role { font-size:12px;color:var(--txt3);margin-top:2px; }
-.hrs-ctrl { display:flex;align-items:center;gap:8px;flex-shrink:0; }
-.hrs-btn { width:36px;height:36px;border-radius:10px;border:none;background:var(--line2);color:var(--txt);font-size:18px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center; }
+.hrs-row { display:flex;align-items:center;justify-content:space-between;background:var(--card2);border:1px solid var(--line);border-radius:var(--r3);padding:11px 14px;margin-bottom:8px; }
+.hrs-name { font-size:14px;font-weight:600;color:var(--txt); }
+.hrs-role { font-size:11px;color:var(--txt3);margin-top:1px; }
+.hrs-ctrl { display:flex;align-items:center;gap:6px;flex-shrink:0; }
+.hrs-btn { width:32px;height:32px;border-radius:8px;border:none;background:var(--line2);color:var(--txt);font-size:18px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center; }
 .hrs-btn:active { opacity:0.7; }
-.hrs-val { min-width:34px;text-align:center;font-size:17px;font-weight:800;color:var(--gold); }
-.hrs-lbl { font-size:12px;color:var(--txt3); }
+.hrs-val { min-width:32px;text-align:center;font-size:16px;font-weight:800;color:var(--gold); }
+.hrs-lbl { font-size:11px;color:var(--txt3); }
 
 /* EMPTY */
-.empty { text-align:center; padding:48px 20px; color:var(--txt3); }
-.empty svg { width:48px; height:48px; opacity:0.2; margin-bottom:12px; }
-.empty p { font-size:15px; line-height:1.5; }
+.empty { text-align:center; padding:40px 20px; color:var(--txt3); }
+.empty svg { width:44px; height:44px; opacity:0.2; margin-bottom:10px; }
+.empty p { font-size:14px; }
 
 @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
 /* No animation on sync - prevents flicker */
@@ -523,10 +523,7 @@ if('serviceWorker' in navigator){
 
     <!-- PERSONAL -->
     <div id="s-personal" class="screen">
-      <div class="sec">
-        <div class="sec-lbl">Personal · <span id="pers-date-lbl" style="color:var(--txt2);font-weight:600;text-transform:none;letter-spacing:0"></span></div>
-        <button class="sec-btn bp" onclick="openPersM()" style="color:#fff">+ Nuevo</button>
-      </div>
+      <div class="sec"><div class="sec-lbl">Personal</div><button class="sec-btn bp" onclick="openPersM()" style="color:#fff">+ Nuevo</button></div>
       <div id="pers-list"></div>
     </div>
 
@@ -886,7 +883,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0323.2100';
+const APP_VERSION='2026.0323.0537';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -1275,57 +1272,15 @@ function startLiveSync(){
   if(_liveTimer) clearInterval(_liveTimer);
   _liveTimer=setInterval(function(){
     if(!_currentUser||_applyingCloudData) return;
-    var email=(_currentUser.email||'').toLowerCase();
-    // Verificar logout forzado para este usuario
-    sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent('__logout__'+email)+'&select=session_data,updated_at').then(function(rows){
-      if(rows&&rows.length){
-        try{
-          var sd=JSON.parse(rows[0].session_data||'{}');
-          // Si el logout fue después de que iniciamos sesión, forzar logout
-          var logoutAt=sd.at||0;
-          var sessionStr=localStorage.getItem('cp4_session');
-          var sessionAge=sessionStr?0:Infinity; // sin sesión local = ya salió
-          // Usar updated_at del registro como referencia
-          var logoutTime=new Date(rows[0].updated_at).getTime();
-          var appStart=window._appStartTime||Date.now();
-          if(sd.forced_logout&&logoutTime>appStart-5000){
-            // Limpiar el registro de logout para no seguir disparando
-            sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent('__logout__'+email),{method:'DELETE'}).catch(function(){});
-            toast('Sesión cerrada en otro dispositivo','err');
-            setTimeout(function(){
-              localStorage.removeItem('cp4_session');
-              _currentUser=null;
-              if(_liveTimer){ clearInterval(_liveTimer); _liveTimer=null; }
-              if(_realtimeWs){ _realtimeWs.onclose=null; _realtimeWs.close(); _realtimeWs=null; }
-              getSbClient().auth.signOut();
-              showLogin();
-            },1500);
-            return;
-          }
-        }catch(e){}
+    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
+      if(!rows||!rows.length){ updateSyncUI(false); return; }
+      var t=rows[0].updated_at||'';
+      updateSyncUI(true);
+      if(t&&t!==_remoteUpdatedAt){
+        _remoteUpdatedAt=t;
+        pullFromCloud().then(function(updated){ if(updated) rAll(true); });
       }
-      // Sincronización normal de datos
-      sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows2){
-        if(!rows2||!rows2.length){ updateSyncUI(false); return; }
-        var t=rows2[0].updated_at||'';
-        updateSyncUI(true);
-        if(t&&t!==_remoteUpdatedAt){
-          _remoteUpdatedAt=t;
-          pullFromCloud().then(function(updated){ if(updated) rAll(true); });
-        }
-      }).catch(function(){ updateSyncUI(false); });
-    }).catch(function(){
-      // Si falla la verificación, seguir con sync normal
-      sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
-        if(!rows||!rows.length){ updateSyncUI(false); return; }
-        var t=rows[0].updated_at||'';
-        updateSyncUI(true);
-        if(t&&t!==_remoteUpdatedAt){
-          _remoteUpdatedAt=t;
-          pullFromCloud().then(function(updated){ if(updated) rAll(true); });
-        }
-      }).catch(function(){ updateSyncUI(false); });
-    });
+    }).catch(function(){ updateSyncUI(false); });
   },2000);
 }
 
@@ -1427,7 +1382,7 @@ function navigate(p){
     }).catch(function(){});
   }
   // Hide date navigator on screens where it's not relevant
-  const hideTopCal=['nomina','config'];
+  const hideTopCal=['personal','nomina','config'];
   const db=document.getElementById('datebar');
   if(db) db.style.display=hideTopCal.includes(p)?'none':'flex';
   const cb=document.getElementById('cal-btn');
@@ -1450,11 +1405,7 @@ function openS(id){
 }
 function closeS(id){
   document.getElementById(id).classList.remove('open');
-  // Si hay render pendiente del sync, ejecutarlo ahora que no hay sheets abiertos
-  if(_pendingRender && !isSheetOpen()){
-    setTimeout(function(){ _doRender(); }, 50);
-  }
-  // Always try to push
+  // Always try to push (save already stored locally, push is non-blocking)
   clearTimeout(_syncTimer);
   pushToCloud().catch(function(){});
 }
@@ -1562,14 +1513,8 @@ function chgHrs(id,delta){
 function bldWG(){
   const date=S.eADate||S.date;const dActs=S.actividades[date]||[];const eid=S.eAId;
   const g=document.getElementById('wg');
-  const historial=(S.estadoHistorial&&S.estadoHistorial[date])||{};
-  const ac=S.personal.filter(p=>{
-    var est=historial[p.id]||'sin-registro';
-    // sin-registro o activo = disponible; vacaciones/falta/inactivo = no aparece
-    if(p.estado==='inactivo' && !historial[p.id]) return false;
-    return est==='activo'||est==='sin-registro';
-  });
-  if(!ac.length){g.innerHTML='<div style="grid-column:1/-1;color:var(--txt3);text-align:center;padding:24px;font-size:13px">Sin personal activo este día.</div>';return;}
+  const ac=S.personal.filter(p=>p.estado==='activo');
+  if(!ac.length){g.innerHTML='<div style="grid-column:1/-1;color:var(--txt3);text-align:center;padding:24px;font-size:13px">Sin personal activo.</div>';return;}
   g.innerHTML=ac.map(p=>{
     const aa=dActs.find(a=>a.id!==eid&&a.trabajadores?.includes(p.id));
     const iS=selW.includes(p.id),iB=!!aa;
@@ -1765,50 +1710,6 @@ function savePers(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
   // Always keep exPersonal updated with latest name+cargo for history
   if(!S.exPersonal) S.exPersonal={};
   S.exPersonal[wid]={nombre:d.nombre,cargo:d.cargo||''};
-
-  // Escribir vacaciones en estadoHistorial para cada día del rango
-  if(vacIni&&vacFin&&vacFin>=vacIni){
-    if(!S.estadoHistorial) S.estadoHistorial={};
-    // Primero limpiar días anteriores de este trabajador que ya no estén en el rango
-    if(existing&&existing.vacIni&&existing.vacFin){
-      var oldD=new Date(existing.vacIni+'T12:00:00');
-      var oldEnd=new Date(existing.vacFin+'T12:00:00');
-      while(oldD<=oldEnd){
-        var ds=oldD.toISOString().split('T')[0];
-        if((ds<vacIni||ds>vacFin)&&S.estadoHistorial[ds]&&S.estadoHistorial[ds][wid]==='vacaciones'){
-          delete S.estadoHistorial[ds][wid];
-        }
-        oldD.setDate(oldD.getDate()+1);
-      }
-    }
-    // Escribir nuevo rango
-    var cur=new Date(vacIni+'T12:00:00');
-    var end=new Date(vacFin+'T12:00:00');
-    while(cur<=end){
-      var ds=cur.toISOString().split('T')[0];
-      if(!S.estadoHistorial[ds]) S.estadoHistorial[ds]={};
-      // Solo escribir si no hay un estado manual diferente ya registrado
-      if(!S.estadoHistorial[ds][wid]||S.estadoHistorial[ds][wid]==='vacaciones'){
-        S.estadoHistorial[ds][wid]='vacaciones';
-      }
-      cur.setDate(cur.getDate()+1);
-    }
-    markChanged('estadoHistorial');
-  } else if(existing&&existing.vacIni&&existing.vacFin&&(!vacIni||!vacFin)){
-    // Se borraron las vacaciones: limpiar el rango anterior
-    if(!S.estadoHistorial) S.estadoHistorial={};
-    var oldD=new Date(existing.vacIni+'T12:00:00');
-    var oldEnd=new Date(existing.vacFin+'T12:00:00');
-    while(oldD<=oldEnd){
-      var ds=oldD.toISOString().split('T')[0];
-      if(S.estadoHistorial[ds]&&S.estadoHistorial[ds][wid]==='vacaciones'){
-        delete S.estadoHistorial[ds][wid];
-      }
-      oldD.setDate(oldD.getDate()+1);
-    }
-    markChanged('estadoHistorial');
-  }
-
   try{
     var wid2=document.getElementById('wid').value;
     var savedPers=wid2?(S.personal.find(function(p){ return p.id===wid2; })):S.personal[S.personal.length-1];
@@ -1922,45 +1823,31 @@ var _lastInteraction=0;
 var _applyingCloudData=false; // blocks save/push while applying cloud data
 
 var _rAllTimer=null;
-var _pendingRender=false; // hay un re-render pendiente esperando que cierren los sheets
-
 function isSheetOpen(){
+  // Check if any overlay/sheet is open
   return document.querySelectorAll('.sov.open').length > 0 ||
          document.querySelectorAll('.cal-overlay.open').length > 0;
 }
 
 function isUserInteracting(){
+  // Don't interrupt if sheet open or user interacted in last 3s
   return isSheetOpen() || (Date.now()-_lastInteraction < 3000);
-}
-
-function _doRender(){
-  var scroll=document.getElementById('scroll');
-  var scrollTop=scroll?scroll.scrollTop:0;
-  try{ rInicio(); }catch(e){}
-  try{ rAct(); }catch(e){}
-  try{ rHist(); }catch(e){}
-  try{ rProj(); }catch(e){}
-  try{ rPers(); }catch(e){}
-  try{ rNom(); }catch(e){}
-  if(scroll) scroll.scrollTop=scrollTop;
-  _pendingRender=false;
 }
 
 function rAll(fromSync){
   var scroll=document.getElementById('scroll');
   var scrollTop=scroll?scroll.scrollTop:0;
+  var savedStep=typeof aCurStep!=='undefined'?aCurStep:1;
+  var sheetWasOpen=isSheetOpen();
 
   if(fromSync){
-    // Si hay sheet abierto, no tocar el DOM — marcar render pendiente
-    if(isSheetOpen()){
-      _pendingRender=true;
-      return;
-    }
     if(_rAllTimer) clearTimeout(_rAllTimer);
     _rAllTimer=setTimeout(function(){
       _syncRendering=true;
+      // Freeze scroll before update
       if(scroll) scroll.style.overflow='hidden';
       requestAnimationFrame(function(){
+        // Update only current screen — minimal DOM change
         try{
           switch(curP){
             case 'inicio':    rInicio(); break;
@@ -1972,6 +1859,7 @@ function rAll(fromSync){
             case 'config':    rCfgStats(); break;
           }
         }catch(e){}
+        // Also update other screens silently
         requestAnimationFrame(function(){
           try{
             if(curP!=='inicio') rInicio();
@@ -1981,10 +1869,12 @@ function rAll(fromSync){
             if(curP!=='personal') rPers();
             if(curP!=='nomina') rNom();
           }catch(e){}
+          // Restore scroll silently
           if(scroll){
             scroll.scrollTop=scrollTop;
             scroll.style.overflow='';
           }
+          if(sheetWasOpen) try{ shStep(savedStep); }catch(e){}
           _syncRendering=false;
           _rAllTimer=null;
         });
@@ -1993,7 +1883,13 @@ function rAll(fromSync){
   } else {
     if(_rAllTimer){ clearTimeout(_rAllTimer); _rAllTimer=null; }
     _syncRendering=false;
-    _doRender();
+    try{ rInicio(); }catch(e){}
+    try{ rAct(); }catch(e){}
+    try{ rHist(); }catch(e){}
+    try{ rProj(); }catch(e){}
+    try{ rPers(); }catch(e){}
+    try{ rNom(); }catch(e){}
+    if(scroll) scroll.scrollTop=scrollTop;
   }
 }
 
@@ -2026,13 +1922,25 @@ function rInicio(){
     '<span style="opacity:0.5">—</span>';
 
   // Personal: use estadoHistorial for selected date
+  var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
+  var isFuture=selDate>today;
   var activos=[], vacs=[], falts=[];
   S.personal.forEach(function(p){
-    var est=getEstFecha(p, selDate);
+    var est;
+    if(isToday){
+      // Today: historial overrides p.estado, else use p.estado
+      est=historial[p.id]||p.estado||'activo';
+    } else if(isFuture){
+      // Future: historial if recorded, else assume activo
+      // (respects scheduled vacations/faults)
+      est=historial[p.id]||'activo';
+    } else {
+      // Past: only show if recorded in historial
+      est=historial[p.id]||null;
+    }
     if(est==='activo') activos.push(p);
     else if(est==='vacaciones') vacs.push(p);
     else if(est==='falta') falts.push(p);
-    // inactivo: se omite
   });
   document.getElementById('st-w').textContent=activos.length;
   var activosEl=document.getElementById('st-activos-names');
@@ -2075,112 +1983,58 @@ function rInicio(){
 }
 
 // ── VAC/FALTA CONFIG (module-level) ────────────────────────────────────────
-// ── ESTADO POR FECHA — función única usada en todas las pantallas ──────────
-function getEstFecha(p, fecha){
-  var h=(S.estadoHistorial&&S.estadoHistorial[fecha])||{};
-  var est=h[p.id]||p.estado||'activo';
-  if(est==='sin-registro') est='activo';
-  return est; // 'activo' | 'vacaciones' | 'falta' | 'inactivo'
-}
-
 const VAC_CFG={
   activo:     {label:'Activo',      emoji:'✅', cls:'bgr', bg:'rgba(61,214,140,0.06)',  border:'rgba(61,214,140,0.2)'},
   vacaciones: {label:'Vacaciones',  emoji:'🏖️', cls:'bg',  bg:'rgba(240,201,74,0.06)', border:'rgba(240,201,74,0.25)'},
   falta:      {label:'Falta',       emoji:'❌', cls:'br',  bg:'rgba(240,96,96,0.06)',   border:'rgba(240,96,96,0.25)'},
-  'sin-registro': {label:'Sin registro', emoji:'⚪', cls:'bb', bg:'rgba(90,106,136,0.06)', border:'rgba(90,106,136,0.2)'},
 };
-// Ciclo completo: sin-registro → activo → vacaciones → falta → activo
-const VAC_CYCLE={'sin-registro':'activo', activo:'vacaciones', vacaciones:'falta', falta:'activo'};
+const VAC_CYCLE={activo:'vacaciones', vacaciones:'falta', falta:'activo'};
 
 function renderVacList(){
   const c=document.getElementById('vac-list');
   if(!c) return;
+  const isFuture=S.date>td();
   const hint=document.getElementById('vac-cycle-hint');
-  if(hint) hint.innerHTML='⚪ Sin registro → toca para marcar <b style="color:var(--green)">Activo</b>. Activo cicla a Vacaciones → Falta.';
+  if(hint){
+    hint.innerHTML='Toca para ciclar: <b style="color:var(--green)">Activo</b> → <b style="color:var(--gold)">Vacaciones</b> → <b style="color:var(--red)">Falta</b>';
+  }
   if(!S.personal.length){
     c.innerHTML='<div class="empty"><p>Sin personal registrado</p></div>';
     return;
   }
+  // Get historial for selected date
   var selDate=S.date||td();
-  var isFuture=selDate>td();
+  var today2=td();
   var historialVac=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
-
-  function renderRow(p, st){
-    var globalIdx=S.personal.indexOf(p);
-    const cfg=VAC_CFG[st]||VAC_CFG['sin-registro'];
-    var esSinReg=st==='sin-registro';
-    var esInactivoBase=p.estado==='inactivo'&&esSinReg;
-    return `<div class="li" data-wid="${p.id}" ${esInactivoBase?'data-inactivo="1"':''} style="cursor:pointer;border-color:${cfg.border};background:${cfg.bg};${esSinReg?'opacity:0.55':''}">
-      <div class="liav" style="background:${WC[globalIdx%WC.length]}22;color:${WC[globalIdx%WC.length]}">${inits(p.nombre)}</div>
+  // Build with DOM nodes — no inline onclick
+  c.innerHTML=S.personal.map((p,i)=>{
+    // Use historial for date, fallback depends on date type
+    var st;
+    if(selDate===today2){
+      st=historialVac[p.id]||p.estado||'activo';
+    } else if(selDate>today2){
+      st=historialVac[p.id]||'activo';
+    } else {
+      st=historialVac[p.id]||p.estado||'activo';
+    }
+    const cfg=VAC_CFG[st]||VAC_CFG.activo;
+    return `<div class="li" data-wid="${p.id}" style="cursor:pointer;border-color:${cfg.border};background:${cfg.bg}">
+      <div class="liav" style="background:${WC[i%WC.length]}22;color:${WC[i%WC.length]}">${inits(p.nombre)}</div>
       <div class="lib">
         <div class="liname">${p.nombre}</div>
         <div class="lisub">${p.cargo||'Sin cargo'}</div>
       </div>
       <div class="lir" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-        <span class="b ${cfg.cls}" style="font-size:12px">${cfg.emoji} ${esInactivoBase?'+ Agregar':esSinReg?'Marcar activo':cfg.label}</span>
-        <div style="font-size:10px;color:var(--txt3)">${esSinReg?'1 toque':'toca para cambiar'}</div>
+        <span class="b ${cfg.cls}" style="font-size:12px">${cfg.emoji} ${cfg.label}</span>
+        <div style="font-size:10px;color:var(--txt3)">toca para cambiar</div>
       </div>
     </div>`;
-  }
-
-  // Trabajadores activos/vacaciones/falta base primero, inactivos base al final
-  var principales=S.personal.filter(p=>p.estado!=='inactivo');
-  var inactivosBase=S.personal.filter(p=>p.estado==='inactivo');
-  // Inactivos con historial ese día se muestran junto a los principales
-  var inactivosConReg=inactivosBase.filter(p=>historialVac[p.id]);
-  var inactivosSinReg=inactivosBase.filter(p=>!historialVac[p.id]);
-
-  var htmlMain=[...principales,...inactivosConReg].map(p=>{
-    // Si hay entrada manual en historial, úsala directamente
-    // Si no, usar p.estado para mostrar estado real (falta/vacaciones base visible)
-    var st;
-    if(historialVac[p.id]){
-      st=historialVac[p.id];
-    } else if(p.estado==='falta'||p.estado==='vacaciones'){
-      st=p.estado; // respetar estado base
-    } else {
-      st='sin-registro'; // activo/inactivo sin historial = sin-registro en esta modal
-    }
-    return renderRow(p,st);
   }).join('');
-
-  var htmlInactivos='';
-  if(inactivosSinReg.length){
-    htmlInactivos+=`<div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
-      <div style="flex:1;height:1px;background:var(--line)"></div>
-      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:var(--txt3)">Inactivos</div>
-      <div style="flex:1;height:1px;background:var(--line)"></div>
-    </div>`;
-    htmlInactivos+=inactivosSinReg.map(p=>renderRow(p,'sin-registro')).join('');
-  }
-
-  c.innerHTML=htmlMain+htmlInactivos;
-
+  // Use event delegation - listener stays on stable container
   c.onclick=function(e){
     const li=e.target.closest('[data-wid]');
-    if(!li) return;
-    if(li.dataset.inactivo==='1'){
-      agregarInactivoAlDia(li.dataset.wid);
-    } else {
-      togVac(li.dataset.wid);
-    }
+    if(li) togVac(li.dataset.wid);
   };
-}
-
-function agregarInactivoAlDia(id){
-  const p=S.personal.find(x=>x.id===id);
-  if(!p) return;
-  var hDate=S.date||td();
-  if(!S.estadoHistorial) S.estadoHistorial={};
-  if(!S.estadoHistorial[hDate]) S.estadoHistorial[hDate]={};
-  S.estadoHistorial[hDate][id]='activo';
-  markChanged('estadoHistorial');
-  setAction((p.nombre||'Trabajador')+' → agregado al día ('+hDate+')');
-  save();
-  try{ renderVacList(); }catch(e){}
-  try{ rInicio(); }catch(e){}
-  try{ rPers(); }catch(e){}
-  toast(`${p.nombre} agregado al día ✅`,'ok');
 }
 
 function togVac(id){
@@ -2190,19 +2044,24 @@ function togVac(id){
   var today=td();
   // Get current estado for this date from historial or p.estado
   var historialDate=(S.estadoHistorial&&S.estadoHistorial[hDate])||{};
-  // Estado actual: lo que está en historial, o 'sin-registro' si no hay nada
-  var currentEstado=historialDate[id]||'sin-registro';
-  var next=VAC_CYCLE[currentEstado]||'activo';
-  if(next==='falta'&&hDate>today){
-    toast('No se puede registrar falta en días futuros','err');
-    return;
+  // For future dates, default is activo if no historial entry
+  var isFutureDate=hDate>today;
+  var currentEstado;
+  if(historialDate[id]){
+    currentEstado=historialDate[id];
+  } else if(hDate===today||!isFutureDate){
+    currentEstado=p.estado||'activo';
+  } else {
+    currentEstado='activo';
   }
+  var next=VAC_CYCLE[currentEstado]||'activo';
+
   // Save to historial for selected date
   if(!S.estadoHistorial) S.estadoHistorial={};
   if(!S.estadoHistorial[hDate]) S.estadoHistorial[hDate]={};
   S.estadoHistorial[hDate][id]=next;
-  // Only update p.estado if changing today's date (and worker is not inactivo base)
-  if(hDate===today && p.estado!=='inactivo'){
+  // Only update p.estado if changing today's date
+  if(hDate===today){
     p.estado=next;
     p._upd=Date.now();
     markChanged('personal');
@@ -2353,13 +2212,6 @@ function weekKey(dateStr){
 
 function rHistDia(){
   const c=document.getElementById('hist-list');
-  // Guardar qué días están abiertos antes de re-renderizar
-  var openDates={};
-  c.querySelectorAll('.hbody.open').forEach(function(b){
-    var h=b.previousElementSibling;
-    if(h&&h.dataset.date) openDates[h.dataset.date]=true;
-  });
-
   let dates=Object.keys(S.actividades).filter(d=>(S.actividades[d]||[]).length).sort((a,b)=>b.localeCompare(a));
   if(hf==='week'){const cut=new Date();cut.setDate(cut.getDate()-7);const cs=cut.toISOString().split('T')[0];dates=dates.filter(d=>d>=cs);}
   else if(hf==='month'){const cut=new Date();cut.setDate(cut.getDate()-30);const cs=cut.toISOString().split('T')[0];dates=dates.filter(d=>d>=cs);}
@@ -2410,10 +2262,9 @@ function rHistDia(){
       const gT=acts.reduce((s,a)=>s+sumG(a.gastos),0);
       const wC=new Set(acts.flatMap(a=>a.trabajadores||[])).size;
       const iT=date===td();
-      const wasOpen=openDates[date]?true:false;
 
       html+=`<div class="hday" style="border-color:${iT?'var(--gold)':pal.border};border-width:${iT?'2px':'1px'};margin-bottom:6px;${iT?'box-shadow:0 0 0 1px rgba(240,201,74,0.15)':''}">
-        <div class="hday-h" data-date="${date}" onclick="togH(this)" style="background:${iT?'rgba(240,201,74,0.06)':pal.hbg}">
+        <div class="hday-h" onclick="togH(this)" style="background:${iT?'rgba(240,201,74,0.06)':pal.hbg}">
           <div style="display:flex;align-items:center;gap:10px">
             ${iT?`<div style="width:6px;height:6px;border-radius:50%;background:var(--gold);flex-shrink:0;box-shadow:0 0 6px var(--gold)"></div>`:`<div style="width:6px;height:6px;border-radius:50%;background:${pal.border};opacity:0.5;flex-shrink:0"></div>`}
             <div>
@@ -2430,37 +2281,15 @@ function rHistDia(){
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
         </div>
-        <div class="hbody${wasOpen?' open':''}">${wasOpen?acts.map(a=>rACard(a,date)).join(''):''}</div>
+        <div class="hbody">${acts.map(a=>rACard(a,date)).join('')}</div>
       </div>`;
     });
   });
   c.innerHTML=html;
-
-  // Restaurar días que estaban abiertos pero necesitan contenido cargado
-  c.querySelectorAll('.hbody.open').forEach(function(b){
-    if(!b.innerHTML.trim()){
-      var h=b.previousElementSibling;
-      var date=h&&h.dataset.date;
-      if(date&&S.actividades[date]){
-        b.innerHTML=S.actividades[date].map(a=>rACard(a,date)).join('');
-      }
-    }
-  });
 }
 
 function rHistProj(){
   const c=document.getElementById('hist-list');
-
-  // Guardar qué elementos están abiertos antes de re-renderizar
-  var openGroups={};   // 'activos'|'completados' → bool
-  var openProjs={};    // proyectoId → bool
-  c.querySelectorAll('.hbody.open').forEach(function(b){
-    var h=b.previousElementSibling;
-    if(!h) return;
-    if(h.dataset.group) openGroups[h.dataset.group]=true;
-    if(h.dataset.projId) openProjs[h.dataset.projId]=true;
-  });
-
   if(!S.proyectos.length){c.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/></svg><p>Sin proyectos registrados</p></div>';return;}
 
   // Build map: proyectoId -> [{date, act}]
@@ -2505,7 +2334,7 @@ function rHistProj(){
     }
 
     return`<div class="hday" style="margin-bottom:6px">
-      <div class="hday-h" data-proj-id="${proj.id}" onclick="togH(this)" style="padding:12px 14px">
+      <div class="hday-h" onclick="togH(this)" style="padding:12px 14px">
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
           <div style="width:34px;height:34px;border-radius:9px;background:${projColor}22;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${projColor};flex-shrink:0">${pCode}</div>
           <div style="min-width:0">
@@ -2520,22 +2349,21 @@ function rHistProj(){
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
       </div>
-      <div class="hbody${openProjs[proj.id]?' open':''}">
-        ${openProjs[proj.id]?entries.map(({date,a})=>`
+      <div class="hbody">
+        ${entries.map(({date,a})=>`
           <div style="margin-bottom:8px">
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--txt3);padding:4px 0 6px">${fmtD(date)} ${date===td()?'<span class="b bg" style="font-size:9px;padding:1px 5px">Hoy</span>':''}</div>
             ${rACard(a,date)}
-          </div>`).join(''):''}
+          </div>`).join('')}
       </div>
     </div>`;
   }
 
-  function buildGroup(icon,label,color,badgeCls,projects,subtitle,groupKey){
+  function buildGroup(icon,label,color,badgeCls,projects,subtitle){
     const count=projects.length;
     const cards=projects.map(p=>buildProjCard(p)).join('');
-    const isOpen=openGroups[groupKey]||false;
     return`<div class="hday" style="margin-bottom:12px;border-color:${color}40;overflow:visible">
-      <div class="hday-h" data-group="${groupKey}" onclick="togH(this)" style="background:${color}0a;border-radius:var(--r) var(--r) 0 0">
+      <div class="hday-h" onclick="togH(this)" style="background:${color}0a;border-radius:var(--r) var(--r) 0 0">
         <div style="display:flex;align-items:center;gap:10px">
           <div style="width:38px;height:38px;border-radius:11px;background:${color}18;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">${icon}</div>
           <div>
@@ -2548,7 +2376,7 @@ function rHistProj(){
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;color:${color}"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
       </div>
-      <div class="hbody${isOpen?' open':''}" style="padding:8px 6px 4px;background:${color}04">
+      <div class="hbody" style="padding:8px 6px 4px;background:${color}04">
         ${count?cards:'<div style="color:var(--txt3);font-size:13px;text-align:center;padding:16px">Sin proyectos en esta categoría</div>'}
       </div>
     </div>`;
@@ -2563,25 +2391,11 @@ function rHistProj(){
   const compSubtitle = completados.length+' proyecto'+(completados.length!==1?'s':'')+' terminados';
 
   c.innerHTML =
-    buildGroup('🏗️','Activos y Pausados','var(--green)','bgr', actPaus, apSubtitle, 'activos') +
-    buildGroup('✅','Completados','var(--blue)','bb', completados, compSubtitle, 'completados');
+    buildGroup('🏗️','Activos y Pausados','var(--green)','bgr', actPaus, apSubtitle) +
+    buildGroup('✅','Completados','var(--blue)','bb', completados, compSubtitle);
 }
 
-function togH(head){
-  var body=head.nextElementSibling;
-  body.classList.toggle('open');
-  // Lazy-load: si el body quedó abierto y está vacío, cargar contenido
-  if(body.classList.contains('open')&&!body.innerHTML.trim()){
-    // Para días (data-date en el header)
-    if(head.dataset.date&&S.actividades[head.dataset.date]){
-      body.innerHTML=S.actividades[head.dataset.date].map(a=>rACard(a,head.dataset.date)).join('');
-    }
-    // Para proyectos (data-proj-id en el header) — re-render del proyecto
-    if(head.dataset.projId){
-      try{ rHistProj(); }catch(e){}
-    }
-  }
-}
+function togH(head){head.nextElementSibling.classList.toggle('open');}
 
 function shareDay(date){
   const acts=S.actividades[date]||[];
@@ -2926,15 +2740,10 @@ function rPers(){
     c.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><p>Sin trabajadores. Toca "+ Nuevo".</p></div>';
     return;
   }
-  var selDate=S.date||td();
-  // Actualizar label de fecha
-  var lbl=document.getElementById('pers-date-lbl');
-  if(lbl) lbl.textContent=selDate===td()?'Hoy':fmtD(selDate);
-  function getEst(p){ return getEstFecha(p, selDate); }
-  const activos    = S.personal.filter(p=>getEst(p)==='activo');
-  const vacaciones = S.personal.filter(p=>getEst(p)==='vacaciones');
-  const faltas     = S.personal.filter(p=>getEst(p)==='falta');
-  const inactivos  = S.personal.filter(p=>getEst(p)==='inactivo');
+  const activos    = S.personal.filter(p=>p.estado==='activo');
+  const vacaciones = S.personal.filter(p=>p.estado==='vacaciones');
+  const faltas     = S.personal.filter(p=>p.estado==='falta');
+  const inactivos  = S.personal.filter(p=>p.estado==='inactivo');
   let html='';
   html += persGroup('Activos',    '✅', 'var(--green)', 'bgr', activos,    true);
   html += persGroup('Vacaciones', '🏖️', 'var(--gold)',  'bg',  vacaciones, true);
@@ -2963,8 +2772,6 @@ function rNomPersonal(){
   const todos=S.personal.filter(p=>p.estado!=='inactivo');
   const c=document.getElementById('nom-list');
   if(!todos.length){c.innerHTML='<div class="empty"><p>Sin personal registrado</p></div>';return;}
-  var selDate=S.date||td();
-  function getEst(p){ return getEstFecha(p, selDate); }
   const bm={activo:'bgr',vacaciones:'bg',falta:'br'};
   c.innerHTML=todos.map((p,i)=>`<div class="pcard">
     <div class="pinit" style="background:${WC[i%WC.length]}22;color:${WC[i%WC.length]}">${inits(p.nombre)}</div>
@@ -2972,7 +2779,7 @@ function rNomPersonal(){
       <div style="font-size:15px;font-weight:600">${p.nombre}</div>
       <div style="font-size:12px;color:var(--txt3)">${p.cargo||'Sin cargo'}${p.tel?' · '+p.tel:''}</div>
     </div>
-    <span class="b ${bm[getEst(p)]||'bb'}">${getEst(p)}</span>
+    <span class="b ${bm[p.estado]||'bb'}">${p.estado}</span>
   </div>`).join('');
 }
 
@@ -4042,16 +3849,6 @@ function toggleSyncBar(){
 
 var _currentUser=null;
 
-// ── DEVICE ID — único por dispositivo, nunca se comparte ─────────────────────
-function getDeviceId(){
-  var did=localStorage.getItem('cp4_device_id');
-  if(!did){
-    did='dev_'+Date.now()+'_'+Math.random().toString(36).slice(2,10);
-    localStorage.setItem('cp4_device_id',did);
-  }
-  return did;
-}
-
 // ── MAGIC LINK AUTH ──────────────────────────────────────────────────────────
 var _sbClient=null;
 
@@ -4081,97 +3878,65 @@ function initAuth(){
     return;
   }
 
-  // 2. Local session exists — verificar que no haya sido revocada remotamente
+  // 2. Local session exists
   var ss=localStorage.getItem('cp4_session');
   if(ss){
     try{
       var u=JSON.parse(ss);
       if(u&&u.email){
-        var email2=u.email.toLowerCase();
         var users=S.users||[];
         if(!users.length){
           var bk=localStorage.getItem('cp4_users_backup');
           if(bk) try{ users=JSON.parse(bk); S.users=users; }catch(e){}
         }
-        var found=users.find(function(x){ return (x.email||'').toLowerCase()===email2; });
+        var found=users.find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
         if(!found) found={id:u.id||'u1',nombre:u.nombre||'Usuario',rol:u.rol||'editor',email:u.email};
-        // Verificar logout forzado en Supabase antes de entrar
-        sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent('__logout__'+email2)+'&select=updated_at').then(function(rows){
-          if(rows&&rows.length){
-            // Hay logout forzado — limpiar sesión y mostrar login
-            localStorage.removeItem('cp4_session');
-            // Borrar el registro de logout para este dispositivo
-            sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent('__logout__'+email2),{method:'DELETE'}).catch(function(){});
-            showLoginScreen();
-          } else {
-            // No hay logout forzado — entrar normalmente
-            enterApp(found, u);
-          }
-        }).catch(function(){
-          // Sin conexión — entrar con sesión local (mejor UX que bloquearlo)
-          enterApp(found, u);
-        });
+        enterApp(found, u);
         return;
       }
     }catch(e){}
   }
 
-  // 3. Sin sesión local — buscar en Supabase
-  var myDeviceId=getDeviceId();
-  var users3=S.users||[];
-  if(!users3.length){
-    var bk3=localStorage.getItem('cp4_users_backup');
-    if(bk3) try{ users3=JSON.parse(bk3); S.users=users3; }catch(e){}
+  // 3. No local session — check Supabase imza_sessions (for PWA/Safari bridge)
+  // Sessions are stored by email as key so PWA can find them without device_id
+  var users=S.users||[];
+  if(!users.length){
+    var bk2=localStorage.getItem('cp4_users_backup');
+    if(bk2) try{ users=JSON.parse(bk2); S.users=users; }catch(e){}
   }
+  var emails=users.map(function(u){ return (u.email||'').toLowerCase(); }).filter(Boolean);
 
-  // Primero: buscar sesión de este device_id exacto
-  sbFetch('/rest/v1/imza_sessions?select=session_data,updated_at&device_id=eq.'+encodeURIComponent(myDeviceId)+'&limit=1').then(function(rows){
-    if(rows&&rows.length){
-      try{
-        var sd=JSON.parse(rows[0].session_data||'{}');
-        if(!sd.email) throw new Error();
-        var age=Date.now()-new Date(rows[0].updated_at).getTime();
-        if(age>7*24*60*60*1000) throw new Error('expired');
-        var match=users3.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
-        if(!match) throw new Error();
-        enterApp(match, sd);
-        return;
-      }catch(e){}
-    }
-
-    // Segundo: buscar bridge temporal por email (Safari → PWA handoff)
-    var emails=users3.map(function(u){ return (u.email||'').toLowerCase(); }).filter(Boolean);
-    if(!emails.length){ showLoginScreen(); return; }
-    // Buscar __bridge__ para cualquiera de los emails registrados
-    var bridgeIds=emails.map(function(e){ return '__bridge__'+e; });
-    // Fetch todos los bridges disponibles (máx 10 usuarios)
-    var query='/rest/v1/imza_sessions?select=device_id,session_data,updated_at&device_id=in.('+bridgeIds.map(encodeURIComponent).join(',')+')&order=updated_at.desc&limit=5';
-    sbFetch(query).then(function(brows){
-      if(!brows||!brows.length){ showLoginScreen(); return; }
-      // Tomar el bridge más reciente (menos de 10 min)
-      for(var i=0;i<brows.length;i++){
-        try{
-          var age2=Date.now()-new Date(brows[i].updated_at).getTime();
-          if(age2>10*60*1000) continue; // bridge expirado (10 min)
-          var sd2=JSON.parse(brows[i].session_data||'{}');
-          if(!sd2.email) continue;
-          var match2=users3.find(function(x){ return (x.email||'').toLowerCase()===sd2.email.toLowerCase(); });
-          if(!match2) continue;
-          // Guardar sesión en este device_id y borrar bridge
-          var sessData={id:match2.id,nombre:match2.nombre,email:sd2.email,rol:match2.rol};
-          localStorage.setItem('cp4_session',JSON.stringify(sessData));
-          sbFetch('/rest/v1/imza_sessions',{
-            method:'POST',
-            headers:{'Prefer':'resolution=merge-duplicates'},
-            body:JSON.stringify({device_id:myDeviceId,session_data:JSON.stringify(sessData),updated_at:new Date().toISOString()})
-          }).catch(function(){});
-          sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(brows[i].device_id),{method:'DELETE'}).catch(function(){});
-          enterApp(match2, sessData);
-          return;
-        }catch(e){}
+  if(!emails.length){
+    // Try fetching users from Supabase first, then retry
+    sbFetch('/rest/v1/imza_data?id=eq.main&select=data').then(function(rows){
+      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
+        S.users=rows[0].data.users;
+        localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
       }
       showLoginScreen();
     }).catch(function(){ showLoginScreen(); });
+    return;
+  }
+
+  // Check Supabase sessions for any of our registered emails
+  sbFetch('/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20').then(function(rows){
+    if(!rows||!rows.length){ showLoginScreen(); return; }
+    // Find a session that matches one of our registered users
+    for(var i=0;i<rows.length;i++){
+      try{
+        var sd=JSON.parse(rows[i].session_data||'{}');
+        if(!sd.email) continue;
+        var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
+        if(match){
+          // Check session is not too old (7 days)
+          var age=Date.now()-new Date(rows[i].updated_at).getTime();
+          if(age>7*24*60*60*1000) continue;
+          enterApp(match, sd);
+          return;
+        }
+      }catch(e){}
+    }
+    showLoginScreen();
   }).catch(function(){ showLoginScreen(); });
 }
 
@@ -4245,22 +4010,12 @@ function handleMagicLinkCallback(){
         localStorage.setItem('cp4_auth_token',accessToken);
         var refreshToken=params.get('refresh_token');
         if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
-        // Save session to Supabase keyed by device_id (not email) for PWA bridge
+        // Save session to Supabase by email so PWA can restore it
         sbFetch('/rest/v1/imza_sessions',{
           method:'POST',
           headers:{'Prefer':'resolution=merge-duplicates'},
           body:JSON.stringify({
-            device_id:getDeviceId(),
-            session_data:JSON.stringify(sessionData),
-            updated_at:new Date().toISOString()
-          })
-        }).catch(function(){});
-        // También guardar bridge temporal por email para que la PWA lo encuentre
-        sbFetch('/rest/v1/imza_sessions',{
-          method:'POST',
-          headers:{'Prefer':'resolution=merge-duplicates'},
-          body:JSON.stringify({
-            device_id:'__bridge__'+email,
+            device_id:(found.email||email).toLowerCase(),
             session_data:JSON.stringify(sessionData),
             updated_at:new Date().toISOString()
           })
@@ -4580,31 +4335,11 @@ function applyRoleRestrictions(){
 var _visorInterval=null;
 
 function logout(){
-  var email=_currentUser?(_currentUser.email||''):'';
-  var deviceId=getDeviceId();
-
   _currentUser=null;
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   if(_realtimeWs){ _realtimeWs.onclose=null; _realtimeWs.close(); _realtimeWs=null; }
-  if(_liveTimer){ clearInterval(_liveTimer); _liveTimer=null; }
   localStorage.removeItem('cp4_session');
-
-  // Borrar sesión de este dispositivo en imza_sessions
-  sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(deviceId),{method:'DELETE'}).catch(function(){});
-
-  // Escribir logout forzado para todos los dispositivos de este usuario
-  if(email){
-    sbFetch('/rest/v1/imza_sessions',{
-      method:'POST',
-      headers:{'Prefer':'resolution=merge-duplicates'},
-      body:JSON.stringify({
-        device_id:'__logout__'+email.toLowerCase(),
-        session_data:JSON.stringify({forced_logout:true,email:email.toLowerCase(),at:Date.now()}),
-        updated_at:new Date().toISOString()
-      })
-    }).catch(function(){});
-  }
-
+  document.getElementById('app').style.display='none';
   getSbClient().auth.signOut();
   showLogin();
 }
@@ -5194,7 +4929,6 @@ window.addEventListener('pagehide',function(){
 
 // ── LOAD ─────────────────────────────────────────────────────────────────────
 
-window._appStartTime=Date.now();
 load();updDates();rAll();
 // Load custom app name
 (function(){
