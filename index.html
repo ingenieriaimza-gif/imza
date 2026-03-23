@@ -886,7 +886,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0323.1950';
+const APP_VERSION='2026.0323.2010';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -4000,6 +4000,16 @@ function toggleSyncBar(){
 
 var _currentUser=null;
 
+// ── DEVICE ID — único por dispositivo, nunca se comparte ─────────────────────
+function getDeviceId(){
+  var did=localStorage.getItem('cp4_device_id');
+  if(!did){
+    did='dev_'+Date.now()+'_'+Math.random().toString(36).slice(2,10);
+    localStorage.setItem('cp4_device_id',did);
+  }
+  return did;
+}
+
 // ── MAGIC LINK AUTH ──────────────────────────────────────────────────────────
 var _sbClient=null;
 
@@ -4048,46 +4058,24 @@ function initAuth(){
     }catch(e){}
   }
 
-  // 3. No local session — check Supabase imza_sessions (for PWA/Safari bridge)
-  // Sessions are stored by email as key so PWA can find them without device_id
-  var users=S.users||[];
-  if(!users.length){
-    var bk2=localStorage.getItem('cp4_users_backup');
-    if(bk2) try{ users=JSON.parse(bk2); S.users=users; }catch(e){}
-  }
-  var emails=users.map(function(u){ return (u.email||'').toLowerCase(); }).filter(Boolean);
-
-  if(!emails.length){
-    // Try fetching users from Supabase first, then retry
-    sbFetch('/rest/v1/imza_data?id=eq.main&select=data').then(function(rows){
-      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
-        S.users=rows[0].data.users;
-        localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-      }
-      showLoginScreen();
-    }).catch(function(){ showLoginScreen(); });
-    return;
-  }
-
-  // Check Supabase sessions for any of our registered emails
-  sbFetch('/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20').then(function(rows){
+  // 3. No local session — check Supabase imza_sessions solo para ESTE dispositivo (PWA/Safari bridge)
+  var myDeviceId=getDeviceId();
+  sbFetch('/rest/v1/imza_sessions?select=session_data,updated_at&device_id=eq.'+encodeURIComponent(myDeviceId)+'&order=updated_at.desc&limit=1').then(function(rows){
     if(!rows||!rows.length){ showLoginScreen(); return; }
-    // Find a session that matches one of our registered users
-    for(var i=0;i<rows.length;i++){
-      try{
-        var sd=JSON.parse(rows[i].session_data||'{}');
-        if(!sd.email) continue;
-        var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
-        if(match){
-          // Check session is not too old (7 days)
-          var age=Date.now()-new Date(rows[i].updated_at).getTime();
-          if(age>7*24*60*60*1000) continue;
-          enterApp(match, sd);
-          return;
-        }
-      }catch(e){}
-    }
-    showLoginScreen();
+    try{
+      var sd=JSON.parse(rows[0].session_data||'{}');
+      if(!sd.email) throw new Error('no email');
+      var age=Date.now()-new Date(rows[0].updated_at).getTime();
+      if(age>7*24*60*60*1000) throw new Error('expired');
+      var users=S.users||[];
+      if(!users.length){
+        var bk2=localStorage.getItem('cp4_users_backup');
+        if(bk2) try{ users=JSON.parse(bk2); }catch(e){}
+      }
+      var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
+      if(!match) throw new Error('user not found');
+      enterApp(match, sd);
+    }catch(e){ showLoginScreen(); }
   }).catch(function(){ showLoginScreen(); });
 }
 
@@ -4161,12 +4149,12 @@ function handleMagicLinkCallback(){
         localStorage.setItem('cp4_auth_token',accessToken);
         var refreshToken=params.get('refresh_token');
         if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
-        // Save session to Supabase by email so PWA can restore it
+        // Save session to Supabase keyed by device_id (not email) for PWA bridge
         sbFetch('/rest/v1/imza_sessions',{
           method:'POST',
           headers:{'Prefer':'resolution=merge-duplicates'},
           body:JSON.stringify({
-            device_id:(found.email||email).toLowerCase(),
+            device_id:getDeviceId(),
             session_data:JSON.stringify(sessionData),
             updated_at:new Date().toISOString()
           })
