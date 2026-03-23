@@ -865,7 +865,7 @@ const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey
 
 // ── VERSION CONTROL ───────────────────────────────────────────────────────────
 // Increment this number with every new version uploaded to GitHub
-const APP_VERSION = '2026.0323.0441';
+const APP_VERSION = '2026.0323.0444';
 
 (function cleanOldCache(){
   var saved = localStorage.getItem('cp4_app_version');
@@ -935,6 +935,7 @@ function updateSyncDotOnly(ok){
 function markPendingPush(){
   _pendingPush=true;
   localStorage.setItem('cp4_pending','1');
+  localStorage.setItem('cp4_pending_ts',String(Date.now()));
   updateSyncDot(false);
 }
 
@@ -947,7 +948,9 @@ function clearChanges(){
   _changeLog={};
   localStorage.removeItem('cp4_changes');
   localStorage.removeItem('cp4_pending');
+  localStorage.removeItem('cp4_pending_ts');
   _pendingPush=false;
+  _pushInProgress=false;
 }
 
 function loadChanges(){
@@ -1098,6 +1101,12 @@ function pushToCloud(){
 // ── PULL ─────────────────────────────────────────────────────────────────────
 function pullFromCloud(force){
   // Never overwrite local data if we have unsaved changes
+  // Safety: if pending stuck >5s, clear it
+  if(_pendingPush&&(Date.now()-(parseInt(localStorage.getItem('cp4_pending_ts')||'0')))>5000){
+    _pendingPush=false;
+    _pushInProgress=false;
+    localStorage.removeItem('cp4_pending');
+  }
   if(_pendingPush||Object.keys(_changeLog).length>0||_pushInProgress){
     return Promise.resolve(false);
   }
@@ -4668,7 +4677,6 @@ window.addEventListener('pagehide',function(){
 });
 
 // ── OFFLINE QUEUE ─────────────────────────────────────────────────────────────
-var _pendingPush=false;
 
 // ── LOAD ─────────────────────────────────────────────────────────────────────
 function load(){
