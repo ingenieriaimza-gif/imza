@@ -1638,8 +1638,10 @@ function confirmCancel(){
   document.getElementById('confirm-overlay').style.display='none';
   _confirmCb=null;
 }
-function dProj(id){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permisos para eliminar','err');return;}markChanged('proyectos');const p=S.proyectos.find(x=>x.id===id);confirmShow('¿Eliminar proyecto?',p?'"'+p.nombre+'" será eliminado permanentemente.':'Esta acción no se puede deshacer.',()=>{S.proyectos=S.proyectos.filter(x=>x.id!==id);
+function dProj(id){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permisos para eliminar','err');return;}markChanged('proyectos');const p=S.proyectos.find(x=>x.id===id);confirmShow('¿Eliminar proyecto?',p?'"'+p.nombre+'" será eliminado permanentemente.':'Esta acción no se puede deshacer.',()=>{var dP=S.proyectos.find(x=>x.id===id);
+    S.proyectos=S.proyectos.filter(x=>x.id!==id);
     recordDeleted('proj',id);
+    setAction('Eliminó proyecto '+(dP?dP.nombre||dP.folio:''));
     save();rAll();toast('Proyecto eliminado','ok');});}
 
 // PERSONAL
@@ -1709,8 +1711,10 @@ function dPers(id){
       S.exPersonal[id]={nombre:p.nombre,cargo:p.cargo||''};
     }
     // Remove only from active personal list — activities untouched
+    var dW=S.personal.find(x=>x.id===id);
     S.personal=S.personal.filter(x=>x.id!==id);
     recordDeleted('pers',id);
+    setAction('Eliminó trabajador '+(dW?dW.nombre:''));
     save();rAll();toast('Trabajador eliminado','ok');
   });
 }
