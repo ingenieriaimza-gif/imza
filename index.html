@@ -916,7 +916,8 @@ function loadHistory(){
 // Format: {YYYY-MM-DD: [{time, user, action}]}
 // Max 2 days
 function addToChangeLog(time, user, action){
-  if(!time||!user||!action) return;
+  if(!time||!user) return;
+  action=action||'Actualización';
   var log=loadChangeLog();
   var date=time.slice(0,10); // YYYY-MM-DD
   if(!log[date]) log[date]=[];
