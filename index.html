@@ -3497,27 +3497,30 @@ function handleImport(input){
         '¿Importar datos?',
         'Esto reemplazará todos los datos actuales con los del archivo "'+file.name+'".',
         ()=>{
-          // Keep current users — never overwrite them on import
-          var currentUsers=S.users&&S.users.length?S.users:null;
-          var currentDeleted=S.deleted||{};
-          var currentExPersonal=S.exPersonal||{};
-          // Reset all data
+          // Keep current users
+          var currentUsers=S.users&&S.users.length?JSON.parse(JSON.stringify(S.users)):null;
+          // Load all imported data
           S.proyectos=data.proyectos||[];
           S.personal=data.personal||[];
           S.actividades=data.actividades||{};
-          S.deleted=data.deleted||currentDeleted;
-          S.exPersonal=data.exPersonal||currentExPersonal;
-          // Always keep current users
+          S.deleted=data.deleted||{};
+          S.exPersonal=data.exPersonal||{};
           if(currentUsers) S.users=currentUsers;
           S.date=td();
-          markChanged('proyectos');
-          markChanged('personal');
-          markChanged('actividades');
-          save();
+          // Save locally immediately
+          persistLocal();
           rAll();
           rCfgStats();
-          pushToCloud().then(function(){ toast('Datos importados y sincronizados ✓','ok'); })
-          .catch(function(){ toast('Datos importados localmente ✓','ok'); });
+          // Push to cloud — stop liveSync temporarily to avoid overwrite
+          if(_liveTimer){ clearInterval(_liveTimer); _liveTimer=null; }
+          setAction('Importó datos');
+          pushToCloud().then(function(){
+            toast('Datos importados y sincronizados ✓','ok');
+            startLiveSync(); // restart sync after push
+          }).catch(function(){
+            toast('Datos importados localmente ✓','ok');
+            startLiveSync();
+          });
         },
         'Importar','var(--blue)','Cancelar'
       );
