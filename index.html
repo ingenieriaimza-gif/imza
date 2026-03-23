@@ -1191,7 +1191,15 @@ function pullFromCloud(){
       S.deleted=del;
       S.exPersonal=remote.exPersonal||{};
       S.deletedUsers=remote.deletedUsers||{};
-      S.estadoHistorial=remote.estadoHistorial||{};
+      // Merge estadoHistorial — don't overwrite, merge by date
+      var remoteH=remote.estadoHistorial||{};
+      var localH=S.estadoHistorial||{};
+      var mergedH=Object.assign({},remoteH);
+      Object.keys(localH).forEach(function(d){
+        if(!mergedH[d]) mergedH[d]=localH[d];
+        else mergedH[d]=Object.assign({},remoteH[d]||{},localH[d]);
+      });
+      S.estadoHistorial=mergedH;
       // Never reset S.date — keep user's selected date
       if(!S.date) S.date=td();
       persistLocal();
@@ -2013,9 +2021,16 @@ function togVac(id){
   }
   p.estado=next;
   p._upd=Date.now();
+  // Save to estadoHistorial for selected date
+  var hDate=S.date||td();
+  if(!S.estadoHistorial) S.estadoHistorial={};
+  if(!S.estadoHistorial[hDate]) S.estadoHistorial[hDate]={};
+  S.estadoHistorial[hDate][id]=next;
+  // Also mark estadoHistorial as changed
+  markChanged('estadoHistorial');
   markChanged('personal');
   var estadoLabels={activo:'Activo',vacaciones:'Vacaciones',falta:'Falta',inactivo:'Inactivo'};
-  setAction((p.nombre||'Trabajador')+' → '+(estadoLabels[next]||next));
+  setAction((p.nombre||'Trabajador')+' → '+(estadoLabels[next]||next)+' ('+hDate+')');
   save();
   // Update immediately without debounce
   try{ renderVacList(); }catch(e){}
@@ -3547,14 +3562,22 @@ function handleImport(input){
         '¿Importar datos?',
         'Esto reemplazará todos los datos actuales con los del archivo "'+file.name+'".',
         ()=>{
-          // Keep current users
+          // Keep current users and merge historial
           var currentUsers=S.users&&S.users.length?JSON.parse(JSON.stringify(S.users)):null;
+          var currentHistorial=S.estadoHistorial||{};
           // Load all imported data
           S.proyectos=data.proyectos||[];
           S.personal=data.personal||[];
           S.actividades=data.actividades||{};
           S.deleted=data.deleted||{};
           S.exPersonal=data.exPersonal||{};
+          // Merge estadoHistorial: current dates win over imported dates
+          var importedH=data.estadoHistorial||{};
+          var mergedH=Object.assign({},importedH);
+          Object.keys(currentHistorial).forEach(function(d){
+            mergedH[d]=Object.assign({},importedH[d]||{},currentHistorial[d]);
+          });
+          S.estadoHistorial=mergedH;
           if(currentUsers) S.users=currentUsers;
           S.date=td();
           // Save locally immediately
