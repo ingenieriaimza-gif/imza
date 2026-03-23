@@ -1079,7 +1079,7 @@ function updateCompanyUI(){
   if(nameEl) nameEl.textContent=_currentCompany?_currentCompany.nombre:'IMZA';
   if(switcherEl){
     var isAdmin=_currentUser&&_currentUser.rol==='admin';
-    switcherEl.style.display=isAdmin&&_companies.length>0?'flex':'none';
+    switcherEl.style.display=isAdmin?'flex':'none';
   }
 }
 
@@ -4482,6 +4482,7 @@ function applyRoleRestrictions(){
   startRealtime();
   startLiveSync();
   startPresence();
+  updateCompanyUI();
   // Backup polling every 30s (safety net only)
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   _visorInterval=setInterval(function(){
