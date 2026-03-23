@@ -883,7 +883,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0323.1850';
+const APP_VERSION='2026.0323.1910';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -1982,14 +1982,14 @@ function rInicio(){
 
   // Personal: use estadoHistorial for selected date
   var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
-  var isFuture=selDate>today;
   var activos=[], vacs=[], falts=[];
   S.personal.forEach(function(p){
-    var est=historial[p.id]||(p.estado==='inactivo'?'inactivo':'activo');
+    var est=historial[p.id]||p.estado||'activo';
+    if(est==='sin-registro') est='activo';
     if(est==='activo') activos.push(p);
     else if(est==='vacaciones') vacs.push(p);
     else if(est==='falta') falts.push(p);
-    // inactivo: se omite de todos los grupos
+    // inactivo: se omite
   });
   document.getElementById('st-w').textContent=activos.length;
   var activosEl=document.getElementById('st-activos-names');
@@ -2870,9 +2870,9 @@ function rPers(){
   var selDate=S.date||td();
   var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
   function getEst(p){
-    if(historial[p.id]) return historial[p.id];
-    if(p.estado==='inactivo') return 'inactivo';
-    return 'activo';
+    var est=historial[p.id]||p.estado||'activo';
+    if(est==='sin-registro') est='activo';
+    return est;
   }
   const activos    = S.personal.filter(p=>getEst(p)==='activo');
   const vacaciones = S.personal.filter(p=>getEst(p)==='vacaciones');
@@ -2909,9 +2909,9 @@ function rNomPersonal(){
   var selDate=S.date||td();
   var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
   function getEst(p){
-    if(historial[p.id]) return historial[p.id];
-    if(p.estado==='inactivo') return 'inactivo';
-    return 'activo';
+    var est=historial[p.id]||p.estado||'activo';
+    if(est==='sin-registro') est='activo';
+    return est;
   }
   const bm={activo:'bgr',vacaciones:'bg',falta:'br'};
   c.innerHTML=todos.map((p,i)=>`<div class="pcard">
