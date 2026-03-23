@@ -866,7 +866,7 @@ const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey
 
 // ── VERSION CONTROL ───────────────────────────────────────────────────────────
 // Increment this number with every new version uploaded to GitHub
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '2026.0323.0431';
 
 (function cleanOldCache(){
   var saved = localStorage.getItem('cp4_app_version');
@@ -1087,7 +1087,11 @@ function pushToCloud(){
       _lastSyncInfo={time:t,device:device};
       localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
       localStorage.setItem('cp4_last_pull',String(new Date(t).getTime()));
+      // Set _remoteUpdatedAt to THIS device's version
+      // Other devices have OLDER _remoteUpdatedAt so they WILL detect the change
       _remoteUpdatedAt=t;
+      // Trigger rAll to show updated data on THIS device
+      rAll(true);
     }
     updateSyncUI(true);
   }).catch(function(){
@@ -3538,6 +3542,9 @@ function runDiag(){
     var wMatch=(remote.personal||[]).length===(S.personal||[]).length;
     lines.push('Proyectos: '+(pMatch?'OK':'DIFF local:'+(S.proyectos||[]).length+' remote:'+(remote.proyectos||[]).length));
     lines.push('Personal: '+(wMatch?'OK':'DIFF local:'+(S.personal||[]).length+' remote:'+(remote.personal||[]).length));
+    var remoteMatch=_remoteUpdatedAt===row.updated_at;
+    lines.push('Sync state: '+(remoteMatch?'ACTUALIZADO':'PENDIENTE DESCARGA'));
+    lines.push('liveTimer: '+(_liveTimer?'CORRIENDO':'DETENIDO'));
     out.textContent=lines.join('\n');
   }).catch(function(e){ out.textContent+='\nError: '+e.message; });
 }
