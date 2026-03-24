@@ -4145,68 +4145,51 @@ function initAuth(){
   var el=document.getElementById('login-appname');
   if(el) el.textContent=n;
 
-  // 1. Magic link in URL (Safari just processed it)
+  // Magic link in URL
   if(window.location.hash&&window.location.hash.includes('access_token')){
     handleMagicLinkCallback();
     return;
   }
 
-  // 2. Local session exists
+  // Session in localStorage — enter immediately, no verification needed
   var ss=localStorage.getItem('cp4_session');
   if(ss){
     try{
       var u=JSON.parse(ss);
       if(u&&u.email){
+        // Get best user data available
         var users=S.users||[];
         if(!users.length){
           var bk=localStorage.getItem('cp4_users_backup');
-          if(bk) try{ users=JSON.parse(bk); S.users=users; }catch(e){}
+          if(bk) try{ users=JSON.parse(bk); }catch(e){}
         }
-        var found=users.find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
-        if(!found) found={id:u.id||'u1',nombre:u.nombre||'Usuario',rol:u.rol||'editor',email:u.email};
-        enterApp(found, u);
+        var found=users.find(function(x){
+          return (x.email||'').toLowerCase()===u.email.toLowerCase();
+        });
+        // Use found user or create from session — always enter
+        var userToEnter=found||{id:u.id,nombre:u.nombre,rol:u.rol||'admin',email:u.email};
+        enterApp(userToEnter, u);
         return;
       }
     }catch(e){}
   }
 
-  // 3. No local session — check Supabase imza_sessions (for PWA/Safari bridge)
-  // Sessions are stored by email as key so PWA can find them without device_id
-  var users=S.users||[];
-  if(!users.length){
-    var bk2=localStorage.getItem('cp4_users_backup');
-    if(bk2) try{ users=JSON.parse(bk2); S.users=users; }catch(e){}
-  }
-  var emails=users.map(function(u){ return (u.email||'').toLowerCase(); }).filter(Boolean);
-
-  if(!emails.length){
-    // Try fetching users from Supabase first, then retry
-    sbFetch('/rest/v1/imza_data?id=eq.main&select=data').then(function(rows){
-      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
-        S.users=rows[0].data.users;
-        localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-      }
-      showLoginScreen();
-    }).catch(function(){ showLoginScreen(); });
-    return;
-  }
-
-  // Check Supabase sessions for any of our registered emails
+  // No session — check imza_sessions (PWA/Safari bridge)
   sbFetch('/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20').then(function(rows){
     if(!rows||!rows.length){ showLoginScreen(); return; }
-    // Find a session that matches one of our registered users
+    var users2=S.users||[];
+    if(!users2.length){
+      var bk3=localStorage.getItem('cp4_users_backup');
+      if(bk3) try{ users2=JSON.parse(bk3); }catch(e){}
+    }
     for(var i=0;i<rows.length;i++){
       try{
         var sd=JSON.parse(rows[i].session_data||'{}');
         if(!sd.email) continue;
-        var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
-        if(match){
-          // Check session is not too old (7 days)
-          var age=Date.now()-new Date(rows[i].updated_at).getTime();
-          if(age>7*24*60*60*1000) continue;
-          enterApp(match, sd);
-          return;
-        }
+        var age=Date.now()-new Date(rows[i].updated_at).getTime();
+        if(age>7*24*60*60*1000) continue;
+        var match=users2.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
+        if(match){ enterApp(match,sd); return; }
       }catch(e){}
     }
     showLoginScreen();
