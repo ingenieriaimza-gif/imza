@@ -382,7 +382,7 @@ if('serviceWorker' in navigator){
   <div class="safe-t"></div>
 
   <div class="topbar">
-    <div class="logo-wrap" style="gap:6px">
+    <div class="logo-wrap">
       <div class="logo-sq">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
       </div>
@@ -405,7 +405,6 @@ if('serviceWorker' in navigator){
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         <div id="sync-role-badge" style="display:none;font-size:10px;font-weight:800;padding:3px 8px;border-radius:6px;letter-spacing:0.3px"></div>
-        <div id="company-switcher" onclick="event.stopPropagation();openCompanyManager()" style="display:none;align-items:center;gap:4px;cursor:pointer;padding:3px 8px;border-radius:6px;background:rgba(181,157,255,0.12);color:var(--purp);font-size:10px;font-weight:800">&#127970; <span id="company-name">&#8212;</span></div>
         <svg id="sync-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;color:var(--txt3);transition:transform .25s"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
     </div>
@@ -899,8 +898,6 @@ var _lastSyncInfo=null;
 var _applyingCloudData=false;
 var _isOnline=false;
 var _isPushing=false;
-var _currentCompany=null; // {id, nombre}
-var _companies=[];        // [{id, nombre}] all companies (admin only)
 var _realtimeWs=null;
 var _realtimeHb=null;
 var _liveTimer=null;
@@ -1036,171 +1033,6 @@ function renderHistory(){
 }
 
 // ── DEVICE ────────────────────────────────────────────────────────────────────
-// ── COMPANIES ────────────────────────────────────────────────────────────────
-function getCompanyId(){
-  return _currentCompany?_currentCompany.id:'main';
-}
-
-function loadCompanies(){
-  return sbFetch('/rest/v1/imza_companies?select=id,nombre&order=nombre.asc').then(function(rows){
-    _companies=rows||[];
-    // Ensure 'main' company exists
-    if(!_companies.find(function(c){ return c.id==='main'; })){
-      // Create default company
-      return sbFetch('/rest/v1/imza_companies',{
-        method:'POST',
-        headers:{'Prefer':'resolution=ignore-duplicates'},
-        body:JSON.stringify({id:'main',nombre:'IMZA',data:{},updated_at:new Date().toISOString()})
-      }).then(function(){
-        _companies=[{id:'main',nombre:'IMZA'}];
-        return _companies;
-      });
-    }
-    return _companies;
-  }).catch(function(){ _companies=[{id:'main',nombre:'IMZA'}]; return _companies; });
-}
-
-function _cSwitch(id){
-  switchCompany(id);
-  var ov=document.getElementById('company-overlay');
-  if(ov) ov.remove();
-}
-
-function _cDelete(id){
-  if(id==='main'){ toast('No se puede eliminar la empresa principal','err'); return; }
-  confirmShow('¿Eliminar empresa?','Se eliminarán todos sus datos.',function(){
-    sbFetch('/rest/v1/imza_companies?id=eq.'+id,{method:'DELETE'}).then(function(){
-      _companies=_companies.filter(function(c){ return c.id!==id; });
-      if(_currentCompany&&_currentCompany.id===id) switchCompany('main');
-      toast('Empresa eliminada','ok');
-      var ov=document.getElementById('company-overlay');
-      if(ov) ov.remove();
-    }).catch(function(){ toast('Error al eliminar','err'); });
-  },'Eliminar','var(--red)','Cancelar');
-}
-
-function _cRename(id){
-  var c=_companies.find(function(x){ return x.id===id; });
-  if(!c) return;
-  var nombre=prompt('Nuevo nombre para "'+c.nombre+'":', c.nombre);
-  if(!nombre||!nombre.trim()) return;
-  nombre=nombre.trim();
-  sbFetch('/rest/v1/imza_companies?id=eq.'+id,{
-    method:'PATCH',
-    body:JSON.stringify({nombre:nombre})
-  }).then(function(){
-    c.nombre=nombre;
-    if(_currentCompany&&_currentCompany.id===id) _currentCompany.nombre=nombre;
-    updateCompanyUI();
-    openCompanyManager();
-    toast('Empresa renombrada ✓','ok');
-  }).catch(function(){ toast('Error al renombrar','err'); });
-}
-
-function openCompanyManager(){
-  if(!_currentUser||_currentUser.rol!=='admin') return;
-  var ov=document.getElementById('company-overlay');
-  if(ov) ov.remove();
-
-  // Sort: main first, then rest
-  var sorted=[].concat(
-    _companies.filter(function(c){ return c.id==='main'; }),
-    _companies.filter(function(c){ return c.id!=='main'; })
-  );
-
-  var current=_currentCompany?_currentCompany.id:'main';
-  var listHtml=sorted.map(function(c){
-    var isActive=c.id===current;
-    return '<div style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:12px;margin-bottom:8px;'
-      +'background:'+(isActive?'rgba(245,207,85,0.1)':'var(--card2)')
-      +';border:1.5px solid '+(isActive?'rgba(245,207,85,0.4)':'var(--line)')+'">'+
-      '<div style="flex:1;min-width:0">'+
-        '<div style="font-size:14px;font-weight:700;color:'+(isActive?'var(--gold)':'var(--txt)')
-          +';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+
-          (c.id==='main'?'⭐ ':'')+c.nombre+
-        '</div>'+
-        (isActive?'<div style="font-size:11px;color:var(--gold);margin-top:2px">● Activa</div>':'')+
-      '</div>'+
-      '<div style="display:flex;gap:6px;flex-shrink:0">'+
-        (!isActive?'<button data-co-switch="'+c.id+'" style="padding:6px 12px;border-radius:8px;border:none;background:rgba(66,224,144,0.15);color:var(--green);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">✓ Usar</button>':'')+
-        '<button data-co-rename="'+c.id+'" style="padding:6px 10px;border-radius:8px;border:none;background:rgba(106,170,255,0.12);color:#6aaaff;font-size:12px;font-family:inherit;cursor:pointer">✏️</button>'+
-        (c.id!=='main'?'<button data-co-delete="'+c.id+'" style="padding:6px 10px;border-radius:8px;border:none;background:rgba(255,107,107,0.12);color:var(--red);font-size:12px;font-family:inherit;cursor:pointer">🗑</button>':'')+
-      '</div>'+
-    '</div>';
-  }).join('');
-
-  var overlay=document.createElement('div');
-  overlay.id='company-overlay';
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(10px);z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))';
-  overlay.onclick=function(e){ if(e.target===overlay) overlay.remove(); };
-
-  overlay.innerHTML='<div onclick="event.stopPropagation()" style="background:var(--card);border:1px solid var(--line2);border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:24px 20px;max-height:75vh;overflow-y:auto">'
-    +'<div style="width:36px;height:4px;background:var(--line2);border-radius:2px;margin:0 auto 18px"></div>'
-    +'<div style="font-size:17px;font-weight:800;color:var(--txt);margin-bottom:16px">🏢 Empresas</div>'
-    +listHtml
-    +'<div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px;display:flex;gap:8px">'
-      +'<input id="co-new-name" type="text" class="fi" placeholder="Nueva empresa..." style="flex:1;box-sizing:border-box">'
-      +'<button id="co-create-btn" style="padding:0 16px;border-radius:12px;border:none;background:var(--gold);color:#000;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;white-space:nowrap">+ Crear</button>'
-    +'</div>'
-  +'</div>';
-
-  document.body.appendChild(overlay);
-  overlay.addEventListener('click',function(e){
-    var sw=e.target.closest('[data-co-switch]');
-    var rn=e.target.closest('[data-co-rename]');
-    var dl=e.target.closest('[data-co-delete]');
-    var cr=e.target.closest('#co-create-btn');
-    if(sw){ _cSwitch(sw.dataset.coSwitch); }
-    if(rn){ _cRename(rn.dataset.coRename); }
-    if(dl){ _cDelete(dl.dataset.coDelete); }
-    if(cr){
-      var n=(document.getElementById('co-new-name').value||'').trim();
-      if(!n){ toast('Escribe el nombre','err'); return; }
-      var id='co_'+Date.now();
-      sbFetch('/rest/v1/imza_companies',{
-        method:'POST',
-        body:JSON.stringify({id:id,nombre:n,data:{proyectos:[],personal:[],actividades:{},estadoHistorial:{},deleted:{},exPersonal:{},deletedUsers:{}},updated_at:new Date().toISOString()})
-      }).then(function(){
-        _companies.push({id:id,nombre:n});
-        toast('Empresa "'+n+'" creada ✓','ok');
-        overlay.remove();
-        openCompanyManager();
-      }).catch(function(){ toast('Error al crear','err'); });
-    }
-  });
-}
-
-function _createCompany(){
-  var nombre=(document.getElementById('new-company-name').value||'').trim();
-  if(!nombre){ toast('Nombre requerido','err'); return; }
-  var id='co_'+Date.now();
-  sbFetch('/rest/v1/imza_companies',{
-    method:'POST',
-    body:JSON.stringify({id:id,nombre:nombre,data:{proyectos:[],personal:[],actividades:{},estadoHistorial:{},deleted:{},exPersonal:{},deletedUsers:{}},updated_at:new Date().toISOString()})
-  }).then(function(){
-    _companies.push({id:id,nombre:nombre});
-    toast('Empresa creada ✓','ok');
-    var overlay=document.getElementById('company-overlay');
-    if(overlay) overlay.remove();
-    openCompanyManager();
-    // Assign company to relevant users
-    rUsersConfig();
-  }).catch(function(){ toast('Error al crear empresa','err'); });
-}
-
-function _deleteCompany(id){
-  if(id==='main'){ toast('No se puede eliminar la empresa principal','err'); return; }
-  confirmShow('¿Eliminar empresa?','Se eliminarán todos sus datos.',function(){
-    sbFetch('/rest/v1/imza_companies?id=eq.'+id,{method:'DELETE'}).then(function(){
-      _companies=_companies.filter(function(c){ return c.id!==id; });
-      if(_currentCompany&&_currentCompany.id===id) switchCompany('main');
-      toast('Empresa eliminada','ok');
-      var overlay=document.getElementById('company-overlay');
-      if(overlay) overlay.remove();
-    });
-  },'Eliminar','var(--red)','Cancelar');
-}
-
 function detectDevice(){
   var uid=localStorage.getItem('cp4_device_id');
   if(!uid){
@@ -1324,8 +1156,7 @@ function isDeleted(type,id){ return !!(S.deleted&&S.deleted[type+'_'+id]); }
 // ── LOCAL STORAGE ─────────────────────────────────────────────────────────────
 function getLocalData(){
   var d={};
-  // Company data: no users (they're global in imza_data)
-  ['proyectos','personal','actividades','estadoHistorial','deleted','exPersonal'].forEach(function(k){ if(S[k]!==undefined) d[k]=S[k]; });
+  ['proyectos','personal','actividades','estadoHistorial','deleted','exPersonal','users','deletedUsers'].forEach(function(k){ if(S[k]!==undefined) d[k]=S[k]; });
   return d;
 }
 function persistLocal(){
@@ -1336,34 +1167,10 @@ function persistLocal(){
 // ── PULL FROM CLOUD ───────────────────────────────────────────────────────────
 function pullFromCloud(){
   if(_isPushing) return Promise.resolve(false);
-  var cid=getCompanyId();
-  // Fetch company data + global users in parallel
-  return Promise.all([
-    sbFetch('/rest/v1/imza_companies?id=eq.'+cid+'&select=id,data,updated_at,device,user_name,last_action,changelog'),
-    sbFetch('/rest/v1/imza_data?id=eq.main&select=data')
-  ]).then(function(results){
-    var companyRows=results[0];
-    var globalRows=results[1];
-    // Load global users from imza_data
-    if(globalRows&&globalRows[0]&&globalRows[0].data&&globalRows[0].data.users){
-      S.users=globalRows[0].data.users;
-      localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-    }
-    if(!companyRows||!companyRows.length){
-      // Company row doesn't exist — create it silently
-      sbFetch('/rest/v1/imza_companies',{
-        method:'POST',
-        headers:{'Prefer':'resolution=ignore-duplicates'},
-        body:JSON.stringify({id:getCompanyId(),nombre:_currentCompany?_currentCompany.nombre:'IMZA',data:{proyectos:[],personal:[],actividades:{},estadoHistorial:{},deleted:{},exPersonal:{},deletedUsers:{}},updated_at:new Date().toISOString()})
-      }).catch(function(){});
-      // Still return true so initAuth proceeds with users already loaded
-      updateSyncUI(true);
-      return true;
-    }
-    var rows=companyRows;
+  return sbFetch('/rest/v1/imza_data?id=eq.main&select=id,data,updated_at,device,user_name,last_action,changelog').then(function(rows){
+    if(!rows||!rows.length) return false;
     var row=rows[0]; var remote=row.data||{};
-    if(!remote) remote={};
-    if(!remote.proyectos) remote.proyectos=[];
+    if(!remote||!remote.proyectos) return false;
     var userName=row.user_name||(row.data&&row.data._user)||'';
     var action=row.last_action||(row.data&&row.data._action)||'';
     _lastSyncInfo={time:row.updated_at,device:row.device,user:userName,action:action};
@@ -1382,8 +1189,7 @@ function pullFromCloud(){
         var acts=(remote.actividades[d]||[]).filter(function(a){ return !del['act_'+a.id]; });
         if(acts.length) S.actividades[d]=acts;
       });
-      // Users come ONLY from imza_data (global), never from company data
-      // S.users already loaded at top of this function from globalRows
+      if(remote.users&&remote.users.length) S.users=remote.users;
       S.deleted=del;
       S.exPersonal=remote.exPersonal||{};
       S.deletedUsers=remote.deletedUsers||{};
@@ -1421,9 +1227,7 @@ function pushToCloud(){
   patch._user=userName;
   patch._action=action;
   var changelog=loadChangeLog();
-  var cid2=getCompanyId();
-  // Note: users saved to imza_data only when they change (via saveUsers())
-  return sbFetch('/rest/v1/imza_companies?id=eq.'+cid2,{
+  return sbFetch('/rest/v1/imza_data?id=eq.main',{
     method:'PATCH',
     body:JSON.stringify({data:patch,updated_at:now,device:device,user_name:userName,last_action:action,changelog:changelog})
   }).then(function(){
@@ -1447,18 +1251,6 @@ function pushToCloud(){
 // ── SAVE ─────────────────────────────────────────────────────────────────────
 // If online: save to cloud immediately, then update all screens
 // If offline: block the edit with a message
-function saveUsers(){
-  // Save users to global imza_data table
-  if(!S.users||!S.users.length) return;
-  var now=new Date().toISOString();
-  sbFetch('/rest/v1/imza_data?id=eq.main',{
-    method:'PATCH',
-    body:JSON.stringify({data:{users:S.users,deletedUsers:S.deletedUsers||{}},updated_at:now})
-  }).then(function(){
-    localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-  }).catch(function(){});
-}
-
 function save(){
   if(_applyingCloudData) return;
   // Always save locally first
@@ -1485,7 +1277,7 @@ function startLiveSync(){
   if(_liveTimer) clearInterval(_liveTimer);
   _liveTimer=setInterval(function(){
     if(!_currentUser||_applyingCloudData) return;
-    sbFetch('/rest/v1/imza_companies?id=eq.'+getCompanyId()+'&select=updated_at').then(function(rows){
+    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
       if(!rows||!rows.length){ updateSyncUI(false); return; }
       var t=rows[0].updated_at||'';
       updateSyncUI(true);
@@ -1535,30 +1327,15 @@ function load(){
   loadSyncHistory();
   var d=localStorage.getItem('cp4');
   if(d){ try{ Object.assign(S,JSON.parse(d)); }catch(e){} }
+  // Restore saved date or use today
   if(!S.date) S.date=td();
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
   updateSyncUI(false);
-
-  // Set default company before pulling
-  var savedCompanyId=localStorage.getItem('cp4_company_id')||'main';
-  _currentCompany={id:savedCompanyId,nombre:'IMZA'};
-
-  // Load companies then pull data
-  loadCompanies().then(function(companies){
-    var found=companies.find(function(c){ return c.id===savedCompanyId; });
-    _currentCompany=found||{id:'main',nombre:'IMZA'};
-    return pullFromCloud();
-  }).then(function(updated){
+  pullFromCloud().then(function(updated){
     if(updated) rAll();
-    // Always init auth — users loaded from imza_data regardless
     initAuth();
-  }).catch(function(){
-    // Even on error, try to init auth with cached users
-    var bk=localStorage.getItem('cp4_users_backup');
-    if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
-    initAuth();
-  });
+  }).catch(function(){ initAuth(); });
 }
 
 // ── LEGACY ALIASES ────────────────────────────────────────────────────────────
@@ -1941,13 +1718,11 @@ function savePers(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
   try{
     var wid2=document.getElementById('wid').value;
     var savedPers=wid2?(S.personal.find(function(p){ return p.id===wid2; })):S.personal[S.personal.length-1];
-    // Save estado to historial for today (skip inactivo — permanent state)
-    if(savedPers&&savedPers.estado!=='inactivo'){
-      var hDateP=td();
-      if(!S.estadoHistorial) S.estadoHistorial={};
-      if(!S.estadoHistorial[hDateP]) S.estadoHistorial[hDateP]={};
-      S.estadoHistorial[hDateP][savedPers.id]=savedPers.estado||'activo';
-    }
+    // Save estado to historial for today
+    var hDateP=td();
+    if(!S.estadoHistorial) S.estadoHistorial={};
+    if(!S.estadoHistorial[hDateP]) S.estadoHistorial[hDateP]={};
+    if(savedPers) S.estadoHistorial[hDateP][savedPers.id]=savedPers.estado||'activo';
     _lastSaveType='pers'; _lastSaveItem=savedPers;
     setAction(wid2?('Editó trabajador '+(savedPers?savedPers.nombre:'')):'Nuevo trabajador');
     save();
@@ -1961,22 +1736,14 @@ function dPers(id){
   markChanged('personal');
   const p=S.personal.find(x=>x.id===id);
   confirmShow('¿Eliminar trabajador?',p?'"'+p.nombre+'" será eliminado de la lista. Su historial se conserva.':'Esta acción no se puede deshacer.',()=>{
-    // Archive full worker data including historial
+    // Archive full worker data so history always shows name+cargo
     if(p){
       if(!S.exPersonal) S.exPersonal={};
-      // Save full worker data + their historial
-      var workerHistorial={};
-      Object.keys(S.estadoHistorial||{}).forEach(function(date){
-        if(S.estadoHistorial[date]&&S.estadoHistorial[date][id]){
-          workerHistorial[date]=S.estadoHistorial[date][id];
-        }
-      });
-      S.exPersonal[id]={nombre:p.nombre,cargo:p.cargo||'',historial:workerHistorial};
+      S.exPersonal[id]={nombre:p.nombre,cargo:p.cargo||''};
     }
-    // Keep estadoHistorial entries intact — never delete history
+    // Remove only from active personal list — activities untouched
     var dW=S.personal.find(x=>x.id===id);
     S.personal=S.personal.filter(x=>x.id!==id);
-    // DO NOT remove from estadoHistorial — preserve all date history
     recordDeleted('pers',id);
     setAction('Eliminó trabajador '+(dW?dW.nombre:''));
     save();rAll();toast('Trabajador eliminado','ok');
@@ -2297,14 +2064,16 @@ function togVac(id){
   }
   var next=VAC_CYCLE[currentEstado]||'activo';
 
-  // Save to historial for selected date (skip inactivo — it's a permanent state)
+  // Save to historial for selected date
   if(!S.estadoHistorial) S.estadoHistorial={};
   if(!S.estadoHistorial[hDate]) S.estadoHistorial[hDate]={};
   S.estadoHistorial[hDate][id]=next;
-  // Always update p.estado (even for past dates, inactivo is global)
-  p.estado=next;
-  p._upd=Date.now();
-  markChanged('personal');
+  // Only update p.estado if changing today's date
+  if(hDate===today){
+    p.estado=next;
+    p._upd=Date.now();
+    markChanged('personal');
+  }
   markChanged('estadoHistorial');
   var estadoLabels={activo:'Activo',vacaciones:'Vacaciones',falta:'Falta',inactivo:'Inactivo'};
   setAction((p.nombre||'Trabajador')+' → '+(estadoLabels[next]||next)+' ('+hDate+')');
@@ -2634,16 +2403,7 @@ function rHistProj(){
     buildGroup('✅','Completados','var(--blue)','bb', completados, compSubtitle);
 }
 
-function togH(head){
-  head.nextElementSibling.classList.toggle('open');
-  // Save open state by group label
-  var label=head.querySelector('[style*="font-weight:800"]');
-  if(label){
-    var key='grp_'+label.textContent.trim();
-    var isOpen=head.nextElementSibling.classList.contains('open');
-    try{ sessionStorage.setItem(key,isOpen?'1':'0'); }catch(e){}
-  }
-}
+function togH(head){head.nextElementSibling.classList.toggle('open');}
 
 function shareDay(date){
   const acts=S.actividades[date]||[];
@@ -2979,7 +2739,7 @@ function persGroup(label, emoji, color, badgeCls, workers, openByDefault, estMap
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
     </div>
-    <div class="hbody${(()=>{ try{ var s=sessionStorage.getItem('grp_'+label); return s===null?(openByDefault):s==='1'; }catch(e){ return openByDefault; } })()?' open':''}" style="padding:8px 8px 4px">${items}</div>
+    <div class="hbody${openByDefault?' open':''}" style="padding:8px 8px 4px">${items}</div>
   </div>`;
 }
 
@@ -4145,51 +3905,68 @@ function initAuth(){
   var el=document.getElementById('login-appname');
   if(el) el.textContent=n;
 
-  // Magic link in URL
+  // 1. Magic link in URL (Safari just processed it)
   if(window.location.hash&&window.location.hash.includes('access_token')){
     handleMagicLinkCallback();
     return;
   }
 
-  // Session in localStorage — enter immediately, no verification needed
+  // 2. Local session exists
   var ss=localStorage.getItem('cp4_session');
   if(ss){
     try{
       var u=JSON.parse(ss);
       if(u&&u.email){
-        // Get best user data available
         var users=S.users||[];
         if(!users.length){
           var bk=localStorage.getItem('cp4_users_backup');
-          if(bk) try{ users=JSON.parse(bk); }catch(e){}
+          if(bk) try{ users=JSON.parse(bk); S.users=users; }catch(e){}
         }
-        var found=users.find(function(x){
-          return (x.email||'').toLowerCase()===u.email.toLowerCase();
-        });
-        // Use found user or create from session — always enter
-        var userToEnter=found||{id:u.id,nombre:u.nombre,rol:u.rol||'admin',email:u.email};
-        enterApp(userToEnter, u);
+        var found=users.find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
+        if(!found) found={id:u.id||'u1',nombre:u.nombre||'Usuario',rol:u.rol||'editor',email:u.email};
+        enterApp(found, u);
         return;
       }
     }catch(e){}
   }
 
-  // No session — check imza_sessions (PWA/Safari bridge)
+  // 3. No local session — check Supabase imza_sessions (for PWA/Safari bridge)
+  // Sessions are stored by email as key so PWA can find them without device_id
+  var users=S.users||[];
+  if(!users.length){
+    var bk2=localStorage.getItem('cp4_users_backup');
+    if(bk2) try{ users=JSON.parse(bk2); S.users=users; }catch(e){}
+  }
+  var emails=users.map(function(u){ return (u.email||'').toLowerCase(); }).filter(Boolean);
+
+  if(!emails.length){
+    // Try fetching users from Supabase first, then retry
+    sbFetch('/rest/v1/imza_data?id=eq.main&select=data').then(function(rows){
+      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
+        S.users=rows[0].data.users;
+        localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+      }
+      showLoginScreen();
+    }).catch(function(){ showLoginScreen(); });
+    return;
+  }
+
+  // Check Supabase sessions for any of our registered emails
   sbFetch('/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20').then(function(rows){
     if(!rows||!rows.length){ showLoginScreen(); return; }
-    var users2=S.users||[];
-    if(!users2.length){
-      var bk3=localStorage.getItem('cp4_users_backup');
-      if(bk3) try{ users2=JSON.parse(bk3); }catch(e){}
-    }
+    // Find a session that matches one of our registered users
     for(var i=0;i<rows.length;i++){
       try{
         var sd=JSON.parse(rows[i].session_data||'{}');
         if(!sd.email) continue;
-        var age=Date.now()-new Date(rows[i].updated_at).getTime();
-        if(age>7*24*60*60*1000) continue;
-        var match=users2.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
-        if(match){ enterApp(match,sd); return; }
+        var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
+        if(match){
+          // Check session is not too old (7 days)
+          var age=Date.now()-new Date(rows[i].updated_at).getTime();
+          if(age>7*24*60*60*1000) continue;
+          enterApp(match, sd);
+          return;
+        }
       }catch(e){}
     }
     showLoginScreen();
@@ -4568,7 +4345,6 @@ function applyRoleRestrictions(){
   startRealtime();
   startLiveSync();
   startPresence();
-  updateCompanyUI();
   // Backup polling every 30s (safety net only)
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   _visorInterval=setInterval(function(){
@@ -4596,10 +4372,8 @@ function logout(){
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   if(_realtimeWs){ _realtimeWs.onclose=null; _realtimeWs.close(); _realtimeWs=null; }
   localStorage.removeItem('cp4_session');
-  localStorage.removeItem('cp4_auth_token');
-  localStorage.removeItem('cp4_refresh_token');
   document.getElementById('app').style.display='none';
-  try{ getSbClient().auth.signOut(); }catch(e){}
+  getSbClient().auth.signOut();
   showLogin();
 }
 
@@ -4749,13 +4523,10 @@ function openAddUser(){
     '<div style="font-size:17px;font-weight:800;color:var(--txt);margin-bottom:16px">Nuevo usuario</div>'+
     '<input id="nu-nombre" type="text" class="fi" placeholder="Nombre" style="margin-bottom:10px;display:block;width:100%;box-sizing:border-box">'+
     '<input id="nu-email" type="email" class="fi" placeholder="correo@ejemplo.com" style="margin-bottom:10px;display:block;width:100%;box-sizing:border-box">'+
-    '<select id="nu-rol" class="fsel" style="margin-bottom:10px">'+
+    '<select id="nu-rol" class="fsel" style="margin-bottom:20px">'+
       '<option value="visor">👁 Visor — solo lectura</option>'+
       '<option value="editor">📋 Editor — registra actividades</option>'+
       '<option value="admin">👑 Admin — acceso total</option>'+
-    '</select>'+
-    '<select id="nu-company" class="fsel" style="margin-bottom:20px">'+
-      _companies.map(function(c){ return '<option value="'+c.id+'">🏢 '+c.nombre+'</option>'; }).join('')+
     '</select>'+
     '<div style="display:flex;gap:10px">'+
       '<button onclick="closeAddUser()" style="flex:1;padding:14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt2);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">Cancelar</button>'+
