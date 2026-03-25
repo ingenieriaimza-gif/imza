@@ -3182,7 +3182,8 @@ function copyWeekHE(){
   });
   S.personal.forEach(function(p){
     var abs=getWorkerAbsences(p.id,thuStr,wedStr);
-    totalFaltas+=abs.faltas.length; totalVac+=abs.vacaciones.length;
+    if(abs.faltas.length>0) totalFaltas++;
+    if(abs.vacaciones.length>0) totalVac++;
   });
 
   var workerRows=S.personal.filter(function(p){ return workerData[p.id]; }).map(function(p){
@@ -3397,8 +3398,9 @@ function _abrirReporteHTML(d){
   '.kpis{gap:5px!important;margin-bottom:6px!important;}'+
   '.rc{gap:5px!important;margin-bottom:6px!important;}'+
   '.kpi .kv{font-size:17px!important;}'+
-  'tr{page-break-inside:avoid!important;}'+
+  'tr{page-break-inside:avoid!important;break-inside:avoid!important;}'+
   'thead{display:table-header-group!important;}'+
+  '.kpi,.card,.rc{page-break-inside:avoid!important;break-inside:avoid!important;}'+
   '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}';
 
   var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'+
@@ -3424,11 +3426,11 @@ function _abrirReporteHTML(d){
 
   '<div class="kpi kr"><div class="kl">✗ Faltas</div>'+
   '<div class="kv">'+d.totalFaltas+'</div>'+
-  '<div class="ks">dias registrados</div></div>'+
+  '<div class="ks">trabajadores con falta</div></div>'+
 
   '<div class="kpi ka"><div class="kl">🏖 Vacaciones</div>'+
   '<div class="kv">'+d.totalVac+'</div>'+
-  '<div class="ks">dias programados</div></div>'+
+  '<div class="ks">trabajadores de vacaciones</div></div>'+
   '</div>'+
 
   // CHARTS — 2 columnas
@@ -3530,8 +3532,8 @@ function _abrirReporteHTML(d){
   '</div>'+
 
   // TABLA PERSONAL
-  '<div style="border-radius:6px;overflow:hidden;border:1px solid #E2E8F0;">'+
-  '<div class="she she-s"><span>Estado del Personal</span></div>'+
+  '<div style="border-radius:6px;border:1px solid #E2E8F0;">'+
+  '<div class="she she-s" style="border-radius:6px 6px 0 0;"><span>Estado del Personal</span></div>'+
   '<table>'+
   '<colgroup>'+
   '<col style="width:26px">'+
