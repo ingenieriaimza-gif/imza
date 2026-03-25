@@ -3212,149 +3212,352 @@ function copyWeekHE(){
   _generarNominaDocx(payload, fileName);
 }
 
+// Clean _generarNominaDocx — pre-validated, no nested one-liners
 function _generarNominaDocx(data, fileName){
-  // Cargar docx desde CDN si no está disponible
   function run(docx){
-    const {
-      Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell,
-      AlignmentType,BorderStyle,WidthType,ShadingType,VerticalAlign,
-      LevelFormat,PageNumberElement,Header,Footer,TabStopType
-    }=docx;
+    var Document=docx.Document, Packer=docx.Packer, Paragraph=docx.Paragraph,
+        TextRun=docx.TextRun, Table=docx.Table, TableRow=docx.TableRow,
+        TableCell=docx.TableCell, AlignmentType=docx.AlignmentType,
+        BorderStyle=docx.BorderStyle, WidthType=docx.WidthType,
+        ShadingType=docx.ShadingType, VerticalAlign=docx.VerticalAlign,
+        LevelFormat=docx.LevelFormat, PageNumberElement=docx.PageNumberElement,
+        Header=docx.Header, Footer=docx.Footer, TabStopType=docx.TabStopType;
 
-    const AZUL='1B3A6B',AZUL_MED='2E5FAC',AZUL_CLR='D6E4F7',GRIS_CLR='F2F4F7';
-    const VERDE='1A7A4A',VERDE_CLR='D4EDDA',ROJO='B91C1C',ROJO_CLR='FDE8E8';
-    const ORO='B45309',ORO_CLR='FEF3C7',BLANCO='FFFFFF',NEGRO='111111',GRIS_TXT='555555';
-    const money=n=>'$'+Number(n).toLocaleString('es-MX');
-    const brd=(c='CCCCCC',s=6)=>({style:BorderStyle.SINGLE,size:s,color:c});
-    const nob=()=>({style:BorderStyle.NIL,size:0,color:'FFFFFF'});
-    const bdrs=(c='CCCCCC')=>({top:brd(c),bottom:brd(c),left:brd(c),right:brd(c)});
-    const noBdrs=()=>({top:nob(),bottom:nob(),left:nob(),right:nob()});
-    const cell=(ch,o={})=>new TableCell({borders:o.borders||bdrs(o.bc||'CCCCCC'),width:{size:o.w||1,type:WidthType.DXA},shading:o.fill?{fill:o.fill,type:ShadingType.CLEAR}:undefined,margins:{top:o.mt||80,bottom:o.mb||80,left:o.ml||140,right:o.mr||140},verticalAlign:o.va||VerticalAlign.CENTER,columnSpan:o.span,children:Array.isArray(ch)?ch:[ch]});
-    const txt=(t,o={})=>new TextRun({text:String(t??''),bold:o.bold,italics:o.italic,size:o.size||22,color:o.color||NEGRO,font:'Arial'});
-    const para=(ch,o={})=>new Paragraph({alignment:o.align||AlignmentType.LEFT,spacing:{before:o.before||0,after:o.after||80},border:o.border,children:Array.isArray(ch)?ch:[ch]});
-    const sp=(p=120)=>new Paragraph({spacing:{before:p,after:0},children:[new TextRun('')]});
-    const W=9360;
+    var AZUL='1B3A6B', AZUL_MED='2E5FAC', AZUL_CLR='D6E4F7', GRIS_CLR='F2F4F7';
+    var VERDE='1A7A4A', VERDE_CLR='D4EDDA', ROJO='B91C1C', ROJO_CLR='FDE8E8';
+    var ORO='B45309', ORO_CLR='FEF3C7', BLANCO='FFFFFF', NEGRO='111111', GRIS_TXT='555555';
+    var W=9360;
+
+    function money(n){ return '$'+Number(n).toLocaleString('es-MX'); }
+    function brd(c,s){ return {style:BorderStyle.SINGLE,size:s||6,color:c||'CCCCCC'}; }
+    function nob(){ return {style:BorderStyle.NIL,size:0,color:'FFFFFF'}; }
+    function bdrs(c){ var b=brd(c); return {top:b,bottom:b,left:b,right:b}; }
+    function noBdrs(){ var b=nob(); return {top:b,bottom:b,left:b,right:b}; }
+
+    function cell(children, o){
+      o=o||{};
+      return new TableCell({
+        borders: o.borders || bdrs(o.bc||'CCCCCC'),
+        width: {size:o.w||1, type:WidthType.DXA},
+        shading: o.fill ? {fill:o.fill, type:ShadingType.CLEAR} : undefined,
+        margins: {top:o.mt||80, bottom:o.mb||80, left:o.ml||140, right:o.mr||140},
+        verticalAlign: o.va||VerticalAlign.CENTER,
+        columnSpan: o.span,
+        children: Array.isArray(children) ? children : [children]
+      });
+    }
+
+    function txt(t, o){
+      o=o||{};
+      return new TextRun({
+        text:String(t==null?'':t), bold:o.bold, italics:o.italic,
+        size:o.size||22, color:o.color||NEGRO, font:'Arial'
+      });
+    }
+
+    function para(children, o){
+      o=o||{};
+      return new Paragraph({
+        alignment:o.align||AlignmentType.LEFT,
+        spacing:{before:o.before||0, after:o.after||80},
+        border:o.border,
+        children:Array.isArray(children)?children:[children]
+      });
+    }
+
+    function sp(p){ return new Paragraph({spacing:{before:p||120,after:0},children:[new TextRun('')]}); }
+
+    function secHdr(title, fill){
+      return new Table({
+        width:{size:W,type:WidthType.DXA}, columnWidths:[W],
+        rows:[new TableRow({children:[
+          cell(para([txt(title,{bold:true,size:26,color:BLANCO})],{align:AlignmentType.LEFT}),
+               {fill:fill||AZUL, w:W, borders:noBdrs(), mt:140, mb:140, ml:200})
+        ]})]
+      });
+    }
 
     function kpiTable(){
-      const kpis=[
-        {label:'Horas extras',value:data.totalHrs?`+${data.totalHrs}h`:'—',fill:AZUL_CLR,tc:AZUL_MED},
-        {label:'Trabajadores c/HE',value:String(data.workerRows.length||'—'),fill:GRIS_CLR,tc:AZUL},
-        {label:'Gastos extras',value:data.totalGastos?money(data.totalGastos):'—',fill:VERDE_CLR,tc:VERDE},
-        {label:'Faltas / Vacaciones',value:`${data.totalFaltas} / ${data.totalVac}`,fill:data.totalFaltas?ROJO_CLR:GRIS_CLR,tc:data.totalFaltas?ROJO:GRIS_TXT}
+      var kpis=[
+        {label:'Horas extras', value:data.totalHrs?'+'+data.totalHrs+'h':'—', fill:AZUL_CLR, tc:AZUL_MED},
+        {label:'Trabajadores c/HE', value:String(data.workerRows.length||'—'), fill:GRIS_CLR, tc:AZUL},
+        {label:'Gastos extras', value:data.totalGastos?money(data.totalGastos):'—', fill:VERDE_CLR, tc:VERDE},
+        {label:'Faltas / Vacaciones', value:data.totalFaltas+' / '+data.totalVac,
+         fill:data.totalFaltas?ROJO_CLR:GRIS_CLR, tc:data.totalFaltas?ROJO:GRIS_TXT}
       ];
-      const cw=Math.floor(W/4);
-      return new Table({width:{size:W,type:WidthType.DXA},columnWidths:[cw,cw,cw,W-cw*3],rows:[new TableRow({children:kpis.map(k=>cell([para([txt(k.label,{size:18,color:k.tc})],{align:AlignmentType.CENTER,after:40}),para([txt(k.value,{size:36,bold:true,color:k.tc})],{align:AlignmentType.CENTER})],{fill:k.fill,w:cw,borders:noBdrs(),mt:160,mb:160}))})]});
+      var cw=Math.floor(W/4);
+      return new Table({
+        width:{size:W,type:WidthType.DXA}, columnWidths:[cw,cw,cw,W-cw*3],
+        rows:[new TableRow({children:kpis.map(function(k){
+          return cell(
+            [para([txt(k.label,{size:18,color:k.tc})],{align:AlignmentType.CENTER,after:40}),
+             para([txt(k.value,{size:36,bold:true,color:k.tc})],{align:AlignmentType.CENTER})],
+            {fill:k.fill, w:cw, borders:noBdrs(), mt:160, mb:160}
+          );
+        })})]
+      });
     }
 
     function persTable(){
-      const cols=[3800,2760,2800];
-      const eFill={activo:VERDE_CLR,vacaciones:ORO_CLR,falta:ROJO_CLR,inactivo:GRIS_CLR};
-      const eColor={activo:VERDE,vacaciones:ORO,falta:ROJO,inactivo:GRIS_TXT};
-      return new Table({width:{size:W,type:WidthType.DXA},columnWidths:cols,rows:[
-        new TableRow({tableHeader:true,children:[cell(para([txt('Trabajador',{bold:true,size:20,color:BLANCO})]),{fill:AZUL,w:cols[0],bc:AZUL}),cell(para([txt('Cargo',{bold:true,size:20,color:BLANCO})]),{fill:AZUL,w:cols[1],bc:AZUL}),cell(para([txt('Estado',{bold:true,size:20,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL,w:cols[2],bc:AZUL})]}),
-        ...data.resumenPersonal.map((p,i)=>new TableRow({children:[cell(para([txt(p.nombre,{bold:true,size:20})]),{fill:i%2?GRIS_CLR:BLANCO,w:cols[0]}),cell(para([txt(p.cargo||'—',{size:20,color:GRIS_TXT})]),{fill:i%2?GRIS_CLR:BLANCO,w:cols[1]}),cell(para([txt(p.estado,{size:20,bold:true,color:eColor[p.estado]||GRIS_TXT})],{align:AlignmentType.CENTER}),{fill:eFill[p.estado]||GRIS_CLR,w:cols[2]})]}))
+      var cols=[3800,2760,2800];
+      var eFill={activo:VERDE_CLR, vacaciones:ORO_CLR, falta:ROJO_CLR, inactivo:GRIS_CLR};
+      var eColor={activo:VERDE, vacaciones:ORO, falta:ROJO, inactivo:GRIS_TXT};
+      var headerRow=new TableRow({tableHeader:true, children:[
+        cell(para([txt('Trabajador',{bold:true,size:20,color:BLANCO})]),{fill:AZUL,w:cols[0],bc:AZUL}),
+        cell(para([txt('Cargo',{bold:true,size:20,color:BLANCO})]),{fill:AZUL,w:cols[1],bc:AZUL}),
+        cell(para([txt('Estado',{bold:true,size:20,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL,w:cols[2],bc:AZUL})
       ]});
+      var dataRows=data.resumenPersonal.map(function(p,i){
+        return new TableRow({children:[
+          cell(para([txt(p.nombre,{bold:true,size:20})]),{fill:i%2?GRIS_CLR:BLANCO, w:cols[0]}),
+          cell(para([txt(p.cargo||'—',{size:20,color:GRIS_TXT})]),{fill:i%2?GRIS_CLR:BLANCO, w:cols[1]}),
+          cell(para([txt(p.estado,{size:20,bold:true,color:eColor[p.estado]||GRIS_TXT})],{align:AlignmentType.CENTER}),
+               {fill:eFill[p.estado]||GRIS_CLR, w:cols[2]})
+        ]});
+      });
+      return new Table({width:{size:W,type:WidthType.DXA}, columnWidths:cols, rows:[headerRow].concat(dataRows)});
     }
 
     function heTable(w){
-      const cols=[2600,3560,1400,1800];
-      return new Table({width:{size:W,type:WidthType.DXA},columnWidths:cols,rows:[
-        new TableRow({tableHeader:true,children:[cell(para([txt('Fecha',{bold:true,size:19,color:BLANCO})]),{fill:AZUL_MED,w:cols[0],bc:AZUL_MED}),cell(para([txt('Proyecto / Líder',{bold:true,size:19,color:BLANCO})]),{fill:AZUL_MED,w:cols[1],bc:AZUL_MED}),cell(para([txt('Descanso',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL_MED,w:cols[2],bc:AZUL_MED}),cell(para([txt('Hrs extras',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL_MED,w:cols[3],bc:AZUL_MED})]}),
-        ...w.dias.map((d,i)=>new TableRow({children:[cell(para([txt(d.dateLabel,{size:19})]),{fill:i%2?GRIS_CLR:BLANCO,w:cols[0]}),cell([para([txt(d.proyectoNombre,{size:19,bold:true})],{after:20}),...(d.lider?[para([txt('Líder: '+d.lider,{size:17,color:GRIS_TXT,italic:true})])]:[] )],{fill:i%2?GRIS_CLR:BLANCO,w:cols[1]}),cell(para([txt(d.esDescanso?'Sí':'—',{size:19,bold:d.esDescanso,color:d.esDescanso?ROJO:GRIS_TXT})],{align:AlignmentType.CENTER}),{fill:d.esDescanso?ROJO_CLR:(i%2?GRIS_CLR:BLANCO),w:cols[2]}),cell(para([txt(`+${d.hrs}h`,{size:22,bold:true,color:AZUL_MED})],{align:AlignmentType.CENTER}),{fill:AZUL_CLR,w:cols[3]})]})),
-        new TableRow({children:[cell(para([txt('TOTAL',{bold:true,size:20,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:AZUL,w:cols[0]+cols[1]+cols[2],span:3,bc:AZUL}),cell(para([txt(`+${w.totalHrs}h`,{size:24,bold:true,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL,w:cols[3],bc:AZUL})]})
+      var cols=[2600,3560,1400,1800];
+      var headerRow=new TableRow({tableHeader:true, children:[
+        cell(para([txt('Fecha',{bold:true,size:19,color:BLANCO})]),{fill:AZUL_MED,w:cols[0],bc:AZUL_MED}),
+        cell(para([txt('Proyecto / Líder',{bold:true,size:19,color:BLANCO})]),{fill:AZUL_MED,w:cols[1],bc:AZUL_MED}),
+        cell(para([txt('Descanso',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL_MED,w:cols[2],bc:AZUL_MED}),
+        cell(para([txt('Hrs extras',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL_MED,w:cols[3],bc:AZUL_MED})
       ]});
+      var dataRows=w.dias.map(function(d,i){
+        var liderChildren=[para([txt(d.proyectoNombre,{size:19,bold:true})],{after:20})];
+        if(d.lider) liderChildren.push(para([txt('Lider: '+d.lider,{size:17,color:GRIS_TXT,italic:true})]));
+        return new TableRow({children:[
+          cell(para([txt(d.dateLabel,{size:19})]),{fill:i%2?GRIS_CLR:BLANCO, w:cols[0]}),
+          cell(liderChildren,{fill:i%2?GRIS_CLR:BLANCO, w:cols[1]}),
+          cell(para([txt(d.esDescanso?'Si':'—',{size:19,bold:d.esDescanso,color:d.esDescanso?ROJO:GRIS_TXT})],{align:AlignmentType.CENTER}),
+               {fill:d.esDescanso?ROJO_CLR:(i%2?GRIS_CLR:BLANCO), w:cols[2]}),
+          cell(para([txt('+'+d.hrs+'h',{size:22,bold:true,color:AZUL_MED})],{align:AlignmentType.CENTER}),
+               {fill:AZUL_CLR, w:cols[3]})
+        ]});
+      });
+      var totalRow=new TableRow({children:[
+        cell(para([txt('TOTAL',{bold:true,size:20,color:BLANCO})],{align:AlignmentType.RIGHT}),
+             {fill:AZUL, w:cols[0]+cols[1]+cols[2], span:3, bc:AZUL}),
+        cell(para([txt('+'+w.totalHrs+'h',{size:24,bold:true,color:BLANCO})],{align:AlignmentType.CENTER}),
+             {fill:AZUL, w:cols[3], bc:AZUL})
+      ]});
+      return new Table({width:{size:W,type:WidthType.DXA}, columnWidths:cols, rows:[headerRow].concat(dataRows).concat([totalRow])});
     }
 
     function gastosTable(g){
-      const cols=[3000,1760,2800,1800];
-      const rows=[];
-      let ri=0;
-      g.proyectos.forEach(proj=>{
-        proj.gastos.forEach((gs,gi)=>{
-          const fill=ri%2?GRIS_CLR:BLANCO;
-          rows.push(new TableRow({children:[
-            cell(gi===0?[para([txt(proj.nombre,{size:19,bold:true})],{after:20}),...(proj.lider?[para([txt('Líder: '+proj.lider,{size:16,color:GRIS_TXT,italic:true})])]:[])]:[para([txt('',{size:19})])],{fill,w:cols[0]}),
-            cell(para([txt(gs.tipo,{size:19})],{align:AlignmentType.CENTER}),{fill,w:cols[1]}),
-            cell(para([txt(gs.desc,{size:19})]),{fill,w:cols[2]}),
-            cell(para([txt(money(gs.monto),{size:19,bold:true})],{align:AlignmentType.RIGHT}),{fill,w:cols[3]})
-          ]})); ri++;
-        });
-        if(proj.gastos.length>1) rows.push(new TableRow({children:[cell(para([txt('Subtotal proyecto',{size:18,color:GRIS_TXT,italic:true})],{align:AlignmentType.RIGHT}),{fill:GRIS_CLR,w:cols[0]+cols[1]+cols[2],span:3}),cell(para([txt(money(proj.subTotal),{size:19,bold:true,color:VERDE})],{align:AlignmentType.RIGHT}),{fill:VERDE_CLR,w:cols[3]})]}));
-      });
-      rows.push(new TableRow({children:[cell(para([txt('TOTAL DEL DÍA',{bold:true,size:20,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:VERDE,w:cols[0]+cols[1]+cols[2],span:3,bc:VERDE}),cell(para([txt(money(g.dayTotal),{size:22,bold:true,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:VERDE,w:cols[3],bc:VERDE})]}));
-      return new Table({width:{size:W,type:WidthType.DXA},columnWidths:cols,rows:[
-        new TableRow({tableHeader:true,children:[cell(para([txt('Proyecto',{bold:true,size:19,color:BLANCO})]),{fill:VERDE,w:cols[0],bc:VERDE}),cell(para([txt('Tipo',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:VERDE,w:cols[1],bc:VERDE}),cell(para([txt('Descripción',{bold:true,size:19,color:BLANCO})]),{fill:VERDE,w:cols[2],bc:VERDE}),cell(para([txt('Monto',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:VERDE,w:cols[3],bc:VERDE})]}),
-        ...rows
+      var cols=[3000,1760,2800,1800];
+      var headerRow=new TableRow({tableHeader:true, children:[
+        cell(para([txt('Proyecto',{bold:true,size:19,color:BLANCO})]),{fill:VERDE,w:cols[0],bc:VERDE}),
+        cell(para([txt('Tipo',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:VERDE,w:cols[1],bc:VERDE}),
+        cell(para([txt('Descripcion',{bold:true,size:19,color:BLANCO})]),{fill:VERDE,w:cols[2],bc:VERDE}),
+        cell(para([txt('Monto',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:VERDE,w:cols[3],bc:VERDE})
       ]});
+      var rows=[];
+      var ri=0;
+      g.proyectos.forEach(function(proj){
+        proj.gastos.forEach(function(gs,gi){
+          var fill=ri%2?GRIS_CLR:BLANCO;
+          var projChildren=gi===0
+            ? [para([txt(proj.nombre,{size:19,bold:true})],{after:20})].concat(
+                proj.lider?[para([txt('Lider: '+proj.lider,{size:16,color:GRIS_TXT,italic:true})])]:[])
+            : [para([txt('',{size:19})])];
+          rows.push(new TableRow({children:[
+            cell(projChildren,{fill:fill,w:cols[0]}),
+            cell(para([txt(gs.tipo,{size:19})],{align:AlignmentType.CENTER}),{fill:fill,w:cols[1]}),
+            cell(para([txt(gs.desc,{size:19})]),{fill:fill,w:cols[2]}),
+            cell(para([txt(money(gs.monto),{size:19,bold:true})],{align:AlignmentType.RIGHT}),{fill:fill,w:cols[3]})
+          ]}));
+          ri++;
+        });
+        if(proj.gastos.length>1){
+          rows.push(new TableRow({children:[
+            cell(para([txt('Subtotal proyecto',{size:18,color:GRIS_TXT,italic:true})],{align:AlignmentType.RIGHT}),
+                 {fill:GRIS_CLR, w:cols[0]+cols[1]+cols[2], span:3}),
+            cell(para([txt(money(proj.subTotal),{size:19,bold:true,color:VERDE})],{align:AlignmentType.RIGHT}),
+                 {fill:VERDE_CLR, w:cols[3]})
+          ]}));
+        }
+      });
+      rows.push(new TableRow({children:[
+        cell(para([txt('TOTAL DEL DIA',{bold:true,size:20,color:BLANCO})],{align:AlignmentType.RIGHT}),
+             {fill:VERDE, w:cols[0]+cols[1]+cols[2], span:3, bc:VERDE}),
+        cell(para([txt(money(g.dayTotal),{size:22,bold:true,color:BLANCO})],{align:AlignmentType.RIGHT}),
+             {fill:VERDE, w:cols[3], bc:VERDE})
+      ]}));
+      return new Table({width:{size:W,type:WidthType.DXA}, columnWidths:cols, rows:[headerRow].concat(rows)});
     }
 
-    function secHdr(title,fill){
-      return new Table({width:{size:W,type:WidthType.DXA},columnWidths:[W],rows:[new TableRow({children:[cell(para([txt(title,{bold:true,size:26,color:BLANCO})],{align:AlignmentType.LEFT}),{fill:fill||AZUL,w:W,borders:noBdrs(),mt:140,mb:140,ml:200})]})]});
-    }
-
-    const docHeader=new Header({children:[
-      new Table({width:{size:W,type:WidthType.DXA},columnWidths:[5000,4360],rows:[new TableRow({children:[cell(para([txt(data.appName,{bold:true,size:28,color:AZUL})]),{w:5000,borders:noBdrs()}),cell(para([txt('Nómina Semanal',{size:20,color:GRIS_TXT})],{align:AlignmentType.RIGHT}),{w:4360,borders:noBdrs()})]})]}),
-      new Paragraph({border:{bottom:{style:BorderStyle.SINGLE,size:8,color:AZUL_MED,space:1}},spacing:{before:60,after:120},children:[]})
+    var docHeader=new Header({children:[
+      new Table({
+        width:{size:W,type:WidthType.DXA}, columnWidths:[5000,4360],
+        rows:[new TableRow({children:[
+          cell(para([txt(data.appName,{bold:true,size:28,color:AZUL})]),{w:5000,borders:noBdrs()}),
+          cell(para([txt('Nomina Semanal',{size:20,color:GRIS_TXT})],{align:AlignmentType.RIGHT}),{w:4360,borders:noBdrs()})
+        ]})]
+      }),
+      new Paragraph({
+        border:{bottom:{style:BorderStyle.SINGLE,size:8,color:AZUL_MED,space:1}},
+        spacing:{before:60,after:120}, children:[]
+      })
     ]});
-    const docFooter=new Footer({children:[new Paragraph({border:{top:{style:BorderStyle.SINGLE,size:6,color:'CCCCCC',space:1}},spacing:{before:100,after:60},tabStops:[{type:TabStopType.RIGHT,position:W}],children:[txt(data.appName+' — Documento generado automáticamente',{size:16,color:GRIS_TXT}),new TextRun({text:'\tPágina ',size:16,color:GRIS_TXT,font:'Arial'}),new TextRun({children:[new PageNumberElement()],size:16,color:GRIS_TXT,font:'Arial'})]})]}); 
 
-    const ch=[];
+    var docFooter=new Footer({children:[
+      new Paragraph({
+        border:{top:{style:BorderStyle.SINGLE,size:6,color:'CCCCCC',space:1}},
+        spacing:{before:100,after:60},
+        tabStops:[{type:TabStopType.RIGHT,position:W}],
+        children:[
+          txt(data.appName+' — Documento generado automaticamente',{size:16,color:GRIS_TXT}),
+          new TextRun({text:'\tPagina ',size:16,color:GRIS_TXT,font:'Arial'}),
+          new TextRun({children:[new PageNumberElement()],size:16,color:GRIS_TXT,font:'Arial'})
+        ]
+      })
+    ]});
+
+    var ch=[];
+
     // Portada
-    ch.push(new Table({width:{size:W,type:WidthType.DXA},columnWidths:[W],rows:[new TableRow({children:[cell([para([txt('NÓMINA SEMANAL',{bold:true,size:52,color:BLANCO})],{align:AlignmentType.CENTER,after:80}),para([txt(data.thuStr+' — '+data.wedStr,{size:26,color:'BDD7EE'})],{align:AlignmentType.CENTER,after:80}),para([txt(data.appName,{size:22,color:'9DC3E6',italic:true})],{align:AlignmentType.CENTER})],{fill:AZUL,w:W,borders:noBdrs(),mt:280,mb:280})]})]});
+    ch.push(new Table({
+      width:{size:W,type:WidthType.DXA}, columnWidths:[W],
+      rows:[new TableRow({children:[
+        cell(
+          [para([txt('NOMINA SEMANAL',{bold:true,size:52,color:BLANCO})],{align:AlignmentType.CENTER,after:80}),
+           para([txt(data.thuStr+' - '+data.wedStr,{size:26,color:'BDD7EE'})],{align:AlignmentType.CENTER,after:80}),
+           para([txt(data.appName,{size:22,color:'9DC3E6',italic:true})],{align:AlignmentType.CENTER})],
+          {fill:AZUL, w:W, borders:noBdrs(), mt:280, mb:280}
+        )
+      ]})]
+    }));
     ch.push(sp(200));
+
     // KPIs
-    ch.push(secHdr('Resumen de la Semana',AZUL_MED));ch.push(sp(120));ch.push(kpiTable());ch.push(sp(200));
+    ch.push(secHdr('Resumen de la Semana',AZUL_MED));
+    ch.push(sp(120));
+    ch.push(kpiTable());
+    ch.push(sp(200));
+
     // Personal
-    if(data.resumenPersonal.length){ch.push(secHdr('Personal Registrado',AZUL));ch.push(sp(120));ch.push(persTable());ch.push(sp(200));}
-    // HE
+    if(data.resumenPersonal.length){
+      ch.push(secHdr('Personal Registrado',AZUL));
+      ch.push(sp(120));
+      ch.push(persTable());
+      ch.push(sp(200));
+    }
+
+    // Horas extras
     if(data.workerRows.length){
       ch.push(secHdr('Horas Extras por Trabajador',AZUL_MED));
-      data.workerRows.forEach(w=>{
+      data.workerRows.forEach(function(w){
         ch.push(sp(160));
-        ch.push(new Table({width:{size:W,type:WidthType.DXA},columnWidths:[7000,2360],rows:[new TableRow({children:[cell([para([txt(w.nombre,{bold:true,size:24,color:AZUL})],{after:20}),...(w.cargo?[para([txt(w.cargo,{size:20,color:GRIS_TXT,italic:true})])]:[] )],{fill:AZUL_CLR,w:7000,borders:noBdrs(),ml:160}),cell([para([txt(`+${w.totalHrs}h`,{bold:true,size:36,color:AZUL_MED})],{align:AlignmentType.CENTER}),para([txt('total semana',{size:16,color:GRIS_TXT})],{align:AlignmentType.CENTER})],{fill:AZUL_CLR,w:2360,borders:noBdrs()})]})]});
-        if(w.faltas||w.vacaciones){const b=[];if(w.faltas)b.push(txt(`  Faltas: ${w.faltas}d  `,{size:18,bold:true,color:ROJO}));if(w.vacaciones)b.push(txt(`  Vacaciones: ${w.vacaciones}d  `,{size:18,bold:true,color:ORO}));ch.push(sp(60));ch.push(para(b,{before:60}));}
-        ch.push(sp(80));ch.push(heTable(w));
+        var workerCardChildren=[
+          para([txt(w.nombre,{bold:true,size:24,color:AZUL})],{after:20})
+        ];
+        if(w.cargo) workerCardChildren.push(para([txt(w.cargo,{size:20,color:GRIS_TXT,italic:true})]));
+        ch.push(new Table({
+          width:{size:W,type:WidthType.DXA}, columnWidths:[7000,2360],
+          rows:[new TableRow({children:[
+            cell(workerCardChildren,{fill:AZUL_CLR, w:7000, borders:noBdrs(), ml:160}),
+            cell(
+              [para([txt('+'+w.totalHrs+'h',{bold:true,size:36,color:AZUL_MED})],{align:AlignmentType.CENTER}),
+               para([txt('total semana',{size:16,color:GRIS_TXT})],{align:AlignmentType.CENTER})],
+              {fill:AZUL_CLR, w:2360, borders:noBdrs()}
+            )
+          ]})]
+        }));
+        if(w.faltas||w.vacaciones){
+          var badges=[];
+          if(w.faltas) badges.push(txt('  Faltas: '+w.faltas+'d  ',{size:18,bold:true,color:ROJO}));
+          if(w.vacaciones) badges.push(txt('  Vacaciones: '+w.vacaciones+'d  ',{size:18,bold:true,color:ORO}));
+          ch.push(sp(60));
+          ch.push(para(badges,{before:60}));
+        }
+        ch.push(sp(80));
+        ch.push(heTable(w));
       });
       ch.push(sp(120));
-      ch.push(new Table({width:{size:W,type:WidthType.DXA},columnWidths:[7000,2360],rows:[new TableRow({children:[cell(para([txt('TOTAL HORAS EXTRAS DE LA SEMANA',{bold:true,size:22,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:AZUL,w:7000,bc:AZUL}),cell(para([txt(`+${data.totalHrs}h`,{bold:true,size:28,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL,w:2360,bc:AZUL})]})]});
+      ch.push(new Table({
+        width:{size:W,type:WidthType.DXA}, columnWidths:[7000,2360],
+        rows:[new TableRow({children:[
+          cell(para([txt('TOTAL HORAS EXTRAS DE LA SEMANA',{bold:true,size:22,color:BLANCO})],{align:AlignmentType.RIGHT}),
+               {fill:AZUL, w:7000, bc:AZUL}),
+          cell(para([txt('+'+data.totalHrs+'h',{bold:true,size:28,color:BLANCO})],{align:AlignmentType.CENTER}),
+               {fill:AZUL, w:2360, bc:AZUL})
+        ]})]
+      }));
       ch.push(sp(200));
     }
+
     // Gastos
     if(data.gastosRows.length){
-      ch.push(secHdr('Gastos Extras por Día',VERDE));
-      data.gastosRows.forEach(g=>{
+      ch.push(secHdr('Gastos Extras por Dia',VERDE));
+      data.gastosRows.forEach(function(g){
         ch.push(sp(160));
-        ch.push(new Table({width:{size:W,type:WidthType.DXA},columnWidths:[7000,2360],rows:[new TableRow({children:[cell([para([txt(g.dateLabel,{bold:true,size:24,color:VERDE})],{after:g.esDescanso?20:0}),...(g.esDescanso?[para([txt('Día de descanso',{size:18,color:ROJO,italic:true})])]:[] )],{fill:VERDE_CLR,w:7000,borders:noBdrs(),ml:160}),cell([para([txt(money(g.dayTotal),{bold:true,size:28,color:VERDE})],{align:AlignmentType.CENTER}),para([txt('total del día',{size:16,color:GRIS_TXT})],{align:AlignmentType.CENTER})],{fill:VERDE_CLR,w:2360,borders:noBdrs()})]})]});
-        ch.push(sp(80));ch.push(gastosTable(g));
+        var gastoCardChildren=[
+          para([txt(g.dateLabel,{bold:true,size:24,color:VERDE})],{after:g.esDescanso?20:0})
+        ];
+        if(g.esDescanso) gastoCardChildren.push(para([txt('Dia de descanso',{size:18,color:ROJO,italic:true})]));
+        ch.push(new Table({
+          width:{size:W,type:WidthType.DXA}, columnWidths:[7000,2360],
+          rows:[new TableRow({children:[
+            cell(gastoCardChildren,{fill:VERDE_CLR, w:7000, borders:noBdrs(), ml:160}),
+            cell(
+              [para([txt(money(g.dayTotal),{bold:true,size:28,color:VERDE})],{align:AlignmentType.CENTER}),
+               para([txt('total del dia',{size:16,color:GRIS_TXT})],{align:AlignmentType.CENTER})],
+              {fill:VERDE_CLR, w:2360, borders:noBdrs()}
+            )
+          ]})]
+        }));
+        ch.push(sp(80));
+        ch.push(gastosTable(g));
       });
       ch.push(sp(120));
-      ch.push(new Table({width:{size:W,type:WidthType.DXA},columnWidths:[7000,2360],rows:[new TableRow({children:[cell(para([txt('TOTAL GASTOS EXTRAS DE LA SEMANA',{bold:true,size:22,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:VERDE,w:7000,bc:VERDE}),cell(para([txt(money(data.totalGastos),{bold:true,size:28,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:VERDE,w:2360,bc:VERDE})]})]});
+      ch.push(new Table({
+        width:{size:W,type:WidthType.DXA}, columnWidths:[7000,2360],
+        rows:[new TableRow({children:[
+          cell(para([txt('TOTAL GASTOS EXTRAS DE LA SEMANA',{bold:true,size:22,color:BLANCO})],{align:AlignmentType.RIGHT}),
+               {fill:VERDE, w:7000, bc:VERDE}),
+          cell(para([txt(money(data.totalGastos),{bold:true,size:28,color:BLANCO})],{align:AlignmentType.RIGHT}),
+               {fill:VERDE, w:2360, bc:VERDE})
+        ]})]
+      }));
       ch.push(sp(200));
     }
-    ch.push(new Paragraph({border:{top:{style:BorderStyle.SINGLE,size:8,color:AZUL_MED,space:1}},spacing:{before:200,after:80},children:[txt('Generado por '+data.appName,{size:18,color:GRIS_TXT,italic:true})]}));
 
-    const doc=new Document({
+    ch.push(new Paragraph({
+      border:{top:{style:BorderStyle.SINGLE,size:8,color:AZUL_MED,space:1}},
+      spacing:{before:200,after:80},
+      children:[txt('Generado por '+data.appName,{size:18,color:GRIS_TXT,italic:true})]
+    }));
+
+    var doc=new Document({
       styles:{default:{document:{run:{font:'Arial',size:22}}}},
-      sections:[{properties:{page:{size:{width:12240,height:15840},margin:{top:1080,right:1080,bottom:1080,left:1080}}},headers:{default:docHeader},footers:{default:docFooter},children:ch}]
+      sections:[{
+        properties:{page:{size:{width:12240,height:15840},margin:{top:1080,right:1080,bottom:1080,left:1080}}},
+        headers:{default:docHeader},
+        footers:{default:docFooter},
+        children:ch
+      }]
     });
 
-    Packer.toBlob(doc).then(blob=>{
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement('a');
+    Packer.toBlob(doc).then(function(blob){
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a');
       a.href=url; a.download=fileName;
       document.body.appendChild(a); a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast('✓ Word descargado','ok');
-    }).catch(e=>{ console.error(e); toast('Error generando Word','err'); });
+      toast('Word descargado','ok');
+    }).catch(function(e){ console.error(e); toast('Error generando Word','err'); });
   }
 
-  // Cargar docx UMD desde CDN si no está en window
   if(window.docx){ run(window.docx); return; }
-  const s=document.createElement('script');
+  var s=document.createElement('script');
   s.src='https://cdn.jsdelivr.net/npm/docx@9.5.3/dist/index.umd.cjs';
-  s.onload=()=>{ window.docx=window.docx||{}; run(window.docx); };
-  s.onerror=()=>toast('Sin conexión para generar Word','err');
+  s.onload=function(){ run(window.docx); };
+  s.onerror=function(){ toast('Sin conexion para generar Word','err'); };
   document.head.appendChild(s);
 }
 
@@ -4302,23 +4505,45 @@ function sendMagicLink(){
 function _doSendMagicLink(email,errEl,btn){
   errEl.textContent='';
   if(btn){ btn.disabled=true; btn.textContent='Enviando...'; }
-  // Send magic link via Supabase Auth
-  fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/magiclink',{
+
+  function resetBtn(){ if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; } }
+
+  // Supabase usa /auth/v1/otp para magic links (magiclink fue deprecado)
+  fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/otp',{
     method:'POST',
     credentials:'omit',
     headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Content-Type':'application/json'},
-    body:JSON.stringify({email:email, redirect_to:'https://gregarious-trifle-532fd3.netlify.app'})
+    body:JSON.stringify({email:email, create_user:false})
   }).then(function(res){
-    if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; }
+    resetBtn();
     if(res.ok||res.status===200||res.status===204){
       document.getElementById('login-step-email').style.display='none';
       document.getElementById('login-step-sent').style.display='block';
-      document.getElementById('login-sent-msg').innerHTML='Enviamos un link a<br><b>'+email+'</b><br><br>Toca el link en tu correo para entrar.<br><span style="font-size:11px;color:var(--txt3)">El link expira en 1 hora</span>';
+      document.getElementById('login-sent-msg').innerHTML=
+        'Enviamos un link a<br><b>'+email+'</b><br><br>'+
+        'Toca el link en tu correo para entrar.<br>'+
+        '<span style="font-size:11px;color:var(--txt3)">El link expira en 1 hora · revisa Spam si no llega</span>';
     } else {
-      errEl.textContent='Error al enviar. Intenta de nuevo.';
+      // Mostrar error real de Supabase para poder diagnosticar
+      res.json().then(function(body){
+        var msg=body&&(body.error_description||body.msg||body.message||body.error)||'';
+        console.error('Supabase OTP error:', res.status, body);
+        if(msg.toLowerCase().includes('email not confirmed')||msg.toLowerCase().includes('user not found')){
+          errEl.textContent='Correo no registrado en el sistema. Contacta al administrador.';
+        } else if(msg.toLowerCase().includes('rate limit')||res.status===429){
+          errEl.textContent='Demasiados intentos. Espera unos minutos e intenta de nuevo.';
+        } else if(msg){
+          errEl.textContent='Error: '+msg;
+        } else {
+          errEl.textContent='Error al enviar ('+res.status+'). Intenta de nuevo.';
+        }
+      }).catch(function(){
+        errEl.textContent='Error al enviar ('+res.status+'). Intenta de nuevo.';
+      });
     }
-  }).catch(function(){
-    if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; }
+  }).catch(function(err){
+    resetBtn();
+    console.error('Magic link fetch error:', err);
     errEl.textContent='Sin conexión. Verifica tu internet.';
   });
 }
