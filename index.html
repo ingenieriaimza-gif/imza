@@ -3632,14 +3632,23 @@ function _abrirReporteHTML(d){
   ifr.onload=function(){
     setTimeout(function(){
       try{
+        var fmtFn=function(iso){ var p=iso.split('-'); return p[2]+'-'+p[1]+'-'+p[0]; };
+        var pdfName='Nomina_'+fmtFn(d.thuRaw)+'_a_'+fmtFn(d.wedRaw);
+        // Cambiar título de la página padre para que el diálogo de impresión use ese nombre
+        var oldTitle=document.title;
+        document.title=pdfName;
         ifr.contentWindow.focus();
         ifr.contentWindow.print();
-        setTimeout(function(){ URL.revokeObjectURL(url); },60000);
+        // Restaurar título original después de un momento
+        setTimeout(function(){
+          document.title=oldTitle;
+          URL.revokeObjectURL(url);
+        },60000);
         toast('Selecciona "Guardar como PDF" en el dialogo','ok');
       }catch(e){
         var a=document.createElement('a');
-        var fmtFn=function(iso){ var p=iso.split('-'); return p[2]+'-'+p[1]+'-'+p[0]; };
-        a.href=url; a.download='Nomina_'+fmtFn(d.thuRaw)+'_a_'+fmtFn(d.wedRaw)+'.html';
+        var fmtFn2=function(iso){ var p=iso.split('-'); return p[2]+'-'+p[1]+'-'+p[0]; };
+        a.href=url; a.download='Nomina_'+fmtFn2(d.thuRaw)+'_a_'+fmtFn2(d.wedRaw)+'.html';
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         toast('Reporte descargado','ok');
       }
