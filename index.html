@@ -2251,6 +2251,9 @@ function weekKey(dateStr){
 
 function rHistDia(){
   const c=document.getElementById('hist-list');
+  // Guardar qué acordeones están abiertos antes de re-renderizar
+  const prevOpen=saveAccordionState(c);
+
   let dates=Object.keys(S.actividades).filter(d=>(S.actividades[d]||[]).length).sort((a,b)=>b.localeCompare(a));
   if(hf==='week'){const cut=new Date();cut.setDate(cut.getDate()-7);const cs=cut.toISOString().split('T')[0];dates=dates.filter(d=>d>=cs);}
   else if(hf==='month'){const cut=new Date();cut.setDate(cut.getDate()-30);const cs=cut.toISOString().split('T')[0];dates=dates.filter(d=>d>=cs);}
@@ -2302,7 +2305,7 @@ function rHistDia(){
       const wC=new Set(acts.flatMap(a=>a.trabajadores||[])).size;
       const iT=date===td();
 
-      html+=`<div class="hday" style="border-color:${iT?'var(--gold)':pal.border};border-width:${iT?'2px':'1px'};margin-bottom:6px;${iT?'box-shadow:0 0 0 1px rgba(240,201,74,0.15)':''}">
+      html+=`<div class="hday" data-hkey="${date}" style="border-color:${iT?'var(--gold)':pal.border};border-width:${iT?'2px':'1px'};margin-bottom:6px;${iT?'box-shadow:0 0 0 1px rgba(240,201,74,0.15)':''}">
         <div class="hday-h" onclick="togH(this)" style="background:${iT?'rgba(240,201,74,0.06)':pal.hbg}">
           <div style="display:flex;align-items:center;gap:10px">
             ${iT?`<div style="width:6px;height:6px;border-radius:50%;background:var(--gold);flex-shrink:0;box-shadow:0 0 6px var(--gold)"></div>`:`<div style="width:6px;height:6px;border-radius:50%;background:${pal.border};opacity:0.5;flex-shrink:0"></div>`}
@@ -2325,10 +2328,15 @@ function rHistDia(){
     });
   });
   c.innerHTML=html;
+  // Restaurar acordeones que estaban abiertos antes del re-render
+  restoreAccordionState(c, prevOpen);
 }
 
 function rHistProj(){
   const c=document.getElementById('hist-list');
+  // Guardar qué acordeones están abiertos antes de re-renderizar
+  const prevOpen=saveAccordionState(c);
+
   if(!S.proyectos.length){c.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/></svg><p>Sin proyectos registrados</p></div>';return;}
 
   // Build map: proyectoId -> [{date, act}]
@@ -2372,7 +2380,7 @@ function rHistProj(){
       </div>`;
     }
 
-    return`<div class="hday" style="margin-bottom:6px">
+    return`<div class="hday" data-hkey="proj-${proj.id}" style="margin-bottom:6px">
       <div class="hday-h" onclick="togH(this)" style="padding:12px 14px">
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
           <div style="width:34px;height:34px;border-radius:9px;background:${projColor}22;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${projColor};flex-shrink:0">${pCode}</div>
@@ -2398,10 +2406,10 @@ function rHistProj(){
     </div>`;
   }
 
-  function buildGroup(icon,label,color,badgeCls,projects,subtitle){
+  function buildGroup(icon,label,color,badgeCls,projects,subtitle,groupKey){
     const count=projects.length;
     const cards=projects.map(p=>buildProjCard(p)).join('');
-    return`<div class="hday" style="margin-bottom:12px;border-color:${color}40;overflow:visible">
+    return`<div class="hday" data-hkey="group-${groupKey}" style="margin-bottom:12px;border-color:${color}40;overflow:visible">
       <div class="hday-h" onclick="togH(this)" style="background:${color}0a;border-radius:var(--r) var(--r) 0 0">
         <div style="display:flex;align-items:center;gap:10px">
           <div style="width:38px;height:38px;border-radius:11px;background:${color}18;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">${icon}</div>
@@ -2415,14 +2423,13 @@ function rHistProj(){
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;color:${color}"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
       </div>
-      <div class="hbody" style="padding:8px 6px 4px;background:${color}04">
+      <div class="hbody open" style="padding:8px 6px 4px;background:${color}04">
         ${count?cards:'<div style="color:var(--txt3);font-size:13px;text-align:center;padding:16px">Sin proyectos en esta categoría</div>'}
       </div>
     </div>`;
   }
 
   const actPaus = sortByActivity(S.proyectos.filter(p=>p.estado==='activo'||p.estado==='pausado'));
-  // Completados: ordered by inicio desc (most recently started = most recently finished)
   const completados = S.proyectos.filter(p=>p.estado==='completado')
     .sort((a,b)=>(b.inicio||'').localeCompare(a.inicio||''));
 
@@ -2430,8 +2437,27 @@ function rHistProj(){
   const compSubtitle = completados.length+' proyecto'+(completados.length!==1?'s':'')+' terminados';
 
   c.innerHTML =
-    buildGroup('🏗️','Activos y Pausados','var(--green)','bgr', actPaus, apSubtitle) +
-    buildGroup('✅','Completados','var(--blue)','bb', completados, compSubtitle);
+    buildGroup('🏗️','Activos y Pausados','var(--green)','bgr', actPaus, apSubtitle,'activos') +
+    buildGroup('✅','Completados','var(--blue)','bb', completados, compSubtitle,'completados');
+  // Restaurar acordeones que estaban abiertos antes del re-render
+  restoreAccordionState(c, prevOpen);
+}
+
+// ── ACORDEONES: guardar y restaurar estado open tras re-render ────────────────
+function saveAccordionState(container){
+  const state=new Set();
+  container.querySelectorAll('[data-hkey]').forEach(function(el){
+    var body=el.querySelector('.hbody');
+    if(body&&body.classList.contains('open')) state.add(el.dataset.hkey);
+  });
+  return state;
+}
+function restoreAccordionState(container, state){
+  if(!state||!state.size) return;
+  container.querySelectorAll('[data-hkey]').forEach(function(el){
+    var body=el.querySelector('.hbody');
+    if(body&&state.has(el.dataset.hkey)) body.classList.add('open');
+  });
 }
 
 function togH(head){head.nextElementSibling.classList.toggle('open');}
