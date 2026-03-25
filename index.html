@@ -2304,6 +2304,8 @@ function rHistDia(){
       const gT=acts.reduce((s,a)=>s+sumG(a.gastos),0);
       const wC=new Set(acts.flatMap(a=>a.trabajadores||[])).size;
       const iT=date===td();
+      // Primera vez (sin estado previo): abrir sólo el día de hoy. En re-renders respetar el estado anterior.
+      const isOpen=prevOpen.size===0 ? iT : prevOpen.has(date);
 
       html+=`<div class="hday" data-hkey="${date}" style="border-color:${iT?'var(--gold)':pal.border};border-width:${iT?'2px':'1px'};margin-bottom:6px;${iT?'box-shadow:0 0 0 1px rgba(240,201,74,0.15)':''}">
         <div class="hday-h" onclick="togH(this)" style="background:${iT?'rgba(240,201,74,0.06)':pal.hbg}">
@@ -2323,13 +2325,11 @@ function rHistDia(){
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
         </div>
-        <div class="hbody">${acts.map(a=>rACard(a,date)).join('')}</div>
+        <div class="hbody${isOpen?' open':''}">${acts.map(a=>rACard(a,date)).join('')}</div>
       </div>`;
     });
   });
   c.innerHTML=html;
-  // Restaurar acordeones que estaban abiertos antes del re-render
-  restoreAccordionState(c, prevOpen);
 }
 
 function rHistProj(){
@@ -2409,6 +2409,8 @@ function rHistProj(){
   function buildGroup(icon,label,color,badgeCls,projects,subtitle,groupKey){
     const count=projects.length;
     const cards=projects.map(p=>buildProjCard(p)).join('');
+    // Si hay estado previo, respetarlo; si es primera vez, abrir por defecto
+    const isOpen=prevOpen.size===0 ? true : prevOpen.has('group-'+groupKey);
     return`<div class="hday" data-hkey="group-${groupKey}" style="margin-bottom:12px;border-color:${color}40;overflow:visible">
       <div class="hday-h" onclick="togH(this)" style="background:${color}0a;border-radius:var(--r) var(--r) 0 0">
         <div style="display:flex;align-items:center;gap:10px">
@@ -2423,7 +2425,7 @@ function rHistProj(){
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;color:${color}"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
       </div>
-      <div class="hbody open" style="padding:8px 6px 4px;background:${color}04">
+      <div class="hbody${isOpen?' open':''}" style="padding:8px 6px 4px;background:${color}04">
         ${count?cards:'<div style="color:var(--txt3);font-size:13px;text-align:center;padding:16px">Sin proyectos en esta categoría</div>'}
       </div>
     </div>`;
