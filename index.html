@@ -3214,7 +3214,6 @@ function copyWeekHE(){
   var resumenPersonal=S.personal.filter(function(p){ return p.estado!=='inactivo'; })
     .map(function(p){
       var abs=getWorkerAbsences(p.id,thuStr,wedStr);
-      // Determinar estado predominante en la semana
       var estSemana='activo';
       if(abs.faltas.length>0) estSemana='falta';
       else if(abs.vacaciones.length>0) estSemana='vacaciones';
@@ -3222,12 +3221,16 @@ function copyWeekHE(){
         nombre:p.nombre, cargo:p.cargo||'',
         estado:estSemana,
         faltas:abs.faltas.length,
-        vacaciones:abs.vacaciones.length
+        vacaciones:abs.vacaciones.length,
+        // Fechas exactas para mostrar en el reporte
+        faltasDates:abs.faltas.map(function(ds){ return fmtD(ds); }),
+        vacacionesDates:abs.vacaciones.map(function(ds){ return fmtD(ds); })
       };
     });
 
   var data={
     thuStr:fmtDate(thuStr), wedStr:fmtDate(wedStr), appName:appName,
+    thuRaw:thuStr, wedRaw:wedStr,
     workerRows:workerRows, gastosRows:gastosRows,
     totalHrs:totalHrs, totalGastos:totalGastos2,
     totalFaltas:totalFaltas, totalVac:totalVac,
@@ -3418,8 +3421,9 @@ function _abrirReporteHTML(d){
   '.kpi,.card,.rc{page-break-inside:avoid!important;break-inside:avoid!important;}'+
   '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}';
 
+  var fmtFN=function(iso){ var p=iso.split('-'); return p[2]+'-'+p[1]+'-'+p[0]; };
   var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'+
-  '<title>Nomina '+d.thuStr+'</title>'+
+  '<title>Nomina_'+fmtFN(d.thuRaw)+'_a_'+fmtFN(d.wedRaw)+'</title>'+
   '<style>'+css+'</style></head><body><div class="page">'+
 
   // HEADER
@@ -3552,20 +3556,20 @@ function _abrirReporteHTML(d){
   '<table>'+
   '<colgroup>'+
   '<col style="width:26px">'+
-  '<col style="width:145px">'+
-  '<col style="width:120px">'+
-  '<col style="width:60px">'+
-  '<col style="width:68px">'+
-  '<col style="width:48px">'+
-  '<col style="width:62px">'+
+  '<col style="width:140px">'+
+  '<col style="width:110px">'+
+  '<col style="width:58px">'+
+  '<col style="width:65px">'+
+  '<col style="width:100px">'+
+  '<col style="width:100px">'+
   '</colgroup>'+
   '<thead><tr>'+
   '<th colspan="2">Trabajador</th>'+
   '<th>Cargo</th>'+
   '<th style="text-align:center">Estado</th>'+
   '<th style="text-align:center">HE Semana</th>'+
-  '<th style="text-align:center">Faltas</th>'+
-  '<th style="text-align:center">Vacaciones</th>'+
+  '<th style="text-align:center">Días con Falta</th>'+
+  '<th style="text-align:center">Días de Vacaciones</th>'+
   '</tr></thead><tbody>'+
   d.resumenPersonal.map(function(p,i){
     var heW=d.workerRows.find(function(w){return w.nombre===p.nombre;});
@@ -3573,9 +3577,31 @@ function _abrirReporteHTML(d){
     var lm={activo:'Activo',vacaciones:'Vac.',falta:'Falta',inactivo:'Inact.'};
     var dm={activo:'dg',vacaciones:'da',falta:'dr',inactivo:'dgr'};
     var bg=i%2?'#FAFAFA':'#fff';
-    // Usar datos de ausencia directamente de resumenPersonal (ya calculados para esa semana)
     var faltasDias=p.faltas||0;
     var vacDias=p.vacaciones||0;
+
+    // Pills de días de falta
+    var faltasHtml='<span style="color:#CBD5E1">0</span>';
+    if(faltasDias>0){
+      faltasHtml='<div style="display:flex;flex-wrap:wrap;gap:2px;justify-content:center">';
+      (p.faltasDates||[]).forEach(function(fd){
+        var short=fd.split(' ').slice(0,2).join(' ');
+        faltasHtml+='<span style="display:inline-block;background:#FEE2E2;border:1px solid #FECACA;border-radius:3px;padding:1px 5px;font-size:7.5px;font-weight:600;color:#991B1B;white-space:nowrap">'+short+'</span>';
+      });
+      faltasHtml+='</div>';
+    }
+
+    // Pills de días de vacaciones
+    var vacHtml='<span style="color:#CBD5E1">0</span>';
+    if(vacDias>0){
+      vacHtml='<div style="display:flex;flex-wrap:wrap;gap:2px;justify-content:center">';
+      (p.vacacionesDates||[]).forEach(function(vd){
+        var short=vd.split(' ').slice(0,2).join(' ');
+        vacHtml+='<span style="display:inline-block;background:#FEF3C7;border:1px solid #FDE68A;border-radius:3px;padding:1px 5px;font-size:7.5px;font-weight:600;color:#92400E;white-space:nowrap">'+short+'</span>';
+      });
+      vacHtml+='</div>';
+    }
+
     return '<tr style="background:'+bg+';border-bottom:1px solid #F9FAFB;">'+
       '<td style="padding:4px 3px 4px 8px"><div class="av">'+ini(p.nombre)+'</div></td>'+
       '<td style="font-weight:600;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:143px">'+p.nombre+'</td>'+
@@ -3584,8 +3610,8 @@ function _abrirReporteHTML(d){
         '<span class="dot '+(dm[p.estado]||'dgr')+'"></span>'+(lm[p.estado]||p.estado)+
       '</span></td>'+
       '<td style="text-align:center">'+(heW?'<span class="bd bb">+'+heW.totalHrs+'h</span>':'<span style="color:#CBD5E1">—</span>')+'</td>'+
-      '<td style="text-align:center">'+(faltasDias>0?'<span class="bd br">'+faltasDias+'d</span>':'<span style="color:#CBD5E1">0</span>')+'</td>'+
-      '<td style="text-align:center">'+(vacDias>0?'<span class="bd ba">'+vacDias+'d</span>':'<span style="color:#CBD5E1">0</span>')+'</td>'+
+      '<td style="padding:4px 6px;vertical-align:middle">'+faltasHtml+'</td>'+
+      '<td style="padding:4px 6px;vertical-align:middle">'+vacHtml+'</td>'+
     '</tr>';
   }).join('')+
   '</tbody></table></div>'+
@@ -3612,7 +3638,8 @@ function _abrirReporteHTML(d){
         toast('Selecciona "Guardar como PDF" en el dialogo','ok');
       }catch(e){
         var a=document.createElement('a');
-        a.href=url; a.download='Nomina_'+d.thuStr+'_'+d.wedStr+'.html';
+        var fmtFn=function(iso){ var p=iso.split('-'); return p[2]+'-'+p[1]+'-'+p[0]; };
+        a.href=url; a.download='Nomina_'+fmtFn(d.thuRaw)+'_a_'+fmtFn(d.wedRaw)+'.html';
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         toast('Reporte descargado','ok');
       }
