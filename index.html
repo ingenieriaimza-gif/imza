@@ -1815,7 +1815,7 @@ function rACard(a,date){
           ${wknd?'<span class="weekend-tag">🔴 Descanso +hrs</span>':''}
           ${totalHE?`<span class="weekend-tag" style="background:rgba(240,96,96,0.1);color:var(--red)">⏱ ${totalHE}h extras</span>`:''}
         </div>
-        <div class="aproj" style="color:${c}"><span style="font-size:12px;opacity:0.7;font-weight:700;margin-right:4px">${gcode(a.proyectoId)}</span>${gpn(a.proyectoId)}</div>${a.notas?`<div class="anote">${a.notas}</div>`:''}</div>
+        <div class="aproj" style="color:${c}"><span style="font-size:12px;opacity:0.7;font-weight:700;margin-right:4px">${gcode(a.proyectoId)}</span>${gpn(a.proyectoId)}</div>${gpl(a.proyectoId)?`<div style="font-size:12px;color:var(--txt2);margin-top:2px">👷 ${gpl(a.proyectoId)}</div>`:''}${a.notas?`<div class="anote">${a.notas}</div>`:''}</div>
       <div class="abtns">
         <button class="ibtn ibe" onclick="openActM('${a.id}','${date}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
         <button class="ibtn ibd" onclick="dAct('${a.id}','${date}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></button>
