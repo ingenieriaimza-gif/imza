@@ -3226,296 +3226,264 @@ function _abrirReporteHTML(d){
   var money=function(n){ return '$'+Number(n||0).toLocaleString('es-MX'); };
   var maxHrs=d.workerRows.reduce(function(m,w){ return Math.max(m,w.totalHrs); },1);
 
-  // ── SVG barras horizontales para HE ──────────────────────────────────────
   function svgBarsH(items,W){
-    if(!items.length) return '<div style="color:#94A3B8;font-size:10px;padding:6px">Sin datos</div>';
-    var n=items.length;
-    var lw=82, rw=28, bh=9, gap=4;
-    var chartW=W-lw-rw-8;
-    var H=n*(bh+gap)+4;
+    if(!items.length) return '<p style="color:#94A3B8;font-size:10px;padding:6px">Sin datos</p>';
+    var n=items.length, lw=84, rw=30, bh=9, gap=4;
+    var cw=W-lw-rw-8;
+    var H=n*(bh+gap)+2;
     var maxV=items.reduce(function(m,x){return Math.max(m,x.v);},1);
-    var out='<svg width="'+W+'" height="'+H+'" style="display:block;overflow:visible">';
-    items.forEach(function(item,i){
+    var s='<svg width="'+W+'" height="'+H+'" style="display:block;overflow:visible">';
+    items.forEach(function(it,i){
       var y=i*(bh+gap);
-      var bw=Math.max(2,Math.round((item.v/maxV)*chartW));
-      var col=i%2===0?'#3B82F6':'#7C3AED';
-      out+='<rect x="'+lw+'" y="'+y+'" width="'+chartW+'" height="'+bh+'" rx="2" fill="#EFF6FF"/>';
-      out+='<rect x="'+lw+'" y="'+y+'" width="'+bw+'" height="'+bh+'" rx="2" fill="'+col+'"/>';
-      out+='<text x="'+(lw-3)+'" y="'+(y+bh/2+0.5)+'" text-anchor="end" dominant-baseline="middle" font-size="8" fill="#374151" font-family="Arial,sans-serif">'+item.l+'</text>';
-      out+='<text x="'+(lw+bw+3)+'" y="'+(y+bh/2+0.5)+'" dominant-baseline="middle" font-size="8" font-weight="700" fill="'+col+'" font-family="Arial,sans-serif">+'+item.v+'h</text>';
+      var bw=Math.max(2,Math.round((it.v/maxV)*cw));
+      var c=i%2===0?'#3B82F6':'#7C3AED';
+      s+='<rect x="'+lw+'" y="'+y+'" width="'+cw+'" height="'+bh+'" rx="2" fill="#EFF6FF"/>';
+      s+='<rect x="'+lw+'" y="'+y+'" width="'+bw+'" height="'+bh+'" rx="2" fill="'+c+'"/>';
+      s+='<text x="'+(lw-4)+'" y="'+(y+bh/2)+'" text-anchor="end" dominant-baseline="middle" font-size="8" fill="#374151" font-family="Arial">'+it.l+'</text>';
+      s+='<text x="'+(lw+bw+3)+'" y="'+(y+bh/2)+'" dominant-baseline="middle" font-size="8" font-weight="700" fill="'+c+'" font-family="Arial">+'+it.v+'h</text>';
     });
-    out+='</svg>';
-    return out;
+    return s+'</svg>';
   }
 
-  // ── SVG barras verticales para gastos ─────────────────────────────────────
   function svgBarsV(items,W,H){
-    if(!items.length) return '<div style="color:#94A3B8;font-size:10px;padding:6px">Sin datos</div>';
-    var n=items.length;
-    var lh=14, ch=H-lh;
+    if(!items.length) return '<p style="color:#94A3B8;font-size:10px;padding:6px">Sin datos</p>';
+    var n=items.length, lh=14, ch=H-lh;
     var maxV=items.reduce(function(m,x){return Math.max(m,x.v);},1);
-    var bw=Math.max(16,Math.min(40,Math.floor((W-20)/(n*1.4))));
-    var total=n*bw+(n-1)*6;
-    var sx=Math.floor((W-total)/2);
-    var out='<svg width="'+W+'" height="'+H+'" style="display:block">';
+    var bw=Math.max(18,Math.min(42,Math.floor((W-20)/(n*1.4))));
+    var tot=n*bw+(n-1)*6, sx=Math.floor((W-tot)/2);
+    var s='<svg width="'+W+'" height="'+H+'" style="display:block">';
     for(var g=1;g<=3;g++){
       var gy=Math.round(2+(ch-4)*(1-g/3));
-      out+='<line x1="0" y1="'+gy+'" x2="'+W+'" y2="'+gy+'" stroke="#F1F5F9" stroke-width="1"/>';
+      s+='<line x1="0" y1="'+gy+'" x2="'+W+'" y2="'+gy+'" stroke="#F1F5F9" stroke-width="1"/>';
     }
-    items.forEach(function(item,i){
-      var bhi=Math.max(3,Math.round((item.v/maxV)*(ch-10)));
+    items.forEach(function(it,i){
+      var bhi=Math.max(3,Math.round((it.v/maxV)*(ch-10)));
       var bx=sx+i*(bw+6), by=ch-bhi;
-      var col=i%2===0?'#059669':'#10B981';
-      out+='<rect x="'+bx+'" y="'+by+'" width="'+bw+'" height="'+bhi+'" rx="3" fill="'+col+'"/>';
-      out+='<text x="'+(bx+bw/2)+'" y="'+(by-2)+'" text-anchor="middle" font-size="7.5" fill="#64748B" font-family="Arial,sans-serif">'+money(item.v)+'</text>';
-      out+='<text x="'+(bx+bw/2)+'" y="'+(H-1)+'" text-anchor="middle" font-size="8" fill="#94A3B8" font-family="Arial,sans-serif">'+item.l+'</text>';
+      var c=i%2===0?'#059669':'#10B981';
+      s+='<rect x="'+bx+'" y="'+by+'" width="'+bw+'" height="'+bhi+'" rx="3" fill="'+c+'"/>';
+      s+='<text x="'+(bx+bw/2)+'" y="'+(by-2)+'" text-anchor="middle" font-size="7.5" fill="#64748B" font-family="Arial">'+money(it.v)+'</text>';
+      s+='<text x="'+(bx+bw/2)+'" y="'+(H-1)+'" text-anchor="middle" font-size="8" fill="#94A3B8" font-family="Arial">'+it.l+'</text>';
     });
-    out+='</svg>';
-    return out;
+    return s+'</svg>';
   }
 
   var heItems=d.workerRows.map(function(w){
     var p=w.nombre.trim().split(' ');
-    return {l:(p[0]+(p[1]?' '+p[1].charAt(0)+'.':'')), v:w.totalHrs};
+    return {l:p[0]+(p[1]?' '+p[1].charAt(0)+'.':''), v:w.totalHrs};
   });
   var gItems=d.gastosRows.map(function(g){
-    return {l:g.dateLabel.split(' ').slice(0,2).join(' '),v:g.dayTotal};
+    return {l:g.dateLabel.split(' ').slice(0,2).join(' '), v:g.dayTotal};
   });
   function ini(n){ return n.split(' ').map(function(x){return x[0]||'';}).slice(0,2).join('').toUpperCase(); }
 
-  // Altura dinámica del chart HE según cantidad de trabajadores
-  var heChartH=d.workerRows.length*(9+4)+8;
+  // ── Construir filas HE: una fila por día, rowspan para trabajador ────────
+  function buildHERows(){
+    if(!d.workerRows.length) return '<tr><td colspan="7" style="text-align:center;color:#94A3B8;padding:12px">Sin horas extras esta semana</td></tr>';
+    var html='';
+    d.workerRows.forEach(function(w,wi){
+      var pct=Math.round((w.totalHrs/maxHrs)*100);
+      var bg=wi%2===0?'#fff':'#F8FAFC';
+      var n=w.dias.length||1;
+      w.dias.forEach(function(dia,di){
+        var rowBg=dia.esDescanso?'#FFF5F5':bg;
+        html+='<tr style="background:'+rowBg+';border-bottom:1px solid #F1F5F9;">';
+        if(di===0){
+          // Avatar
+          html+='<td rowspan="'+n+'" style="padding:5px 3px 5px 8px;vertical-align:top;border-right:1px solid #F1F5F9;">'+
+            '<div class="av">'+ini(w.nombre)+'</div></td>';
+          // Nombre
+          html+='<td rowspan="'+n+'" style="font-weight:700;font-size:9px;vertical-align:top;padding:5px 6px;white-space:nowrap;border-right:1px solid #F1F5F9;">'+
+            w.nombre+'</td>';
+          // Cargo
+          html+='<td rowspan="'+n+'" style="color:#64748B;font-size:8.5px;vertical-align:top;padding:5px 6px;white-space:nowrap;border-right:1px solid #F1F5F9;">'+
+            (w.cargo||'—')+'</td>';
+          // Estado
+          html+='<td rowspan="'+n+'" style="text-align:center;vertical-align:top;padding:5px 4px;border-right:1px solid #F1F5F9;">'+
+            (w.faltas?'<span class="bd br">F:'+w.faltas+'</span>':'<span class="bd bg">✓</span>')+
+            '</td>';
+          // Total hrs con barra
+          html+='<td rowspan="'+n+'" style="vertical-align:top;padding:5px 6px;border-right:1px solid #F1F5F9;">'+
+            '<div style="display:flex;align-items:center;gap:4px;">'+
+              '<div style="width:32px;height:4px;background:#EFF6FF;border-radius:2px;overflow:hidden;flex-shrink:0;">'+
+                '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#3B82F6,#7C3AED);border-radius:2px;"></div>'+
+              '</div>'+
+              '<span style="font-size:9px;font-weight:700;color:#2563EB;white-space:nowrap;">+'+w.totalHrs+'h</span>'+
+            '</div></td>';
+        }
+        // Fecha + hrs
+        html+='<td style="padding:4px 7px;white-space:nowrap;border-right:1px solid #F1F5F9;">'+
+          '<span style="font-size:8.5px;font-weight:600;color:'+(dia.esDescanso?'#DC2626':'#374151')+'">'+
+            dia.dateLabel.split(' ').slice(0,2).join(' ')+
+          '</span>'+
+          '<span style="font-size:8.5px;font-weight:700;color:'+(dia.esDescanso?'#DC2626':'#1E40AF')+';margin-left:5px">+'+dia.hrs+'h</span>'+
+          (dia.esDescanso?' <span class="bd br" style="font-size:6px;padding:0 3px;">D</span>':'')+
+        '</td>';
+        // Proyecto completo (sin truncar)
+        html+='<td style="padding:4px 7px;font-size:8.5px;">'+
+          '<span style="color:#1E40AF;font-weight:600;">'+dia.proyectoNombre+'</span>'+
+          (dia.lider?'<span style="color:#64748B;font-size:8px;"> · '+dia.lider+'</span>':'')+
+        '</td>';
+        html+='</tr>';
+      });
+      // Separador fino entre trabajadores
+      html+='<tr style="background:#E2E8F0;"><td colspan="7" style="padding:0;height:2px;border:none;"></td></tr>';
+    });
+    return html;
+  }
 
-  var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'+
-  '<title>Nomina '+d.thuStr+'</title>'+
-  '<style>'+
+  var css=
   '*{margin:0;padding:0;box-sizing:border-box;}'+
   'html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
-  'body{font-family:"Segoe UI",-apple-system,Arial,sans-serif;font-size:10px;background:#F8FAFC;color:#0F172A;line-height:1.3;}'+
-  '.page{width:960px;margin:0 auto;padding:14px 16px 20px;}'+
-
-  // HEADER
-  '.hdr{background:#1E3A8A;border-radius:8px;padding:12px 18px;margin-bottom:10px;'+
-  'display:flex;justify-content:space-between;align-items:center;}'+
-  '.hdr h1{font-size:19px;font-weight:900;color:#fff;letter-spacing:-.03em;}'+
-  '.hdr p{font-size:8.5px;color:#93C5FD;margin-top:2px;text-transform:uppercase;letter-spacing:.06em;}'+
+  'body{font-family:"Segoe UI",-apple-system,Arial,sans-serif;font-size:10px;background:#F8FAFC;color:#0F172A;line-height:1.35;}'+
+  '.page{width:970px;margin:0 auto;padding:14px 16px 20px;}'+
+  // Header
+  '.hdr{background:#1E3A8A;border-radius:8px;padding:11px 18px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}'+
+  '.hdr h1{font-size:18px;font-weight:900;color:#fff;letter-spacing:-.03em;}'+
+  '.hdr p{font-size:8px;color:#93C5FD;margin-top:2px;text-transform:uppercase;letter-spacing:.06em;}'+
   '.hdr-r{text-align:right;}'+
-  '.hdr-r .lbl{font-size:8px;color:#93C5FD;text-transform:uppercase;letter-spacing:.08em;}'+
-  '.hdr-r .val{font-size:13px;font-weight:800;color:#fff;margin-top:2px;}'+
-
-  // KPIs — 4 en fila, sin iconos grandes, compactos
+  '.hdr-r .hl{font-size:7.5px;color:#93C5FD;text-transform:uppercase;letter-spacing:.08em;}'+
+  '.hdr-r .hv{font-size:12px;font-weight:800;color:#fff;margin-top:2px;}'+
+  // KPIs
   '.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;}'+
-  '.kpi{border-radius:7px;padding:10px 12px;border-left:3px solid transparent;}'+
-  '.kpi-b{background:#EFF6FF;border-color:#2563EB;}'+
-  '.kpi-g{background:#F0FDF4;border-color:#059669;}'+
-  '.kpi-r{background:#FEF2F2;border-color:#DC2626;}'+
-  '.kpi-a{background:#FFFBEB;border-color:#D97706;}'+
-  '.kpi .lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748B;}'+
-  '.kpi .val{font-size:22px;font-weight:900;line-height:1;margin:3px 0 2px;}'+
-  '.kpi-b .val{color:#1D4ED8;}.kpi-g .val{color:#059669;}.kpi-r .val{color:#DC2626;}.kpi-a .val{color:#D97706;}'+
-  '.kpi .sub{font-size:8px;color:#94A3B8;}'+
-
-  // FILA GRÁFICAS — 2 cols (HE izquierda, gastos derecha), sin donut
-  '.row-charts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}'+
-
-  // Cards genéricas
-  '.card{background:#fff;border-radius:7px;border:1px solid #E2E8F0;padding:10px 12px;}'+
-  '.ch{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;'+
-  'margin-bottom:7px;display:flex;align-items:center;gap:4px;color:#64748B;}'+
-  '.ch-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}'+
-
-  // Tablas — layout fijo, sin overflow
+  '.kpi{border-radius:6px;padding:9px 11px;border-left:3px solid transparent;}'+
+  '.kb{background:#EFF6FF;border-color:#2563EB;}.kg{background:#F0FDF4;border-color:#059669;}'+
+  '.kr{background:#FEF2F2;border-color:#DC2626;}.ka{background:#FFFBEB;border-color:#D97706;}'+
+  '.kpi .kl{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748B;}'+
+  '.kpi .kv{font-size:21px;font-weight:900;line-height:1;margin:2px 0;}'+
+  '.kb .kv{color:#1D4ED8;}.kg .kv{color:#059669;}.kr .kv{color:#DC2626;}.ka .kv{color:#D97706;}'+
+  '.kpi .ks{font-size:7.5px;color:#94A3B8;}'+
+  // Charts row
+  '.rc{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}'+
+  '.card{background:#fff;border-radius:6px;border:1px solid #E2E8F0;padding:9px 11px;}'+
+  '.ch{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px;display:flex;align-items:center;gap:4px;color:#64748B;}'+
+  '.ch-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}'+
+  // Tabla base
   'table{width:100%;border-collapse:collapse;table-layout:fixed;}'+
-  'th{background:#F8FAFC;color:#94A3B8;font-size:7.5px;font-weight:700;text-transform:uppercase;'+
-  'letter-spacing:.07em;padding:5px 7px;text-align:left;border-bottom:1.5px solid #F1F5F9;white-space:nowrap;overflow:hidden;}'+
-  'td{padding:5px 7px;border-bottom:1px solid #F9FAFB;vertical-align:middle;overflow:hidden;}'+
-  'tr:last-child td{border-bottom:none;}'+
-
-  // Tabla HE header
-  '.the{background:linear-gradient(90deg,#1E3A8A,#2563EB);padding:8px 12px;'+
-  'display:flex;justify-content:space-between;align-items:center;border-radius:7px 7px 0 0;}'+
-  '.the span{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#fff;}'+
-  '.the strong{font-size:11px;font-weight:900;color:#fff;}'+
-
-  // Tabla Gastos header
-  '.tge{background:linear-gradient(90deg,#065F46,#059669);padding:8px 12px;'+
-  'display:flex;justify-content:space-between;align-items:center;border-radius:7px 7px 0 0;}'+
-  '.tge span{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#fff;}'+
-  '.tge strong{font-size:11px;font-weight:900;color:#fff;}'+
-
-  // Tabla personal header
-  '.tpe{background:#0F172A;padding:8px 12px;border-radius:7px 7px 0 0;}'+
-  '.tpe span{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94A3B8;}'+
-
-  // Avatar mini
+  'th{background:#F8FAFC;color:#94A3B8;font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;'+
+  'padding:5px 7px;text-align:left;border-bottom:2px solid #E2E8F0;white-space:nowrap;}'+
+  'td{padding:5px 7px;font-size:8.5px;vertical-align:middle;}'+
+  // Avatar
   '.av{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#7C3AED);'+
   'color:#fff;font-size:7px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}'+
-
-  // Barra mini
-  '.bar{display:flex;align-items:center;gap:4px;}'+
-  '.bbg{height:4px;background:#EFF6FF;border-radius:2px;overflow:hidden;}'+
-  '.bbf{height:100%;border-radius:2px;background:linear-gradient(90deg,#3B82F6,#7C3AED);}'+
-
-  // Pills días
-  '.dp{display:flex;flex-wrap:wrap;gap:2px;}'+
-  '.di{display:inline-flex;align-items:center;gap:2px;padding:1px 4px;border-radius:3px;'+
-  'background:#EFF6FF;border:1px solid #DBEAFE;font-size:7.5px;white-space:nowrap;}'+
-  '.di.x{background:#FEF2F2;border-color:#FECACA;}'+
-  '.dd{color:#94A3B8;}.dh{font-weight:700;color:#1E40AF;}.di.x .dh{color:#991B1B;}'+
-
   // Badges
   '.bd{display:inline-flex;align-items:center;padding:1px 5px;border-radius:100px;'+
-  'font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;}'+
+  'font-size:7.5px;font-weight:700;text-transform:uppercase;white-space:nowrap;}'+
   '.bb{background:#DBEAFE;color:#1E40AF;}.bg{background:#D1FAE5;color:#065F46;}'+
   '.br{background:#FEE2E2;color:#991B1B;}.ba{background:#FEF3C7;color:#92400E;}'+
   '.bgr{background:#F1F5F9;color:#475569;}'+
   '.dot{width:5px;height:5px;border-radius:50%;display:inline-block;margin-right:3px;}'+
   '.dg{background:#10B981;}.dr{background:#EF4444;}.da{background:#F59E0B;}.dgr{background:#94A3B8;}'+
-
   // Tipo gasto
-  '.gtipo{background:#EFF6FF;border:1px solid #BFDBFE;border-radius:3px;padding:0 4px;'+
-  'font-size:7px;font-weight:600;color:#2563EB;margin-right:3px;display:inline-block;white-space:nowrap;}'+
-
-  // Total footer
-  '.tf{padding:7px 12px;display:flex;justify-content:space-between;align-items:center;}'+
-  '.tf-b{background:linear-gradient(90deg,#1E3A8A,#2563EB);border-radius:0 0 7px 7px;}'+
-  '.tf-g{background:linear-gradient(90deg,#065F46,#059669);border-radius:0 0 7px 7px;}'+
-  '.tf span{font-size:8px;color:rgba(255,255,255,.75);}'+
-  '.tf strong{font-size:12px;font-weight:900;color:#fff;}'+
-
-  // PRINT — critical
+  '.gt{background:#EFF6FF;border:1px solid #BFDBFE;border-radius:3px;padding:0 4px;'+
+  'font-size:7px;font-weight:600;color:#2563EB;display:inline-block;white-space:nowrap;}'+
+  // Cabeceras de sección
+  '.she{padding:7px 12px;display:flex;justify-content:space-between;align-items:center;}'+
+  '.she-b{background:linear-gradient(90deg,#1E3A8A,#2563EB);border-radius:6px 6px 0 0;}'+
+  '.she-g{background:linear-gradient(90deg,#065F46,#059669);border-radius:6px 6px 0 0;}'+
+  '.she-s{background:#0F172A;border-radius:6px 6px 0 0;}'+
+  '.she span{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#fff;}'+
+  '.she strong{font-size:11px;font-weight:900;color:#fff;}'+
+  // Footer de tabla
+  '.tf{padding:6px 12px;display:flex;justify-content:space-between;align-items:center;}'+
+  '.tf-b{background:linear-gradient(90deg,#1E3A8A,#2563EB);border-radius:0 0 6px 6px;}'+
+  '.tf-g{background:linear-gradient(90deg,#065F46,#059669);border-radius:0 0 6px 6px;}'+
+  '.tf span{font-size:8px;color:rgba(255,255,255,.75);}.tf strong{font-size:12px;font-weight:900;color:#fff;}'+
+  // PRINT
   '@media print{'+
-  '@page{size:A4 landscape;margin:5mm 7mm;}'+
-  'body{background:#fff!important;font-size:9px!important;}'+
+  '@page{size:A4 landscape;margin:5mm 6mm;}'+
+  'body{background:#fff!important;}'+
   '.page{width:100%!important;padding:0!important;}'+
-  '.hdr{margin-bottom:6px!important;padding:8px 12px!important;border-radius:5px!important;}'+
-  '.hdr h1{font-size:15px!important;}.hdr-r .val{font-size:11px!important;}'+
+  '.hdr{margin-bottom:6px!important;padding:8px 12px!important;}'+
   '.kpis{gap:5px!important;margin-bottom:6px!important;}'+
-  '.kpi .val{font-size:18px!important;}'+
-  '.row-charts{gap:5px!important;margin-bottom:6px!important;}'+
-  '.card{padding:7px 9px!important;}'+
-  'th{padding:4px 6px!important;font-size:7px!important;}'+
-  'td{padding:4px 6px!important;font-size:8.5px!important;}'+
-  '.av{width:19px!important;height:19px!important;font-size:6.5px!important;}'+
-  '.kpi{padding:7px 9px!important;}'+
-  // Evitar que tablas se corten a la mitad
-  'tr{page-break-inside:avoid;}'+
-  'thead{display:table-header-group;}'+
-  '.card,.kpi,div[style*="border-radius"]{page-break-inside:avoid;}'+
-  '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}'+
-  '</style></head><body><div class="page">'+
+  '.rc{gap:5px!important;margin-bottom:6px!important;}'+
+  '.kpi .kv{font-size:17px!important;}'+
+  'tr{page-break-inside:avoid!important;}'+
+  'thead{display:table-header-group!important;}'+
+  '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}';
 
-  // ══ HEADER ═══════════════════════════════════════════════════════════════
+  var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'+
+  '<title>Nomina '+d.thuStr+'</title>'+
+  '<style>'+css+'</style></head><body><div class="page">'+
+
+  // HEADER
   '<div class="hdr">'+
   '<div><h1>'+d.appName+'</h1><p>Nómina Semanal</p></div>'+
-  '<div class="hdr-r"><div class="lbl">Periodo</div>'+
-  '<div class="val">'+d.thuStr+' → '+d.wedStr+'</div></div>'+
+  '<div class="hdr-r"><div class="hl">Periodo</div>'+
+  '<div class="hv">'+d.thuStr+' → '+d.wedStr+'</div></div>'+
   '</div>'+
 
-  // ══ KPIs ═════════════════════════════════════════════════════════════════
+  // KPIs
   '<div class="kpis">'+
-  '<div class="kpi kpi-b">'+
-  '<div class="lbl">⏱ Horas Extras</div>'+
-  '<div class="val">'+(d.totalHrs?'+'+d.totalHrs+'h':'0h')+'</div>'+
-  '<div class="sub">'+d.workerRows.length+' trabajadores con HE</div></div>'+
+  '<div class="kpi kb"><div class="kl">⏱ Horas Extras</div>'+
+  '<div class="kv">'+(d.totalHrs?'+'+d.totalHrs+'h':'0h')+'</div>'+
+  '<div class="ks">'+d.workerRows.length+' trabajadores</div></div>'+
 
-  '<div class="kpi kpi-g">'+
-  '<div class="lbl">💰 Gastos Extras</div>'+
-  '<div class="val">'+money(d.totalGastos)+'</div>'+
-  '<div class="sub">semana completa</div></div>'+
+  '<div class="kpi kg"><div class="kl">💰 Gastos Extras</div>'+
+  '<div class="kv">'+money(d.totalGastos)+'</div>'+
+  '<div class="ks">semana completa</div></div>'+
 
-  '<div class="kpi kpi-r">'+
-  '<div class="lbl">✗ Faltas</div>'+
-  '<div class="val">'+d.totalFaltas+'</div>'+
-  '<div class="sub">dias registrados</div></div>'+
+  '<div class="kpi kr"><div class="kl">✗ Faltas</div>'+
+  '<div class="kv">'+d.totalFaltas+'</div>'+
+  '<div class="ks">dias registrados</div></div>'+
 
-  '<div class="kpi kpi-a">'+
-  '<div class="lbl">🏖 Vacaciones</div>'+
-  '<div class="val">'+d.totalVac+'</div>'+
-  '<div class="sub">dias programados</div></div>'+
+  '<div class="kpi ka"><div class="kl">🏖 Vacaciones</div>'+
+  '<div class="kv">'+d.totalVac+'</div>'+
+  '<div class="ks">dias programados</div></div>'+
   '</div>'+
 
-  // ══ GRÁFICAS — 2 columnas, sin donut ════════════════════════════════════
-  '<div class="row-charts">'+
-  '<div class="card">'+
-  '<div class="ch"><span class="ch-dot" style="background:#2563EB"></span>Horas Extras por Trabajador</div>'+
-  svgBarsH(heItems,410)+
-  '</div>'+
-  '<div class="card">'+
-  '<div class="ch"><span class="ch-dot" style="background:#059669"></span>Gastos Extras por Día</div>'+
-  svgBarsV(gItems,410,110)+
-  '</div>'+
+  // CHARTS — 2 columnas
+  '<div class="rc">'+
+  '<div class="card"><div class="ch"><span class="ch-dot" style="background:#3B82F6"></span>Horas Extras por Trabajador</div>'+
+  svgBarsH(heItems,440)+'</div>'+
+  '<div class="card"><div class="ch"><span class="ch-dot" style="background:#059669"></span>Gastos Extras por Día</div>'+
+  svgBarsV(gItems,440,120)+'</div>'+
   '</div>'+
 
-  // ══ TABLA HE — full width ════════════════════════════════════════════════
-  '<div style="border-radius:7px;overflow:hidden;margin-bottom:8px;border:1px solid #E2E8F0;">'+
-  '<div class="the">'+
+  // TABLA HE
+  '<div style="border-radius:6px;overflow:hidden;margin-bottom:8px;border:1px solid #E2E8F0;">'+
+  '<div class="she she-b">'+
   '<span>Detalle de Horas Extras</span>'+
-  (d.totalHrs?'<strong>+'+d.totalHrs+'h total semana</strong>':'')+
+  (d.totalHrs?'<strong>+'+d.totalHrs+'h total</strong>':'')+
   '</div>'+
   '<table>'+
   '<colgroup>'+
-  '<col style="width:22px">'+
-  '<col style="width:140px">'+
-  '<col style="width:100px">'+
-  '<col style="width:34px">'+
-  '<col style="width:70px">'+
-  '<col>'+
+  '<col style="width:26px">'+   // avatar
+  '<col style="width:118px">'+  // nombre
+  '<col style="width:95px">'+   // cargo
+  '<col style="width:32px">'+   // estado
+  '<col style="width:68px">'+   // total+barra
+  '<col style="width:90px">'+   // fecha+hrs
+  '<col>'+                       // proyecto (resto del ancho)
   '</colgroup>'+
   '<thead><tr>'+
-  '<th></th><th>Trabajador</th><th>Cargo</th>'+
-  '<th style="text-align:center">Est</th>'+
-  '<th>Horas</th><th>Días trabajados (fecha · horas · proyecto)</th>'+
-  '</tr></thead><tbody>'+
-  (d.workerRows.length?d.workerRows.map(function(w,i){
-    var pct=Math.round((w.totalHrs/maxHrs)*100);
-    var bg=i%2?'#FAFAFA':'#fff';
-    return '<tr style="background:'+bg+'">'+
-      '<td style="padding:4px 4px 4px 8px"><div class="av">'+ini(w.nombre)+'</div></td>'+
-      '<td style="font-weight:600;font-size:9.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:138px">'+w.nombre+'</td>'+
-      '<td style="color:#64748B;font-size:8.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:98px">'+(w.cargo||'—')+'</td>'+
-      '<td style="text-align:center">'+
-        (w.faltas?'<span class="bd br">F:'+w.faltas+'</span>':'<span class="bd bg">✓</span>')+
-      '</td>'+
-      '<td>'+
-        '<div class="bar">'+
-          '<div class="bbg" style="width:38px"><div class="bbf" style="width:'+pct+'%"></div></div>'+
-          '<span style="font-size:9px;font-weight:700;color:#2563EB;margin-left:3px">+'+w.totalHrs+'h</span>'+
-        '</div>'+
-      '</td>'+
-      '<td><div class="dp">'+
-        w.dias.map(function(dia){
-          var lbl=dia.dateLabel.split(' ').slice(0,2).join(' ');
-          var proj=dia.proyectoNombre.length>14?dia.proyectoNombre.substring(0,13)+'…':dia.proyectoNombre;
-          return '<span class="di'+(dia.esDescanso?' x':'')+'">'+
-            '<span class="dd">'+lbl+'</span>'+
-            '<span class="dh">+'+dia.hrs+'h</span>'+
-            '<span style="color:#94A3B8;font-size:7px">'+proj+'</span>'+
-          '</span>';
-        }).join('')+
-      '</div></td>'+
-    '</tr>';
-  }).join(''):'<tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:10px">Sin horas extras</td></tr>')+
-  '</tbody></table>'+
+  '<th colspan="2">Trabajador</th>'+
+  '<th>Cargo</th>'+
+  '<th style="text-align:center">Est.</th>'+
+  '<th>Total</th>'+
+  '<th>Fecha / Hrs</th>'+
+  '<th>Proyecto · Líder</th>'+
+  '</tr></thead>'+
+  '<tbody>'+buildHERows()+'</tbody>'+
+  '</table>'+
   (d.totalHrs?'<div class="tf tf-b"><span>Total horas extras de la semana</span><strong>+'+d.totalHrs+'h</strong></div>':'')+
   '</div>'+
 
-  // ══ TABLA GASTOS — full width ════════════════════════════════════════════
-  '<div style="border-radius:7px;overflow:hidden;margin-bottom:8px;border:1px solid #E2E8F0;">'+
-  '<div class="tge">'+
+  // TABLA GASTOS
+  '<div style="border-radius:6px;overflow:hidden;margin-bottom:8px;border:1px solid #E2E8F0;">'+
+  '<div class="she she-g">'+
   '<span>Detalle de Gastos Extras</span>'+
-  (d.totalGastos?'<strong>'+money(d.totalGastos)+' total semana</strong>':'')+
+  (d.totalGastos?'<strong>'+money(d.totalGastos)+' total</strong>':'')+
   '</div>'+
   '<table>'+
   '<colgroup>'+
-  '<col style="width:105px">'+
-  '<col style="width:160px">'+
-  '<col style="width:60px">'+
-  '<col>'+
-  '<col style="width:72px">'+
+  '<col style="width:100px">'+  // fecha
+  '<col style="width:155px">'+  // proyecto
+  '<col style="width:58px">'+   // tipo
+  '<col>'+                       // descripción
+  '<col style="width:70px">'+   // monto
   '</colgroup>'+
   '<thead><tr>'+
-  '<th>Fecha · Total día</th>'+
+  '<th>Fecha · Total</th>'+
   '<th>Proyecto · Líder</th>'+
   '<th style="text-align:center">Tipo</th>'+
   '<th>Descripción</th>'+
@@ -3524,35 +3492,36 @@ function _abrirReporteHTML(d){
   (d.gastosRows.length?function(){
     var rows='';
     d.gastosRows.forEach(function(g){
-      var firstDay=true;
       var totalItems=g.proyectos.reduce(function(s,p){return s+p.gastos.length;},0);
+      var firstDay=true;
       g.proyectos.forEach(function(proj){
         var firstProj=true;
-        var projItems=proj.gastos.length;
         proj.gastos.forEach(function(gs,gi){
-          var bg=g.esDescanso?'background:#FFFBF9;':'';
-          rows+='<tr style="border-bottom:1px solid #F9FAFB;'+bg+'">'+
-            (firstDay&&firstProj&&gi===0
-              ?'<td style="vertical-align:top;padding:5px 7px;" rowspan="'+totalItems+'">'+
-                '<div style="font-weight:700;font-size:9px;color:'+(g.esDescanso?'#DC2626':'#0F172A')+'">'+
-                  g.dateLabel+(g.esDescanso?' <span class="bd br" style="font-size:6.5px;padding:0 3px">D</span>':'')+
-                '</div>'+
-                '<div style="font-weight:700;color:#059669;font-size:9.5px;margin-top:2px">'+money(g.dayTotal)+'</div>'+
-              '</td>':'')+ 
-            (firstProj&&gi===0
-              ?'<td style="vertical-align:top;padding:5px 7px;font-size:8.5px;" rowspan="'+projItems+'">'+
-                '<div style="font-weight:700;color:#1E40AF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:158px">'+proj.nombre+'</div>'+
-                (proj.lider?'<div style="color:#64748B;font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:158px">'+proj.lider+'</div>':'')+
-              '</td>':'')+
-            '<td style="text-align:center;padding:5px 4px">'+
-              '<span class="gtipo">'+gs.tipo+'</span>'+
-            '</td>'+
-            '<td style="font-size:8.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">'+gs.desc+'</td>'+
-            '<td style="text-align:right;font-weight:700;font-size:9px;white-space:nowrap">'+money(gs.monto)+'</td>'+
-          '</tr>';
+          var bg=g.esDescanso?'background:#FFF9F9;':'';
+          rows+='<tr style="border-bottom:1px solid #F8FAFC;'+bg+'">';
+          if(firstDay&&firstProj&&gi===0){
+            rows+='<td rowspan="'+totalItems+'" style="vertical-align:top;padding:5px 7px;border-right:1px solid #F1F5F9;">'+
+              '<div style="font-weight:700;font-size:9px;color:'+(g.esDescanso?'#DC2626':'#0F172A')+'">'+
+                g.dateLabel+(g.esDescanso?' <span class="bd br" style="font-size:6.5px;padding:0 3px;">D</span>':'')+
+              '</div>'+
+              '<div style="font-weight:700;color:#059669;font-size:9.5px;margin-top:2px">'+money(g.dayTotal)+'</div>'+
+            '</td>';
+          }
+          if(firstProj&&gi===0){
+            rows+='<td rowspan="'+proj.gastos.length+'" style="vertical-align:top;padding:5px 7px;font-size:8.5px;border-right:1px solid #F1F5F9;">'+
+              '<div style="font-weight:700;color:#1E40AF;">'+proj.nombre+'</div>'+
+              (proj.lider?'<div style="color:#64748B;font-size:8px;margin-top:1px">'+proj.lider+'</div>':'')+
+            '</td>';
+          }
+          rows+='<td style="text-align:center;padding:4px 4px"><span class="gt">'+gs.tipo+'</span></td>';
+          rows+='<td style="font-size:8.5px;color:#374151;word-break:break-word;">'+gs.desc+'</td>';
+          rows+='<td style="text-align:right;font-weight:700;font-size:9px;white-space:nowrap;">'+money(gs.monto)+'</td>';
+          rows+='</tr>';
           firstProj=false; firstDay=false;
         });
       });
+      // Separador entre días
+      rows+='<tr><td colspan="5" style="padding:0;height:2px;background:#E2E8F0;border:none;"></td></tr>';
     });
     return rows;
   }():'<tr><td colspan="5" style="text-align:center;color:#94A3B8;padding:10px">Sin gastos</td></tr>')+
@@ -3560,21 +3529,22 @@ function _abrirReporteHTML(d){
   (d.totalGastos?'<div class="tf tf-g"><span>Total gastos de la semana</span><strong>'+money(d.totalGastos)+'</strong></div>':'')+
   '</div>'+
 
-  // ══ TABLA PERSONAL — full width ══════════════════════════════════════════
-  '<div style="border-radius:7px;overflow:hidden;border:1px solid #E2E8F0;">'+
-  '<div class="tpe"><span>Estado del Personal</span></div>'+
+  // TABLA PERSONAL
+  '<div style="border-radius:6px;overflow:hidden;border:1px solid #E2E8F0;">'+
+  '<div class="she she-s"><span>Estado del Personal</span></div>'+
   '<table>'+
   '<colgroup>'+
-  '<col style="width:22px">'+
-  '<col style="width:150px">'+
+  '<col style="width:26px">'+
+  '<col style="width:145px">'+
   '<col style="width:120px">'+
-  '<col style="width:66px">'+
-  '<col style="width:70px">'+
-  '<col style="width:50px">'+
-  '<col style="width:64px">'+
+  '<col style="width:60px">'+
+  '<col style="width:68px">'+
+  '<col style="width:48px">'+
+  '<col style="width:62px">'+
   '</colgroup>'+
   '<thead><tr>'+
-  '<th></th><th>Trabajador</th><th>Cargo</th>'+
+  '<th colspan="2">Trabajador</th>'+
+  '<th>Cargo</th>'+
   '<th style="text-align:center">Estado</th>'+
   '<th style="text-align:center">HE Semana</th>'+
   '<th style="text-align:center">Faltas</th>'+
@@ -3586,10 +3556,10 @@ function _abrirReporteHTML(d){
     var lm={activo:'Activo',vacaciones:'Vac.',falta:'Falta',inactivo:'Inact.'};
     var dm={activo:'dg',vacaciones:'da',falta:'dr',inactivo:'dgr'};
     var bg=i%2?'#FAFAFA':'#fff';
-    return '<tr style="background:'+bg+'">'+
-      '<td style="padding:4px 4px 4px 8px"><div class="av">'+ini(p.nombre)+'</div></td>'+
-      '<td style="font-weight:600;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:148px">'+p.nombre+'</td>'+
-      '<td style="color:#64748B;font-size:8.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:118px">'+(p.cargo||'—')+'</td>'+
+    return '<tr style="background:'+bg+';border-bottom:1px solid #F9FAFB;">'+
+      '<td style="padding:4px 3px 4px 8px"><div class="av">'+ini(p.nombre)+'</div></td>'+
+      '<td style="font-weight:600;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:143px">'+p.nombre+'</td>'+
+      '<td style="color:#64748B;font-size:8.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:118px">'+(p.cargo||'—')+'</td>'+
       '<td style="text-align:center"><span class="bd '+(bm[p.estado]||'bgr')+'">'+
         '<span class="dot '+(dm[p.estado]||'dgr')+'"></span>'+(lm[p.estado]||p.estado)+
       '</span></td>'+
@@ -3600,8 +3570,8 @@ function _abrirReporteHTML(d){
   }).join('')+
   '</tbody></table></div>'+
 
-  '<div style="text-align:center;margin-top:10px;padding-top:7px;border-top:1px solid #F1F5F9;'+
-  'color:#CBD5E1;font-size:7.5px;">'+d.appName+' · Nómina Semanal · '+d.thuStr+' — '+d.wedStr+'</div>'+
+  '<div style="text-align:center;margin-top:10px;padding-top:7px;border-top:1px solid #F1F5F9;color:#CBD5E1;font-size:7.5px;">'+
+  d.appName+' · Nómina Semanal · '+d.thuStr+' — '+d.wedStr+'</div>'+
   '</div></body></html>';
 
   var blob=new Blob([html],{type:'text/html;charset=utf-8'});
