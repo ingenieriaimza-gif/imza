@@ -3215,334 +3215,305 @@ function copyWeekHE(){
 // Clean _generarNominaDocx — pre-validated, no nested one-liners
 function _generarNominaDocx(data, fileName){
   function run(docx){
-    var Document=docx.Document, Packer=docx.Packer, Paragraph=docx.Paragraph,
-        TextRun=docx.TextRun, Table=docx.Table, TableRow=docx.TableRow,
-        TableCell=docx.TableCell, AlignmentType=docx.AlignmentType,
-        BorderStyle=docx.BorderStyle, WidthType=docx.WidthType,
-        ShadingType=docx.ShadingType, VerticalAlign=docx.VerticalAlign,
-        LevelFormat=docx.LevelFormat, PageNumberElement=docx.PageNumberElement,
-        Header=docx.Header, Footer=docx.Footer, TabStopType=docx.TabStopType;
+    var D=docx, AT=D.AlignmentType, BS=D.BorderStyle, WT=D.WidthType,
+        ST=D.ShadingType, VA=D.VerticalAlign, TT=D.TabStopType;
 
-    var AZUL='1B3A6B', AZUL_MED='2E5FAC', AZUL_CLR='D6E4F7', GRIS_CLR='F2F4F7';
-    var VERDE='1A7A4A', VERDE_CLR='D4EDDA', ROJO='B91C1C', ROJO_CLR='FDE8E8';
-    var ORO='B45309', ORO_CLR='FEF3C7', BLANCO='FFFFFF', NEGRO='111111', GRIS_TXT='555555';
-    var W=9360;
+    // ── Paleta ────────────────────────────────────────────────────────────────
+    var C={
+      azul:'1B3A6B', azulM:'2E5FAC', azulL:'EBF2FF',
+      verde:'1A6B3C', verdeL:'EBF7EF',
+      rojo:'9B1C1C',  rojoL:'FEF2F2',
+      gris:'6B7280',  grisL:'F9FAFB', grisMid:'E5E7EB',
+      oro:'92400E',   oroL:'FFFBEB',
+      blanco:'FFFFFF', negro:'111827'
+    };
+    var W=9360; // content width (US Letter 1" margins)
 
-    function money(n){ return '$'+Number(n).toLocaleString('es-MX'); }
-    function brd(c,s){ return {style:BorderStyle.SINGLE,size:s||6,color:c||'CCCCCC'}; }
-    function nob(){ return {style:BorderStyle.NIL,size:0,color:'FFFFFF'}; }
-    function bdrs(c){ var b=brd(c); return {top:b,bottom:b,left:b,right:b}; }
-    function noBdrs(){ var b=nob(); return {top:b,bottom:b,left:b,right:b}; }
+    // ── Primitivos ────────────────────────────────────────────────────────────
+    function b(color,size){ return {style:BS.SINGLE,size:size||4,color:color||'CCCCCC'}; }
+    function nb(){ return {style:BS.NIL,size:0,color:'FFFFFF'}; }
+    function allB(c,s){ var x=b(c,s); return {top:x,bottom:x,left:x,right:x}; }
+    function noB(){ var x=nb(); return {top:x,bottom:x,left:x,right:x}; }
+    function onlyBottom(c,s){ return {top:nb(),left:nb(),right:nb(),bottom:b(c,s)}; }
 
-    function cell(children, o){
+    function run_(t,o){
       o=o||{};
-      return new TableCell({
-        borders: o.borders || bdrs(o.bc||'CCCCCC'),
-        width: {size:o.w||1, type:WidthType.DXA},
-        shading: o.fill ? {fill:o.fill, type:ShadingType.CLEAR} : undefined,
-        margins: {top:o.mt||80, bottom:o.mb||80, left:o.ml||140, right:o.mr||140},
-        verticalAlign: o.va||VerticalAlign.CENTER,
-        columnSpan: o.span,
-        children: Array.isArray(children) ? children : [children]
-      });
+      return new D.TextRun({text:String(t==null?'':t),bold:o.b,italics:o.i,
+        size:o.sz||20,color:o.c||C.negro,font:'Calibri',
+        highlight:o.hl||undefined});
     }
-
-    function txt(t, o){
+    function p(children,o){
       o=o||{};
-      return new TextRun({
-        text:String(t==null?'':t), bold:o.bold, italics:o.italic,
-        size:o.size||22, color:o.color||NEGRO, font:'Arial'
-      });
-    }
-
-    function para(children, o){
-      o=o||{};
-      return new Paragraph({
-        alignment:o.align||AlignmentType.LEFT,
-        spacing:{before:o.before||0, after:o.after||80},
+      if(!Array.isArray(children)) children=[children];
+      return new D.Paragraph({
+        alignment:o.al||AT.LEFT,
+        spacing:{before:o.bf||0,after:o.af||0,line:o.line||240},
         border:o.border,
-        children:Array.isArray(children)?children:[children]
+        shading:o.fill?{fill:o.fill,type:ST.CLEAR}:undefined,
+        indent:o.indent,
+        children:children
       });
     }
-
-    function sp(p){ return new Paragraph({spacing:{before:p||120,after:0},children:[new TextRun('')]}); }
-
-    function secHdr(title, fill){
-      return new Table({
-        width:{size:W,type:WidthType.DXA}, columnWidths:[W],
-        rows:[new TableRow({children:[
-          cell(para([txt(title,{bold:true,size:26,color:BLANCO})],{align:AlignmentType.LEFT}),
-               {fill:fill||AZUL, w:W, borders:noBdrs(), mt:140, mb:140, ml:200})
-        ]})]
-      });
-    }
-
-    function kpiTable(){
-      var kpis=[
-        {label:'Horas extras', value:data.totalHrs?'+'+data.totalHrs+'h':'—', fill:AZUL_CLR, tc:AZUL_MED},
-        {label:'Trabajadores c/HE', value:String(data.workerRows.length||'—'), fill:GRIS_CLR, tc:AZUL},
-        {label:'Gastos extras', value:data.totalGastos?money(data.totalGastos):'—', fill:VERDE_CLR, tc:VERDE},
-        {label:'Faltas / Vacaciones', value:data.totalFaltas+' / '+data.totalVac,
-         fill:data.totalFaltas?ROJO_CLR:GRIS_CLR, tc:data.totalFaltas?ROJO:GRIS_TXT}
-      ];
-      var cw=Math.floor(W/4);
-      return new Table({
-        width:{size:W,type:WidthType.DXA}, columnWidths:[cw,cw,cw,W-cw*3],
-        rows:[new TableRow({children:kpis.map(function(k){
-          return cell(
-            [para([txt(k.label,{size:18,color:k.tc})],{align:AlignmentType.CENTER,after:40}),
-             para([txt(k.value,{size:36,bold:true,color:k.tc})],{align:AlignmentType.CENTER})],
-            {fill:k.fill, w:cw, borders:noBdrs(), mt:160, mb:160}
-          );
-        })})]
-      });
-    }
-
-    function persTable(){
-      var cols=[3800,2760,2800];
-      var eFill={activo:VERDE_CLR, vacaciones:ORO_CLR, falta:ROJO_CLR, inactivo:GRIS_CLR};
-      var eColor={activo:VERDE, vacaciones:ORO, falta:ROJO, inactivo:GRIS_TXT};
-      var headerRow=new TableRow({tableHeader:true, children:[
-        cell(para([txt('Trabajador',{bold:true,size:20,color:BLANCO})]),{fill:AZUL,w:cols[0],bc:AZUL}),
-        cell(para([txt('Cargo',{bold:true,size:20,color:BLANCO})]),{fill:AZUL,w:cols[1],bc:AZUL}),
-        cell(para([txt('Estado',{bold:true,size:20,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL,w:cols[2],bc:AZUL})
-      ]});
-      var dataRows=data.resumenPersonal.map(function(p,i){
-        return new TableRow({children:[
-          cell(para([txt(p.nombre,{bold:true,size:20})]),{fill:i%2?GRIS_CLR:BLANCO, w:cols[0]}),
-          cell(para([txt(p.cargo||'—',{size:20,color:GRIS_TXT})]),{fill:i%2?GRIS_CLR:BLANCO, w:cols[1]}),
-          cell(para([txt(p.estado,{size:20,bold:true,color:eColor[p.estado]||GRIS_TXT})],{align:AlignmentType.CENTER}),
-               {fill:eFill[p.estado]||GRIS_CLR, w:cols[2]})
-        ]});
-      });
-      return new Table({width:{size:W,type:WidthType.DXA}, columnWidths:cols, rows:[headerRow].concat(dataRows)});
-    }
-
-    function heTable(w){
-      var cols=[2600,3560,1400,1800];
-      var headerRow=new TableRow({tableHeader:true, children:[
-        cell(para([txt('Fecha',{bold:true,size:19,color:BLANCO})]),{fill:AZUL_MED,w:cols[0],bc:AZUL_MED}),
-        cell(para([txt('Proyecto / Líder',{bold:true,size:19,color:BLANCO})]),{fill:AZUL_MED,w:cols[1],bc:AZUL_MED}),
-        cell(para([txt('Descanso',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL_MED,w:cols[2],bc:AZUL_MED}),
-        cell(para([txt('Hrs extras',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL_MED,w:cols[3],bc:AZUL_MED})
-      ]});
-      var dataRows=w.dias.map(function(d,i){
-        var liderChildren=[para([txt(d.proyectoNombre,{size:19,bold:true})],{after:20})];
-        if(d.lider) liderChildren.push(para([txt('Lider: '+d.lider,{size:17,color:GRIS_TXT,italic:true})]));
-        return new TableRow({children:[
-          cell(para([txt(d.dateLabel,{size:19})]),{fill:i%2?GRIS_CLR:BLANCO, w:cols[0]}),
-          cell(liderChildren,{fill:i%2?GRIS_CLR:BLANCO, w:cols[1]}),
-          cell(para([txt(d.esDescanso?'Si':'—',{size:19,bold:d.esDescanso,color:d.esDescanso?ROJO:GRIS_TXT})],{align:AlignmentType.CENTER}),
-               {fill:d.esDescanso?ROJO_CLR:(i%2?GRIS_CLR:BLANCO), w:cols[2]}),
-          cell(para([txt('+'+d.hrs+'h',{size:22,bold:true,color:AZUL_MED})],{align:AlignmentType.CENTER}),
-               {fill:AZUL_CLR, w:cols[3]})
-        ]});
-      });
-      var totalRow=new TableRow({children:[
-        cell(para([txt('TOTAL',{bold:true,size:20,color:BLANCO})],{align:AlignmentType.RIGHT}),
-             {fill:AZUL, w:cols[0]+cols[1]+cols[2], span:3, bc:AZUL}),
-        cell(para([txt('+'+w.totalHrs+'h',{size:24,bold:true,color:BLANCO})],{align:AlignmentType.CENTER}),
-             {fill:AZUL, w:cols[3], bc:AZUL})
-      ]});
-      return new Table({width:{size:W,type:WidthType.DXA}, columnWidths:cols, rows:[headerRow].concat(dataRows).concat([totalRow])});
-    }
-
-    function gastosTable(g){
-      var cols=[3000,1760,2800,1800];
-      var headerRow=new TableRow({tableHeader:true, children:[
-        cell(para([txt('Proyecto',{bold:true,size:19,color:BLANCO})]),{fill:VERDE,w:cols[0],bc:VERDE}),
-        cell(para([txt('Tipo',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:VERDE,w:cols[1],bc:VERDE}),
-        cell(para([txt('Descripcion',{bold:true,size:19,color:BLANCO})]),{fill:VERDE,w:cols[2],bc:VERDE}),
-        cell(para([txt('Monto',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:VERDE,w:cols[3],bc:VERDE})
-      ]});
-      var rows=[];
-      var ri=0;
-      g.proyectos.forEach(function(proj){
-        proj.gastos.forEach(function(gs,gi){
-          var fill=ri%2?GRIS_CLR:BLANCO;
-          var projChildren=gi===0
-            ? [para([txt(proj.nombre,{size:19,bold:true})],{after:20})].concat(
-                proj.lider?[para([txt('Lider: '+proj.lider,{size:16,color:GRIS_TXT,italic:true})])]:[])
-            : [para([txt('',{size:19})])];
-          rows.push(new TableRow({children:[
-            cell(projChildren,{fill:fill,w:cols[0]}),
-            cell(para([txt(gs.tipo,{size:19})],{align:AlignmentType.CENTER}),{fill:fill,w:cols[1]}),
-            cell(para([txt(gs.desc,{size:19})]),{fill:fill,w:cols[2]}),
-            cell(para([txt(money(gs.monto),{size:19,bold:true})],{align:AlignmentType.RIGHT}),{fill:fill,w:cols[3]})
-          ]}));
-          ri++;
-        });
-        if(proj.gastos.length>1){
-          rows.push(new TableRow({children:[
-            cell(para([txt('Subtotal proyecto',{size:18,color:GRIS_TXT,italic:true})],{align:AlignmentType.RIGHT}),
-                 {fill:GRIS_CLR, w:cols[0]+cols[1]+cols[2], span:3}),
-            cell(para([txt(money(proj.subTotal),{size:19,bold:true,color:VERDE})],{align:AlignmentType.RIGHT}),
-                 {fill:VERDE_CLR, w:cols[3]})
-          ]}));
-        }
-      });
-      rows.push(new TableRow({children:[
-        cell(para([txt('TOTAL DEL DIA',{bold:true,size:20,color:BLANCO})],{align:AlignmentType.RIGHT}),
-             {fill:VERDE, w:cols[0]+cols[1]+cols[2], span:3, bc:VERDE}),
-        cell(para([txt(money(g.dayTotal),{size:22,bold:true,color:BLANCO})],{align:AlignmentType.RIGHT}),
-             {fill:VERDE, w:cols[3], bc:VERDE})
-      ]}));
-      return new Table({width:{size:W,type:WidthType.DXA}, columnWidths:cols, rows:[headerRow].concat(rows)});
-    }
-
-    var docHeader=new Header({children:[
-      new Table({
-        width:{size:W,type:WidthType.DXA}, columnWidths:[5000,4360],
-        rows:[new TableRow({children:[
-          cell(para([txt(data.appName,{bold:true,size:28,color:AZUL})]),{w:5000,borders:noBdrs()}),
-          cell(para([txt('Nomina Semanal',{size:20,color:GRIS_TXT})],{align:AlignmentType.RIGHT}),{w:4360,borders:noBdrs()})
-        ]})]
-      }),
-      new Paragraph({
-        border:{bottom:{style:BorderStyle.SINGLE,size:8,color:AZUL_MED,space:1}},
-        spacing:{before:60,after:120}, children:[]
-      })
-    ]});
-
-    var docFooter=new Footer({children:[
-      new Paragraph({
-        border:{top:{style:BorderStyle.SINGLE,size:6,color:'CCCCCC',space:1}},
-        spacing:{before:100,after:60},
-        tabStops:[{type:TabStopType.RIGHT,position:W}],
-        children:[
-          txt(data.appName+' — Documento generado automaticamente',{size:16,color:GRIS_TXT}),
-          new TextRun({text:'\tPagina ',size:16,color:GRIS_TXT,font:'Arial'}),
-          new TextRun({children:[new PageNumberElement()],size:16,color:GRIS_TXT,font:'Arial'})
-        ]
-      })
-    ]});
-
-    var ch=[];
-
-    // Portada
-    ch.push(new Table({
-      width:{size:W,type:WidthType.DXA}, columnWidths:[W],
-      rows:[new TableRow({children:[
-        cell(
-          [para([txt('NOMINA SEMANAL',{bold:true,size:52,color:BLANCO})],{align:AlignmentType.CENTER,after:80}),
-           para([txt(data.thuStr+' - '+data.wedStr,{size:26,color:'BDD7EE'})],{align:AlignmentType.CENTER,after:80}),
-           para([txt(data.appName,{size:22,color:'9DC3E6',italic:true})],{align:AlignmentType.CENTER})],
-          {fill:AZUL, w:W, borders:noBdrs(), mt:280, mb:280}
-        )
-      ]})]
-    }));
-    ch.push(sp(200));
-
-    // KPIs
-    ch.push(secHdr('Resumen de la Semana',AZUL_MED));
-    ch.push(sp(120));
-    ch.push(kpiTable());
-    ch.push(sp(200));
-
-    // Personal
-    if(data.resumenPersonal.length){
-      ch.push(secHdr('Personal Registrado',AZUL));
-      ch.push(sp(120));
-      ch.push(persTable());
-      ch.push(sp(200));
-    }
-
-    // Horas extras
-    if(data.workerRows.length){
-      ch.push(secHdr('Horas Extras por Trabajador',AZUL_MED));
-      data.workerRows.forEach(function(w){
-        ch.push(sp(160));
-        var workerCardChildren=[
-          para([txt(w.nombre,{bold:true,size:24,color:AZUL})],{after:20})
-        ];
-        if(w.cargo) workerCardChildren.push(para([txt(w.cargo,{size:20,color:GRIS_TXT,italic:true})]));
-        ch.push(new Table({
-          width:{size:W,type:WidthType.DXA}, columnWidths:[7000,2360],
-          rows:[new TableRow({children:[
-            cell(workerCardChildren,{fill:AZUL_CLR, w:7000, borders:noBdrs(), ml:160}),
-            cell(
-              [para([txt('+'+w.totalHrs+'h',{bold:true,size:36,color:AZUL_MED})],{align:AlignmentType.CENTER}),
-               para([txt('total semana',{size:16,color:GRIS_TXT})],{align:AlignmentType.CENTER})],
-              {fill:AZUL_CLR, w:2360, borders:noBdrs()}
-            )
-          ]})]
-        }));
-        if(w.faltas||w.vacaciones){
-          var badges=[];
-          if(w.faltas) badges.push(txt('  Faltas: '+w.faltas+'d  ',{size:18,bold:true,color:ROJO}));
-          if(w.vacaciones) badges.push(txt('  Vacaciones: '+w.vacaciones+'d  ',{size:18,bold:true,color:ORO}));
-          ch.push(sp(60));
-          ch.push(para(badges,{before:60}));
-        }
-        ch.push(sp(80));
-        ch.push(heTable(w));
-      });
-      ch.push(sp(120));
-      ch.push(new Table({
-        width:{size:W,type:WidthType.DXA}, columnWidths:[7000,2360],
-        rows:[new TableRow({children:[
-          cell(para([txt('TOTAL HORAS EXTRAS DE LA SEMANA',{bold:true,size:22,color:BLANCO})],{align:AlignmentType.RIGHT}),
-               {fill:AZUL, w:7000, bc:AZUL}),
-          cell(para([txt('+'+data.totalHrs+'h',{bold:true,size:28,color:BLANCO})],{align:AlignmentType.CENTER}),
-               {fill:AZUL, w:2360, bc:AZUL})
-        ]})]
-      }));
-      ch.push(sp(200));
-    }
-
-    // Gastos
-    if(data.gastosRows.length){
-      ch.push(secHdr('Gastos Extras por Dia',VERDE));
-      data.gastosRows.forEach(function(g){
-        ch.push(sp(160));
-        var gastoCardChildren=[
-          para([txt(g.dateLabel,{bold:true,size:24,color:VERDE})],{after:g.esDescanso?20:0})
-        ];
-        if(g.esDescanso) gastoCardChildren.push(para([txt('Dia de descanso',{size:18,color:ROJO,italic:true})]));
-        ch.push(new Table({
-          width:{size:W,type:WidthType.DXA}, columnWidths:[7000,2360],
-          rows:[new TableRow({children:[
-            cell(gastoCardChildren,{fill:VERDE_CLR, w:7000, borders:noBdrs(), ml:160}),
-            cell(
-              [para([txt(money(g.dayTotal),{bold:true,size:28,color:VERDE})],{align:AlignmentType.CENTER}),
-               para([txt('total del dia',{size:16,color:GRIS_TXT})],{align:AlignmentType.CENTER})],
-              {fill:VERDE_CLR, w:2360, borders:noBdrs()}
-            )
-          ]})]
-        }));
-        ch.push(sp(80));
-        ch.push(gastosTable(g));
-      });
-      ch.push(sp(120));
-      ch.push(new Table({
-        width:{size:W,type:WidthType.DXA}, columnWidths:[7000,2360],
-        rows:[new TableRow({children:[
-          cell(para([txt('TOTAL GASTOS EXTRAS DE LA SEMANA',{bold:true,size:22,color:BLANCO})],{align:AlignmentType.RIGHT}),
-               {fill:VERDE, w:7000, bc:VERDE}),
-          cell(para([txt(money(data.totalGastos),{bold:true,size:28,color:BLANCO})],{align:AlignmentType.RIGHT}),
-               {fill:VERDE, w:2360, bc:VERDE})
-        ]})]
-      }));
-      ch.push(sp(200));
-    }
-
-    ch.push(new Paragraph({
-      border:{top:{style:BorderStyle.SINGLE,size:8,color:AZUL_MED,space:1}},
-      spacing:{before:200,after:80},
-      children:[txt('Generado por '+data.appName,{size:18,color:GRIS_TXT,italic:true})]
-    }));
-
-    var doc=new Document({
-      styles:{default:{document:{run:{font:'Arial',size:22}}}},
-      sections:[{
-        properties:{page:{size:{width:12240,height:15840},margin:{top:1080,right:1080,bottom:1080,left:1080}}},
-        headers:{default:docHeader},
-        footers:{default:docFooter},
+    function cell(ch,o){
+      o=o||{};
+      if(!Array.isArray(ch)) ch=[ch];
+      return new D.TableCell({
+        width:{size:o.w||100,type:WT.DXA},
+        columnSpan:o.span,
+        rowSpan:o.rowSpan,
+        shading:o.fill?{fill:o.fill,type:ST.CLEAR}:undefined,
+        borders:o.bd||allB(C.grisMid,4),
+        margins:{top:o.mt||60,bottom:o.mb||60,left:o.ml||100,right:o.mr||100},
+        verticalAlign:o.va||VA.CENTER,
         children:ch
+      });
+    }
+    function row(cells,o){
+      o=o||{};
+      return new D.TableRow({tableHeader:o.th,cantSplit:true,children:cells});
+    }
+    function tbl(rows,cols,o){
+      o=o||{};
+      return new D.Table({
+        width:{size:W,type:WT.DXA},
+        columnWidths:cols,
+        layout:D.TableLayoutType?D.TableLayoutType.FIXED:'fixed',
+        rows:rows
+      });
+    }
+    function money(n){ return '$'+Number(n||0).toLocaleString('es-MX'); }
+    function gap(lines){
+      var out=[];
+      for(var i=0;i<(lines||1);i++) out.push(p([run_('')]));
+      return out;
+    }
+
+    // ── Helpers de diseño ────────────────────────────────────────────────────
+    // Fila de encabezado de tabla con fondo azul
+    function hdrRow(labels,widths,colors){
+      return row(labels.map(function(lbl,i){
+        return cell(p([run_(lbl,{b:true,sz:18,c:C.blanco})],{al:AT.CENTER}),
+          {w:widths[i],fill:colors?colors[i]:C.azulM,bd:allB(C.azulM,4)});
+      }),{th:true});
+    }
+    // Fila de datos con fondo alterno
+    function dataRow(cells_def){
+      return row(cells_def.map(function(d){
+        return cell(
+          p([run_(d.txt,{sz:d.sz||19,b:d.b,c:d.c||C.negro,i:d.i})],{al:d.al||AT.LEFT}),
+          {w:d.w,fill:d.fill,span:d.span,bd:d.bd||allB(C.grisMid,4),mt:d.mt||60,mb:d.mb||60}
+        );
+      }));
+    }
+    // Fila de total (fondo oscuro al final de tabla)
+    function totalRow(label,value,cols,fillCol){
+      var labelW=cols.slice(0,-1).reduce(function(s,x){return s+x;},0);
+      var valW=cols[cols.length-1];
+      return row([
+        cell(p([run_(label,{b:true,sz:19,c:C.blanco})],{al:AT.RIGHT}),
+          {w:labelW,span:cols.length-1,fill:fillCol||C.azulM,bd:allB(fillCol||C.azulM,4)}),
+        cell(p([run_(value,{b:true,sz:20,c:C.blanco})],{al:AT.CENTER}),
+          {w:valW,fill:fillCol||C.azulM,bd:allB(fillCol||C.azulM,4)})
+      ]);
+    }
+
+    // ── DOCUMENTO ────────────────────────────────────────────────────────────
+    var sections=[];
+
+    // === SECCIÓN 1: ENCABEZADO + KPIs + PERSONAL (todo en 1 página) ===
+    var sec1=[];
+
+    // Encabezado tipo membrete
+    sec1.push(tbl([
+      row([
+        // Nombre empresa
+        cell(
+          [p([run_(data.appName,{b:true,sz:36,c:C.azul})]),
+           p([run_('Nómina Semanal',{sz:20,c:C.gris})])],
+          {w:5600,fill:C.blanco,bd:noB()}
+        ),
+        // Período
+        cell(
+          [p([run_('Período',{sz:16,c:C.gris,b:true})],{al:AT.RIGHT}),
+           p([run_(data.thuStr+' – '+data.wedStr,{sz:22,b:true,c:C.azul})],{al:AT.RIGHT})],
+          {w:3760,fill:C.blanco,bd:noB()}
+        )
+      ])
+    ],[5600,3760]));
+
+    // Línea separadora
+    sec1.push(p([run_('')],{border:{bottom:{style:BS.SINGLE,size:12,color:C.azulM,space:1}},bf:40,af:120}));
+
+    // KPIs en 4 columnas iguales
+    var kw=Math.floor(W/4);
+    var kpis=[
+      {lbl:'Horas extras',   val:data.totalHrs?'+'+data.totalHrs+'h':'—',  fill:C.azulL, c:C.azulM},
+      {lbl:'Con horas extra',val:String(data.workerRows.length||0)+' trab.',fill:C.grisL, c:C.azul},
+      {lbl:'Gastos extras',  val:data.totalGastos?money(data.totalGastos):'—',fill:C.verdeL,c:C.verde},
+      {lbl:'Faltas / Vac.',  val:data.totalFaltas+' / '+data.totalVac,      fill:data.totalFaltas?C.rojoL:C.grisL,c:data.totalFaltas?C.rojo:C.gris}
+    ];
+    sec1.push(tbl([
+      row(kpis.map(function(k){
+        return cell(
+          [p([run_(k.lbl,{sz:16,c:k.c,b:true})],{al:AT.CENTER,af:40}),
+           p([run_(k.val,{sz:30,b:true,c:k.c})],{al:AT.CENTER})],
+          {w:kw,fill:k.fill,bd:allB(C.grisMid,4),mt:100,mb:100}
+        );
+      }))
+    ],[kw,kw,kw,W-kw*3]));
+
+    // === TABLA MAESTRA: Personal + HE en una sola tabla compacta ===
+    if(data.workerRows.length){
+      sec1=sec1.concat(gap(1));
+      sec1.push(p([run_('HORAS EXTRAS',{b:true,sz:18,c:C.azulM})],
+        {border:{bottom:{style:BS.SINGLE,size:6,color:C.azulM,space:1}},af:80}));
+
+      // Columnas: Trabajador | Cargo | Día | Proyecto | D | Hrs
+      var heCols=[1800,1400,1400,2800,500,1460];
+      var heHdr=hdrRow(['Trabajador','Cargo','Fecha','Proyecto','D','Hrs'],heCols);
+      var heRows=[heHdr];
+
+      data.workerRows.forEach(function(w,wi){
+        var bg=wi%2===0?C.blanco:C.grisL;
+        // Fila de nombre del trabajador (span en días)
+        if(w.dias.length>1){
+          // Primera fila con rowSpan para nombre y cargo
+          var d0=w.dias[0];
+          heRows.push(row([
+            cell([p([run_(w.nombre,{b:true,sz:19,c:C.negro})]),
+                  w.faltas?p([run_('Faltas: '+w.faltas,{sz:16,c:C.rojo,i:true})]):p([run_('')])],
+              {w:heCols[0],fill:bg,rowSpan:w.dias.length,bd:allB(C.grisMid,4)}),
+            cell(p([run_(w.cargo||'—',{sz:18,c:C.gris,i:true})]),
+              {w:heCols[1],fill:bg,rowSpan:w.dias.length,bd:allB(C.grisMid,4)}),
+            cell(p([run_(d0.dateLabel,{sz:18})],{al:AT.CENTER}),
+              {w:heCols[2],fill:d0.esDescanso?C.rojoL:bg,bd:allB(C.grisMid,4)}),
+            cell(p([run_(d0.proyectoNombre+(d0.lider?' – '+d0.lider:''),{sz:17})]),
+              {w:heCols[3],fill:bg,bd:allB(C.grisMid,4)}),
+            cell(p([run_(d0.esDescanso?'D':'',{sz:16,b:true,c:C.rojo})],{al:AT.CENTER}),
+              {w:heCols[4],fill:d0.esDescanso?C.rojoL:bg,bd:allB(C.grisMid,4)}),
+            cell(p([run_('+'+d0.hrs+'h',{sz:20,b:true,c:C.azulM})],{al:AT.CENTER}),
+              {w:heCols[5],fill:C.azulL,bd:allB(C.grisMid,4)})
+          ]));
+          // Filas adicionales (sin nombre/cargo por rowSpan)
+          for(var j=1;j<w.dias.length;j++){
+            var dj=w.dias[j];
+            heRows.push(row([
+              cell(p([run_(dj.dateLabel,{sz:18})],{al:AT.CENTER}),
+                {w:heCols[2],fill:dj.esDescanso?C.rojoL:bg,bd:allB(C.grisMid,4)}),
+              cell(p([run_(dj.proyectoNombre+(dj.lider?' – '+dj.lider:''),{sz:17})]),
+                {w:heCols[3],fill:bg,bd:allB(C.grisMid,4)}),
+              cell(p([run_(dj.esDescanso?'D':'',{sz:16,b:true,c:C.rojo})],{al:AT.CENTER}),
+                {w:heCols[4],fill:dj.esDescanso?C.rojoL:bg,bd:allB(C.grisMid,4)}),
+              cell(p([run_('+'+dj.hrs+'h',{sz:20,b:true,c:C.azulM})],{al:AT.CENTER}),
+                {w:heCols[5],fill:C.azulL,bd:allB(C.grisMid,4)})
+            ]));
+          }
+        } else {
+          // Un solo día — fila plana
+          var d1=w.dias[0]||{dateLabel:'—',proyectoNombre:'—',lider:'',hrs:0,esDescanso:false};
+          heRows.push(row([
+            cell([p([run_(w.nombre,{b:true,sz:19})]),
+                  w.faltas?p([run_('Faltas: '+w.faltas,{sz:16,c:C.rojo,i:true})]):p([run_('')])],
+              {w:heCols[0],fill:bg,bd:allB(C.grisMid,4)}),
+            cell(p([run_(w.cargo||'—',{sz:18,c:C.gris,i:true})]),
+              {w:heCols[1],fill:bg,bd:allB(C.grisMid,4)}),
+            cell(p([run_(d1.dateLabel,{sz:18})],{al:AT.CENTER}),
+              {w:heCols[2],fill:d1.esDescanso?C.rojoL:bg,bd:allB(C.grisMid,4)}),
+            cell(p([run_(d1.proyectoNombre+(d1.lider?' – '+d1.lider:''),{sz:17})]),
+              {w:heCols[3],fill:bg,bd:allB(C.grisMid,4)}),
+            cell(p([run_(d1.esDescanso?'D':'',{sz:16,b:true,c:C.rojo})],{al:AT.CENTER}),
+              {w:heCols[4],fill:d1.esDescanso?C.rojoL:bg,bd:allB(C.grisMid,4)}),
+            cell(p([run_('+'+d1.hrs+'h',{sz:20,b:true,c:C.azulM})],{al:AT.CENTER}),
+              {w:heCols[5],fill:C.azulL,bd:allB(C.grisMid,4)})
+          ]));
+        }
+        // Subtotal por trabajador
+        var subCols=[1800+1400+1400+2800+500, 1460];
+        heRows.push(row([
+          cell(p([run_(w.nombre+' — total semana',{sz:17,c:C.gris,i:true})],{al:AT.RIGHT}),
+            {w:subCols[0],span:5,fill:C.grisL,bd:onlyBottom(C.grisMid,4),mt:40,mb:40}),
+          cell(p([run_('+'+w.totalHrs+'h',{b:true,sz:20,c:C.azulM})],{al:AT.CENTER}),
+            {w:subCols[1],fill:C.azulL,bd:onlyBottom(C.grisMid,4),mt:40,mb:40})
+        ]));
+      });
+
+      // Total general HE
+      heRows.push(totalRow('TOTAL HORAS EXTRAS','+'+data.totalHrs+'h',heCols,C.azulM));
+      sec1.push(tbl(heRows,heCols));
+    }
+
+    // === TABLA DE GASTOS ===
+    if(data.gastosRows.length){
+      sec1=sec1.concat(gap(1));
+      sec1.push(p([run_('GASTOS EXTRAS',{b:true,sz:18,c:C.verde})],
+        {border:{bottom:{style:BS.SINGLE,size:6,color:C.verde,space:1}},af:80}));
+
+      var gCols=[1400,1800,1000,2500,2660];
+      var gHdr=hdrRow(['Fecha','Proyecto','Tipo','Descripción','Monto'],gCols,
+        [C.verde,C.verde,C.verde,C.verde,C.verde]);
+      var gRows=[gHdr];
+      var ri=0;
+      data.gastosRows.forEach(function(g){
+        var dayBg=g.esDescanso?C.rojoL:C.blanco;
+        g.proyectos.forEach(function(proj){
+          proj.gastos.forEach(function(gs,gi){
+            var bg=ri%2===0?C.blanco:C.grisL;
+            gRows.push(row([
+              cell(p([run_(gi===0?g.dateLabel:'',{sz:18,b:gi===0,c:gi===0&&g.esDescanso?C.rojo:C.negro})],{al:AT.CENTER}),
+                {w:gCols[0],fill:gi===0?dayBg:bg,bd:allB(C.grisMid,4)}),
+              cell(p([run_(gi===0?proj.nombre+(proj.lider?' – '+proj.lider:''):'',{sz:17})]),
+                {w:gCols[1],fill:bg,bd:allB(C.grisMid,4)}),
+              cell(p([run_(gs.tipo,{sz:18})],{al:AT.CENTER}),
+                {w:gCols[2],fill:bg,bd:allB(C.grisMid,4)}),
+              cell(p([run_(gs.desc,{sz:18})]),
+                {w:gCols[3],fill:bg,bd:allB(C.grisMid,4)}),
+              cell(p([run_(money(gs.monto),{sz:19,b:true})],{al:AT.RIGHT}),
+                {w:gCols[4],fill:bg,bd:allB(C.grisMid,4)})
+            ]));
+            ri++;
+          });
+        });
+        // Subtotal del día
+        gRows.push(row([
+          cell(p([run_(g.dateLabel+' — total',{sz:16,c:C.gris,i:true})],{al:AT.RIGHT}),
+            {w:gCols.slice(0,-1).reduce(function(s,x){return s+x;},0),span:4,
+             fill:C.grisL,bd:onlyBottom(C.grisMid,4),mt:30,mb:30}),
+          cell(p([run_(money(g.dayTotal),{sz:19,b:true,c:C.verde})],{al:AT.RIGHT}),
+            {w:gCols[4],fill:C.verdeL,bd:onlyBottom(C.grisMid,4),mt:30,mb:30})
+        ]));
+      });
+      gRows.push(totalRow('TOTAL GASTOS',money(data.totalGastos),gCols,C.verde));
+      sec1.push(tbl(gRows,gCols));
+    }
+
+    // Footer del documento
+    sec1=sec1.concat(gap(1));
+    sec1.push(p([run_(data.appName+' · Generado automáticamente',{sz:16,c:C.gris,i:true})],
+      {border:{top:{style:BS.SINGLE,size:4,color:C.grisMid,space:1}},bf:120,al:AT.CENTER}));
+
+    // Header Word
+    var docHeader=new D.Header({children:[
+      tbl([row([
+        cell([p([run_(data.appName,{b:true,sz:22,c:C.azul})])],{w:5000,bd:noB(),mb:0}),
+        cell([p([run_('Nómina  '+data.thuStr+' – '+data.wedStr,{sz:18,c:C.gris})],{al:AT.RIGHT})],
+          {w:4360,bd:noB(),mb:0})
+      ])],[5000,4360]),
+      p([run_('')],{border:{bottom:{style:BS.SINGLE,size:6,color:C.azulM,space:1}},af:80})
+    ]});
+
+    var doc=new D.Document({
+      styles:{default:{document:{run:{font:'Calibri',size:20}}}},
+      sections:[{
+        properties:{page:{
+          size:{width:12240,height:15840},
+          margin:{top:720,right:720,bottom:720,left:720}
+        }},
+        headers:{default:docHeader},
+        children:sec1
       }]
     });
 
-    Packer.toBlob(doc).then(function(blob){
+    D.Packer.toBlob(doc).then(function(blob){
       var url=URL.createObjectURL(blob);
       var a=document.createElement('a');
       a.href=url; a.download=fileName;
@@ -3554,7 +3525,6 @@ function _generarNominaDocx(data, fileName){
   }
 
   if(window.docx){ run(window.docx); return; }
-  // docx bundle embebido como gzip+base64 para funcionar sin internet
   _loadDocxBundle(function(){ run(window.docx); });
 }
 
