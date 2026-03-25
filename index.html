@@ -3223,35 +3223,59 @@ function _abrirReporteHTML(d){
   var money=function(n){ return '$'+Number(n||0).toLocaleString('es-MX'); };
   var maxHrs=d.workerRows.reduce(function(m,w){ return Math.max(m,w.totalHrs); },1);
 
-  // ── SVG bar chart ──────────────────────────────────────────────────────────
-  function svgBars(items, color1, color2, fmtVal, W, H){
+  // ── SVG barras HORIZONTALES (para HE — nombres largos) ───────────────────
+  function svgBarsH(items, color1, color2, fmtVal, W){
     if(!items.length) return '<div style="color:#94A3B8;font-size:11px;padding:8px">Sin datos</div>';
     var n=items.length;
-    var lh=22, ch=H-lh;
+    var lw=72;  // ancho fijo para el nombre
+    var bh=10;  // altura de cada barra
+    var gap=5;  // espacio entre barras
+    var rowH=bh+gap;
+    var H=n*rowH+4;
+    var chartW=W-lw-36; // espacio para valor al final
     var maxV=items.reduce(function(m,x){return Math.max(m,x.v);},1);
-    var bw=Math.max(6,Math.min(28,Math.floor(W/(n*1.8))));
-    var total_w=n*bw+(n-1)*4;
-    var startX=Math.floor((W-total_w)/2);
     var out='<svg width="'+W+'" height="'+H+'" style="display:block;overflow:visible">';
-    // grid lines
-    for(var g=0;g<=4;g++){
-      var gy=Math.round(4+(ch-4)*(1-g/4));
+    items.forEach(function(item,i){
+      var y=i*rowH+2;
+      var bw=Math.max(4,Math.round((item.v/maxV)*chartW));
+      var col=(i%2===0)?color1:color2;
+      // fondo de pista
+      out+='<rect x="'+lw+'" y="'+y+'" width="'+chartW+'" height="'+bh+'" rx="3" fill="#F1F5F9"/>';
+      // barra de valor
+      out+='<rect x="'+lw+'" y="'+y+'" width="'+bw+'" height="'+bh+'" rx="3" fill="'+col+'"/>';
+      // nombre completo alineado derecha
+      var nm=item.l.length>11?item.l.substring(0,11):item.l;
+      out+='<text x="'+(lw-4)+'" y="'+(y+bh/2)+'" text-anchor="end" dominant-baseline="middle" font-size="8.5" fill="#475569" font-family="Arial">'+nm+'</text>';
+      // valor a la derecha
+      out+='<text x="'+(lw+bw+3)+'" y="'+(y+bh/2)+'" dominant-baseline="middle" font-size="8.5" font-weight="700" fill="'+col+'" font-family="Arial">'+fmtVal(item.v)+'</text>';
+    });
+    out+='</svg>';
+    return out;
+  }
+
+  // ── SVG barras VERTICALES (para gastos — pocos items, labels cortos) ──────
+  function svgBarsV(items, color1, color2, fmtVal, W, H){
+    if(!items.length) return '<div style="color:#94A3B8;font-size:11px;padding:8px">Sin datos</div>';
+    var n=items.length;
+    var lh=18, ch=H-lh;
+    var maxV=items.reduce(function(m,x){return Math.max(m,x.v);},1);
+    var bw=Math.max(14,Math.min(36,Math.floor((W-20)/(n*1.5))));
+    var total_w=n*(bw+6)-6;
+    var startX=Math.floor((W-total_w)/2);
+    var out='<svg width="'+W+'" height="'+H+'" style="display:block">';
+    for(var g=1;g<=3;g++){
+      var gy=Math.round(4+(ch-8)*(1-g/3));
       out+='<line x1="0" y1="'+gy+'" x2="'+W+'" y2="'+gy+'" stroke="#F1F5F9" stroke-width="1"/>';
-      var gval=Math.round(maxV*g/4);
-      out+='<text x="0" y="'+(gy-2)+'" font-size="8" fill="#CBD5E1" font-family="Arial">'+fmtVal(gval)+'</text>';
     }
     items.forEach(function(item,i){
-      var bh=Math.max(3,Math.round((item.v/maxV)*(ch-8)));
-      var bx=startX+i*(bw+4);
-      var by=ch-bh;
+      var bhi=Math.max(4,Math.round((item.v/maxV)*(ch-12)));
+      var bx=startX+i*(bw+6);
+      var by=ch-bhi;
       var col=(i%2===0)?color1:color2;
-      // gradient rect via solid with rounded top
-      out+='<rect x="'+bx+'" y="'+by+'" width="'+bw+'" height="'+bh+'" rx="3" fill="'+col+'"/>';
-      // value
+      out+='<rect x="'+bx+'" y="'+by+'" width="'+bw+'" height="'+bhi+'" rx="3" fill="'+col+'"/>';
       out+='<text x="'+(bx+bw/2)+'" y="'+(by-3)+'" text-anchor="middle" font-size="8" fill="#64748B" font-family="Arial">'+fmtVal(item.v)+'</text>';
-      // label rotated
-      var lbl=item.l.length>7?item.l.substring(0,7):item.l;
-      out+='<text x="'+(bx+bw/2)+'" y="'+(H-2)+'" text-anchor="end" font-size="8" fill="#94A3B8" font-family="Arial" transform="rotate(-35,'+(bx+bw/2)+','+(H-2)+')">'+lbl+'</text>';
+      var lbl=item.l.length>8?item.l.substring(0,8):item.l;
+      out+='<text x="'+(bx+bw/2)+'" y="'+(H-3)+'" text-anchor="middle" font-size="8.5" fill="#94A3B8" font-family="Arial">'+lbl+'</text>';
     });
     out+='</svg>';
     return out;
@@ -3279,7 +3303,12 @@ function _abrirReporteHTML(d){
   var estC={activo:0,vacaciones:0,falta:0,inactivo:0};
   d.resumenPersonal.forEach(function(p){ estC[p.estado]=(estC[p.estado]||0)+1; });
 
-  var heItems=d.workerRows.map(function(w){ return {l:w.nombre.split(' ')[0],v:w.totalHrs}; });
+  var heItems=d.workerRows.map(function(w){
+    // Primer nombre + primer apellido para que quepan en barra horizontal
+    var parts=w.nombre.trim().split(' ');
+    var label=parts[0]+(parts[1]?' '+parts[1]:'');
+    return {l:label, v:w.totalHrs};
+  });
   var gItems=d.gastosRows.map(function(g){ return {l:g.dateLabel.split(' ').slice(0,2).join(' '),v:g.dayTotal}; });
 
   function ini(n){ return n.split(' ').map(function(x){return x[0]||'';}).slice(0,2).join('').toUpperCase(); }
@@ -3451,12 +3480,12 @@ function _abrirReporteHTML(d){
 
   '<div class="card">'+
   '<div class="st st-b"><div class="st-bar"></div>Horas Extras por Trabajador</div>'+
-  svgBars(heItems,'#3B82F6','#7C3AED',function(v){return'+'+v+'h';},310,130)+
+  svgBarsH(heItems,'#3B82F6','#7C3AED',function(v){return'+'+v+'h';},310)+
   '</div>'+
 
   '<div class="card">'+
   '<div class="st st-g"><div class="st-bar"></div>Gastos Extras por Día</div>'+
-  svgBars(gItems,'#059669','#10B981',function(v){return money(v);},310,130)+
+  svgBarsV(gItems,'#059669','#10B981',function(v){return money(v);},310,130)+
   '</div>'+
 
   '<div class="card">'+
