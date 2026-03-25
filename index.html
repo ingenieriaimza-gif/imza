@@ -3501,76 +3501,135 @@ function _abrirReporteHTML(d){
   '</div>'+
   '</div>'+
 
-  // ══ FILA: Tabla HE detallada | Tabla Gastos detallada ══════════════════
-  '<div class="g2">'+
-
-  // ─ Tabla HE ───────────────────────────────────────────────────────────
-  '<div style="background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;">'+
-  '<div style="padding:10px 12px;border-bottom:1px solid #F1F5F9;">'+
-  '<div class="st st-b" style="margin-bottom:0"><div class="st-bar"></div>Detalle de Horas Extras</div></div>'+
-  '<table><thead><tr>'+
-  '<th>Trabajador</th><th>Hrs</th><th>Días trabajados</th>'+
+  // ══ TABLA HE — horizontal compacta, todo en 1 fila ════════════════════
+  '<div style="background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:10px;">'+
+  '<div style="background:linear-gradient(90deg,#1E3A8A,#2563EB);padding:8px 14px;display:flex;justify-content:space-between;align-items:center;">'+
+  '<div class="st" style="color:#fff;margin-bottom:0;font-size:9px"><div class="st-bar" style="background:#93C5FD"></div>DETALLE DE HORAS EXTRAS</div>'+
+  (d.totalHrs?'<span style="font-size:12px;font-weight:900;color:#fff">+'+d.totalHrs+'h total</span>':'')+
+  '</div>'+
+  '<table style="table-layout:fixed;">'+
+  '<colgroup>'+
+  '<col style="width:28px">'+   // avatar
+  '<col style="width:120px">'+  // nombre
+  '<col style="width:62px">'+   // cargo
+  '<col style="width:36px">'+   // estado
+  '<col style="width:52px">'+   // hrs + barra
+  '<col>'+                       // días (resto)
+  '</colgroup>'+
+  '<thead><tr>'+
+  '<th colspan="2">Trabajador</th>'+
+  '<th>Cargo</th>'+
+  '<th style="text-align:center">Est.</th>'+
+  '<th style="text-align:center">Hrs</th>'+
+  '<th>Días trabajados</th>'+
   '</tr></thead><tbody>'+
   (d.workerRows.length?d.workerRows.map(function(w,i){
     var pct=Math.round((w.totalHrs/maxHrs)*100);
-    return '<tr style="background:'+(i%2?'#FAFAFA':'#fff')+'">'+
-      '<td><div class="nc">'+
+    var bg=i%2?'#FAFAFA':'#fff';
+    return '<tr style="background:'+bg+'">'+
+      '<td style="width:28px;padding:5px 4px 5px 8px;">'+
         '<div class="av">'+ini(w.nombre)+'</div>'+
-        '<div><div class="nm">'+w.nombre+'</div>'+
-        '<div class="ns">'+(w.cargo||'Sin cargo')+
-          (w.faltas?' <span class="bd b-r">F:'+w.faltas+'d</span>':
-           ' <span class="bd b-g">OK</span>')+
-        '</div></div>'+
-      '</div></td>'+
-      '<td><div class="bar">'+
-        '<div class="bg2"><div class="bf" style="width:'+pct+'%"></div></div>'+
-        '<div class="bv">+'+w.totalHrs+'h</div>'+
-      '</div></td>'+
-      '<td><div class="dp">'+
-        w.dias.map(function(dia){
-          return '<span class="di'+(dia.esDescanso?' des':'')+'">'+
-            '<span class="dd">'+dia.dateLabel.split(' ').slice(0,2).join(' ')+'</span>'+
-            '<span class="dh">+'+dia.hrs+'h</span>'+
-          '</span>';
-        }).join('')+
-      '</div></td>'+
+      '</td>'+
+      '<td style="padding:5px 6px 5px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+
+        '<div class="nm" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:118px">'+w.nombre+'</div>'+
+      '</td>'+
+      '<td style="font-size:8.5px;color:#64748B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60px">'+
+        (w.cargo||'—')+
+      '</td>'+
+      '<td style="text-align:center;">'+
+        (w.faltas
+          ?'<span class="bd b-r" style="font-size:7px">F:'+w.faltas+'</span>'
+          :'<span class="bd b-g" style="font-size:7px">✓</span>')+
+      '</td>'+
+      '<td>'+
+        '<div style="display:flex;align-items:center;gap:4px;">'+
+          '<div style="flex:1;height:4px;background:#EFF6FF;border-radius:2px;overflow:hidden;min-width:24px;">'+
+            '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#3B82F6,#7C3AED);border-radius:2px;"></div>'+
+          '</div>'+
+          '<span style="font-size:9px;font-weight:700;color:#2563EB;white-space:nowrap;">+'+w.totalHrs+'h</span>'+
+        '</div>'+
+      '</td>'+
+      '<td>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:2px;">'+
+          w.dias.map(function(dia){
+            var dc=dia.esDescanso?'background:#FEF2F2;border:1px solid #FECACA;':'background:#EFF6FF;border:1px solid #DBEAFE;';
+            var hc=dia.esDescanso?'color:#991B1B;':'color:#1E40AF;';
+            var date=dia.dateLabel.split(' ').slice(0,2).join(' ');
+            return '<span style="display:inline-flex;align-items:center;gap:2px;padding:1px 5px;border-radius:4px;'+dc+'font-size:7.5px;white-space:nowrap;">'+
+              '<span style="color:#94A3B8;">'+date+'</span>'+
+              '<span style="font-weight:700;'+hc+'">+'+dia.hrs+'h</span>'+
+            '</span>';
+          }).join('')+
+        '</div>'+
+      '</td>'+
     '</tr>';
   }).join('')
-  :'<tr><td colspan="3" style="text-align:center;color:#94A3B8;padding:14px">Sin horas extras</td></tr>')+
-  '</tbody></table>'+
-  (d.totalHrs?'<div class="tot-b tot-blue"><span class="tl">Total HE semana</span><span class="tv">+'+d.totalHrs+'h</span></div>':'')+
-  '</div>'+
+  :'<tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:12px">Sin horas extras esta semana</td></tr>')+
+  '</tbody></table></div>'+
 
-  // ─ Tabla Gastos ───────────────────────────────────────────────────────
-  '<div style="background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;">'+
-  '<div style="padding:10px 12px;border-bottom:1px solid #F1F5F9;">'+
-  '<div class="st st-g" style="margin-bottom:0"><div class="st-bar"></div>Detalle de Gastos Extras</div></div>'+
-  (d.gastosRows.length?d.gastosRows.map(function(g){
-    return '<div class="gday">'+
-      '<div class="gdh">'+
-        '<span class="gdn">'+g.dateLabel+(g.esDescanso?' <span class="bd b-r">D</span>':'')+
-        '</span><span class="gdt">'+money(g.dayTotal)+'</span>'+
-      '</div>'+
-      g.proyectos.map(function(proj){
-        return '<div class="gproj">'+
-          '<div class="gpn">'+proj.nombre+
-            (proj.lider?' <span style="font-weight:400;color:#64748B">· '+proj.lider+'</span>':'')+
-            (proj.gastos.length>1?' <span class="bd b-g" style="float:right">'+money(proj.subTotal)+'</span>':'')+
-          '</div>'+
-          proj.gastos.map(function(gs){
-            return '<div class="gitem">'+
-              '<div><span class="gtipo">'+gs.tipo+'</span>'+gs.desc+'</div>'+
-              '<span class="gmonto">'+money(gs.monto)+'</span>'+
-            '</div>';
-          }).join('')+
-        '</div>';
-      }).join('')+
-    '</div>';
-  }).join('')
-  :'<div style="padding:14px;text-align:center;color:#94A3B8">Sin gastos</div>')+
-  (d.totalGastos?'<div class="tot-b tot-green"><span class="tl">Total gastos semana</span><span class="tv">'+money(d.totalGastos)+'</span></div>':'')+
+  // ══ TABLA GASTOS — horizontal compacta ════════════════════════════════
+  '<div style="background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:10px;">'+
+  '<div style="background:linear-gradient(90deg,#065F46,#059669);padding:8px 14px;display:flex;justify-content:space-between;align-items:center;">'+
+  '<div class="st" style="color:#fff;margin-bottom:0;font-size:9px"><div class="st-bar" style="background:#6EE7B7"></div>DETALLE DE GASTOS EXTRAS</div>'+
+  (d.totalGastos?'<span style="font-size:12px;font-weight:900;color:#fff">'+money(d.totalGastos)+' total</span>':'')+
   '</div>'+
-  '</div>'+
+  '<table style="table-layout:fixed;">'+
+  '<colgroup>'+
+  '<col style="width:90px">'+  // fecha
+  '<col style="width:130px">'+  // proyecto + líder
+  '<col style="width:52px">'+  // tipo
+  '<col>'+                       // descripción
+  '<col style="width:64px">'+  // monto
+  '</colgroup>'+
+  '<thead><tr>'+
+  '<th>Fecha</th>'+
+  '<th>Proyecto · Líder</th>'+
+  '<th style="text-align:center">Tipo</th>'+
+  '<th>Descripción</th>'+
+  '<th style="text-align:right">Monto</th>'+
+  '</tr></thead><tbody>'+
+  (d.gastosRows.length?function(){
+    var rows='';
+    d.gastosRows.forEach(function(g){
+      var firstOfDay=true;
+      g.proyectos.forEach(function(proj){
+        var firstOfProj=true;
+        proj.gastos.forEach(function(gs,gi){
+          var isFirstRow=firstOfDay&&firstOfProj&&gi===0;
+          var totalDayItems=g.proyectos.reduce(function(s,p){return s+p.gastos.length;},0);
+          var bg=g.esDescanso?'background:#FEF9F9;':'';
+          rows+='<tr style="border-bottom:1px solid #F8FAFC;'+bg+'">'+
+            // Fecha (solo en primera fila del día con rowspan)
+            (isFirstRow
+              ?'<td style="padding:5px 8px;vertical-align:top;" rowspan="'+totalDayItems+'">'+
+                '<div style="font-weight:700;font-size:9px;color:'+(g.esDescanso?'#DC2626':'#0F172A')+'">'+
+                  g.dateLabel+(g.esDescanso?' <span class="bd b-r" style="font-size:7px">D</span>':'')+
+                '</div>'+
+                '<div style="font-size:9px;font-weight:700;color:#059669;margin-top:2px">'+money(g.dayTotal)+'</div>'+
+              '</td>'
+              :'')+
+            // Proyecto+líder (solo en primera fila del proyecto)
+            (firstOfProj&&gi===0
+              ?'<td style="padding:5px 6px;vertical-align:top;font-size:8.5px;" rowspan="'+proj.gastos.length+'">'+
+                '<span style="font-weight:700;color:#1E40AF;">'+proj.nombre+'</span>'+
+                (proj.lider?'<br><span style="color:#64748B;font-weight:400;">'+proj.lider+'</span>':'')+
+              '</td>'
+              :'')+
+            '<td style="text-align:center;padding:5px 4px;">'+
+              '<span style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:3px;padding:1px 5px;font-size:7.5px;font-weight:600;color:#2563EB;">'+gs.tipo+'</span>'+
+            '</td>'+
+            '<td style="font-size:8.5px;padding:5px 6px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">'+gs.desc+'</td>'+
+            '<td style="text-align:right;font-weight:700;font-size:9px;padding:5px 8px;color:#0F172A;white-space:nowrap;">'+money(gs.monto)+'</td>'+
+          '</tr>';
+          firstOfProj=false;
+        });
+        firstOfDay=false;
+      });
+    });
+    return rows;
+  }()
+  :'<tr><td colspan="5" style="text-align:center;color:#94A3B8;padding:12px">Sin gastos esta semana</td></tr>')+
+  '</tbody></table></div>'+
 
   // ══ TABLA PERSONAL COMPLETA ════════════════════════════════════════════
   '<div style="background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;margin-top:0;">'+
