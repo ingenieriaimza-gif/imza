@@ -1437,6 +1437,11 @@ function openActM(eid=null,edate=null){
   const sel=document.getElementById('a-p');
   sel.innerHTML='<option value="">— Selecciona proyecto —</option>';
   S.proyectos.forEach((p,i)=>{sel.innerHTML+=`<option value="${p.id}">A${i+1} — ${p.nombre}</option>`;});
+  // Actualizar título del sheet al instante cuando cambia el proyecto
+  sel.onchange=function(){
+    const nombre=this.value?gpn(this.value):'';
+    document.getElementById('sact-title').textContent=nombre||(eid?'Editar actividad':'Nueva actividad');
+  };
   document.getElementById('a-n').value='';
   document.getElementById('ml').innerHTML=mRow();
   document.getElementById('el').innerHTML=eRow();
