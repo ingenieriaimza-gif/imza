@@ -3108,31 +3108,34 @@ function selectNomWk(wk){
 }
 
 // Returns {faltas:[dates], vacaciones:[dates]} for a worker within a date range
+// Uses estadoHistorial as source of truth — only counts explicit 'falta' or 'vacaciones' states
 function getWorkerAbsences(wid, fromDate, toDate){
   const faltas=[];
   const vacaciones=[];
-  // Walk each day in the range
   const start=new Date(fromDate+'T12:00:00');
   const end=new Date(toDate+'T12:00:00');
   for(let dt=new Date(start);dt<=end;dt.setDate(dt.getDate()+1)){
     const ds=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
-    // Skip weekends and festivos — workers are always active
+    // Solo días hábiles (no fines de semana ni festivos)
     if(isWeekend(ds)||isFestivo(ds)) continue;
-    // Check activities for this day
-    const dayActs=S.actividades[ds]||[];
-    if(dayActs.length===0) continue; // no activities registered, can't determine
-    const assignedThisDay=dayActs.some(a=>(a.trabajadores||[]).includes(wid));
-    if(!assignedThisDay){
-      // Check if worker was on vacation
+    // Usar el historial de estado explícito registrado por el usuario
+    const hist=(S.estadoHistorial&&S.estadoHistorial[ds])||{};
+    const est=hist[wid];
+    if(est==='falta'){
+      faltas.push(ds);
+    } else if(est==='vacaciones'){
+      // Verificar también rango de vacaciones programadas
       const p=S.personal.find(x=>x.id===wid);
-      const hist=p?(p.historialVac||[]):[];
       const curVac=(p&&p.vacIni&&p.vacFin&&ds>=p.vacIni&&ds<=p.vacFin);
-      const histVac=hist.some(h=>ds>=h.ini&&ds<=h.fin);
-      if(curVac||histVac){
-        vacaciones.push(ds);
-      } else {
-        faltas.push(ds);
-      }
+      const histVac=(p&&(p.historialVac||[]).some(h=>ds>=h.ini&&ds<=h.fin));
+      if(est==='vacaciones'||curVac||histVac) vacaciones.push(ds);
+    } else if(!est){
+      // Sin registro explícito: revisar si tiene vacaciones programadas
+      const p=S.personal.find(x=>x.id===wid);
+      const curVac=(p&&p.vacIni&&p.vacFin&&ds>=p.vacIni&&ds<=p.vacFin);
+      const histVac=(p&&(p.historialVac||[]).some(h=>ds>=h.ini&&ds<=h.fin));
+      if(curVac||histVac) vacaciones.push(ds);
+      // Si no hay registro y no tiene vacaciones, NO se cuenta como falta
     }
   }
   return {faltas, vacaciones};
