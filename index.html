@@ -3210,13 +3210,28 @@ function copyWeekHE(){
   });
 
   var appName=localStorage.getItem('cp4_appname')||'IMZA';
+  // Calcular estado correcto de cada trabajador DURANTE esa semana
+  var resumenPersonal=S.personal.filter(function(p){ return p.estado!=='inactivo'; })
+    .map(function(p){
+      var abs=getWorkerAbsences(p.id,thuStr,wedStr);
+      // Determinar estado predominante en la semana
+      var estSemana='activo';
+      if(abs.faltas.length>0) estSemana='falta';
+      else if(abs.vacaciones.length>0) estSemana='vacaciones';
+      return {
+        nombre:p.nombre, cargo:p.cargo||'',
+        estado:estSemana,
+        faltas:abs.faltas.length,
+        vacaciones:abs.vacaciones.length
+      };
+    });
+
   var data={
     thuStr:fmtDate(thuStr), wedStr:fmtDate(wedStr), appName:appName,
     workerRows:workerRows, gastosRows:gastosRows,
     totalHrs:totalHrs, totalGastos:totalGastos2,
     totalFaltas:totalFaltas, totalVac:totalVac,
-    resumenPersonal:S.personal.filter(function(p){ return p.estado!=='inactivo'; })
-      .map(function(p){ return {nombre:p.nombre,cargo:p.cargo||'',estado:p.estado||'activo'}; })
+    resumenPersonal:resumenPersonal
   };
 
   toast('Generando reporte...','ok');
@@ -3558,6 +3573,9 @@ function _abrirReporteHTML(d){
     var lm={activo:'Activo',vacaciones:'Vac.',falta:'Falta',inactivo:'Inact.'};
     var dm={activo:'dg',vacaciones:'da',falta:'dr',inactivo:'dgr'};
     var bg=i%2?'#FAFAFA':'#fff';
+    // Usar datos de ausencia directamente de resumenPersonal (ya calculados para esa semana)
+    var faltasDias=p.faltas||0;
+    var vacDias=p.vacaciones||0;
     return '<tr style="background:'+bg+';border-bottom:1px solid #F9FAFB;">'+
       '<td style="padding:4px 3px 4px 8px"><div class="av">'+ini(p.nombre)+'</div></td>'+
       '<td style="font-weight:600;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:143px">'+p.nombre+'</td>'+
@@ -3566,8 +3584,8 @@ function _abrirReporteHTML(d){
         '<span class="dot '+(dm[p.estado]||'dgr')+'"></span>'+(lm[p.estado]||p.estado)+
       '</span></td>'+
       '<td style="text-align:center">'+(heW?'<span class="bd bb">+'+heW.totalHrs+'h</span>':'<span style="color:#CBD5E1">—</span>')+'</td>'+
-      '<td style="text-align:center">'+(heW&&heW.faltas?'<span class="bd br">'+heW.faltas+'d</span>':'<span style="color:#CBD5E1">0</span>')+'</td>'+
-      '<td style="text-align:center">'+(heW&&heW.vacaciones?'<span class="bd ba">'+heW.vacaciones+'d</span>':'<span style="color:#CBD5E1">0</span>')+'</td>'+
+      '<td style="text-align:center">'+(faltasDias>0?'<span class="bd br">'+faltasDias+'d</span>':'<span style="color:#CBD5E1">0</span>')+'</td>'+
+      '<td style="text-align:center">'+(vacDias>0?'<span class="bd ba">'+vacDias+'d</span>':'<span style="color:#CBD5E1">0</span>')+'</td>'+
     '</tr>';
   }).join('')+
   '</tbody></table></div>'+
