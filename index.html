@@ -1467,6 +1467,12 @@ function shStep(s){
     if(d) d.className='sd'+(i<s?' done':i===s?' active':'');
   }
   document.getElementById('slbl').textContent=sLbls[s-1]||'';
+  // A partir del paso 2 mostrar el nombre del proyecto seleccionado en el título
+  if(s>1){
+    const pId=document.getElementById('a-p').value;
+    const pNombre=pId?gpn(pId):'';
+    if(pNombre) document.getElementById('sact-title').textContent=pNombre;
+  }
   const sb=document.querySelector('#sov-act .shbody');if(sb)sb.scrollTop=0;
 }
 
