@@ -3222,321 +3222,408 @@ function copyWeekHE(){
 function _abrirReporteHTML(d){
   var money=function(n){ return '$'+Number(n||0).toLocaleString('es-MX'); };
   var maxHrs=d.workerRows.reduce(function(m,w){ return Math.max(m,w.totalHrs); },1);
-
-  // Colores de proyecto para las barras
-  var PROJ_COLORS=['#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6','#06b6d4','#f97316'];
-  var proyMap={};
-  d.workerRows.forEach(function(w){
-    w.dias.forEach(function(dia){
-      if(!proyMap[dia.proyectoNombre]) proyMap[dia.proyectoNombre]=PROJ_COLORS[Object.keys(proyMap).length%PROJ_COLORS.length];
-    });
-  });
-
-  // Datos para gráfica de barras HE
-  var heLabels=d.workerRows.map(function(w){ return w.nombre.split(' ')[0]; });
-  var heVals=d.workerRows.map(function(w){ return w.totalHrs; });
-
-  // Datos para gráfica de gastos por día
-  var gLabels=d.gastosRows.map(function(g){ return g.dateLabel.split(' ').slice(0,2).join(' '); });
-  var gVals=d.gastosRows.map(function(g){ return g.dayTotal; });
-
-  // Donut de estado personal
+  var heLabels=JSON.stringify(d.workerRows.map(function(w){ return w.nombre.split(' ')[0]; }));
+  var heVals=JSON.stringify(d.workerRows.map(function(w){ return w.totalHrs; }));
+  var gLabels=JSON.stringify(d.gastosRows.map(function(g){ return g.dateLabel.split(' ').slice(0,2).join(' '); }));
+  var gVals=JSON.stringify(d.gastosRows.map(function(g){ return g.dayTotal; }));
   var estCount={activo:0,vacaciones:0,falta:0,inactivo:0};
   d.resumenPersonal.forEach(function(p){ estCount[p.estado]=(estCount[p.estado]||0)+1; });
+  var eActive=estCount.activo, eFalta=estCount.falta, eVac=estCount.vacaciones, eInac=estCount.inactivo;
 
   var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'+
-  '<meta name="viewport" content="width=device-width,initial-scale=1">'+
   '<title>Nomina '+d.thuStr+' - '+d.wedStr+'</title>'+
   '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>'+
   '<style>'+
+  ':root{--blue:#2563EB;--blue-l:#EFF6FF;--blue-d:#1E3A8A;'+
+  '--green:#059669;--green-l:#ECFDF5;--green-d:#065F46;'+
+  '--red:#DC2626;--red-l:#FEF2F2;--red-d:#991B1B;'+
+  '--amber:#D97706;--amber-l:#FFFBEB;--amber-d:#92400E;'+
+  '--slate:#0F172A;--slate2:#1E293B;--slate3:#334155;'+
+  '--gray:#6B7280;--gray-l:#F9FAFB;--gray-m:#F3F4F6;--gray-b:#E5E7EB;'+
+  '--white:#FFFFFF;--ink:#111827;}'+
   '*{margin:0;padding:0;box-sizing:border-box;}'+
-  'body{font-family:"Segoe UI",Arial,sans-serif;background:#0f172a;color:#f8fafc;min-height:100vh;padding:24px;}'+
-  'h1{font-size:2rem;font-weight:900;letter-spacing:-.03em;}'+
-  '.sub{color:#94a3b8;font-size:.95rem;margin-top:4px;}'+
-  '.header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid #1e293b;}'+
-  '.periodo{text-align:right;}'+
-  '.periodo span{display:block;font-size:1.1rem;font-weight:700;color:#38bdf8;}'+
-  '.periodo small{color:#64748b;font-size:.8rem;}'+
-  '.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}'+
-  '.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}'+
-  '.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px;}'+
-  '.card{background:#1e293b;border-radius:16px;padding:20px;border:1px solid #334155;}'+
-  '.card-dark{background:#0f172a;border-radius:16px;padding:20px;border:1px solid #1e293b;}'+
-  '.kpi{text-align:center;padding:22px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.08);}'+
-  '.kpi .icon{font-size:1.6rem;margin-bottom:8px;}'+
-  '.kpi .val{font-size:2.4rem;font-weight:900;line-height:1;margin-bottom:6px;}'+
-  '.kpi .lbl{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;opacity:.7;}'+
-  '.kpi .sub2{font-size:.78rem;opacity:.5;margin-top:3px;}'+
-  '.k-blue{background:linear-gradient(135deg,#1d4ed8,#2563eb);border-color:#3b82f6;}'+
-  '.k-green{background:linear-gradient(135deg,#065f46,#059669);border-color:#10b981;}'+
-  '.k-red{background:linear-gradient(135deg,#991b1b,#dc2626);border-color:#ef4444;}'+
-  '.k-amber{background:linear-gradient(135deg,#92400e,#d97706);border-color:#f59e0b;}'+
-  '.sec-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:12px;display:flex;align-items:center;gap:8px;}'+
-  '.sec-title::before{content:"";display:inline-block;width:3px;height:14px;border-radius:2px;background:currentColor;}'+
-  'canvas{max-width:100%!important;}'+
-  'table{width:100%;border-collapse:collapse;font-size:.85rem;}'+
-  'th{background:#0f172a;color:#94a3b8;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;padding:10px 12px;text-align:left;font-weight:700;}'+
-  'td{padding:10px 12px;border-bottom:1px solid #1e293b;vertical-align:middle;}'+
-  'tr:last-child td{border-bottom:none;}'+
-  'tr:hover td{background:#1e293b55;}'+
-  '.badge{display:inline-block;padding:3px 10px;border-radius:100px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;}'+
-  '.b-green{background:#d1fae5;color:#065f46;}'+
-  '.b-red{background:#fee2e2;color:#991b1b;}'+
-  '.b-amber{background:#fef3c7;color:#92400e;}'+
-  '.b-blue{background:#dbeafe;color:#1d4ed8;}'+
-  '.b-gray{background:#f1f5f9;color:#475569;}'+
-  '.hrs-bar-wrap{display:flex;align-items:center;gap:10px;}'+
-  '.hrs-bar{flex:1;height:8px;background:#1e293b;border-radius:4px;overflow:hidden;}'+
-  '.hrs-bar-fill{height:100%;border-radius:4px;transition:width .3s;}'+
-  '.worker-card{background:#1e293b;border-radius:12px;padding:16px;border:1px solid #334155;margin-bottom:10px;}'+
-  '.worker-name{font-weight:700;font-size:1rem;margin-bottom:2px;}'+
-  '.worker-cargo{font-size:.8rem;color:#64748b;margin-bottom:10px;}'+
-  '.day-pill{display:inline-flex;align-items:center;gap:5px;background:#0f172a;border-radius:8px;padding:5px 10px;margin:3px;font-size:.78rem;}'+
-  '.day-pill.descanso{background:#450a0a;border:1px solid #ef4444;}'+
-  '.pill-hrs{font-weight:700;color:#38bdf8;}'+
-  '.total-bar{background:linear-gradient(90deg,#1d4ed8,#7c3aed);border-radius:12px;padding:16px 24px;display:flex;justify-content:space-between;align-items:center;margin-top:12px;}'+
-  '.gasto-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1e293b;}'+
-  '.gasto-item:last-child{border-bottom:none;}'+
-  '.gasto-tipo{font-size:.7rem;padding:2px 8px;border-radius:100px;background:#1e293b;color:#94a3b8;margin-right:8px;}'+
-  '.print-btn{position:fixed;bottom:24px;right:24px;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;border:none;padding:14px 28px;border-radius:100px;font-size:.9rem;font-weight:700;cursor:pointer;box-shadow:0 8px 32px rgba(37,99,235,.4);z-index:999;}'+
-  '@media print{'+
-  '@page{size:A4 landscape;margin:10mm;}'+
-  'body{background:#fff!important;color:#000!important;padding:0!important;font-size:10px!important;}'+
-  '.print-btn{display:none!important;}'+
-  '.card,.card-dark{background:#f8fafc!important;border:1px solid #e2e8f0!important;page-break-inside:avoid;}'+
-  '.kpi{background:#f8fafc!important;border:1px solid #e2e8f0!important;page-break-inside:avoid;}'+
-  '.k-blue{background:#eff6ff!important;border-color:#bfdbfe!important;}'+
-  '.k-blue .val,.k-blue .lbl{color:#1d4ed8!important;}'+
-  '.k-green{background:#f0fdf4!important;border-color:#bbf7d0!important;}'+
-  '.k-green .val,.k-green .lbl{color:#065f46!important;}'+
-  '.k-red{background:#fef2f2!important;border-color:#fecaca!important;}'+
-  '.k-red .val,.k-red .lbl{color:#991b1b!important;}'+
-  '.k-amber{background:#fffbeb!important;border-color:#fde68a!important;}'+
-  '.k-amber .val,.k-amber .lbl{color:#92400e!important;}'+
-  'th{background:#f1f5f9!important;color:#475569!important;}'+
-  'td{color:#374151!important;}'+
-  '.badge{border:1px solid currentColor;}'+
-  '.worker-card{background:#f8fafc!important;border:1px solid #e2e8f0!important;}'+
-  '.worker-name,.sec-title{color:#111827!important;}'+
-  '.worker-cargo{color:#6b7280!important;}'+
-  '.hrs-bar{background:#e5e7eb!important;}'+
-  '.day-pill{background:#f1f5f9!important;border:1px solid #e2e8f0!important;}'+
-  '.day-pill.descanso{background:#fef2f2!important;border-color:#fecaca!important;}'+
-  '.pill-hrs{color:#1d4ed8!important;}'+
-  '.total-bar{background:#1d4ed8!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
-  '.header{border-bottom:2px solid #e2e8f0!important;}'+
-  'h1{color:#0f172a!important;}'+
-  '.periodo span{color:#1d4ed8!important;}'+
-  '.sub{color:#475569!important;}'+
-  '.gasto-tipo{background:#f1f5f9!important;color:#475569!important;}'+
-  '-webkit-print-color-adjust:exact;print-color-adjust:exact;'+
-  '}'+
-  '</style></head><body>'+
+  'body{font-family:-apple-system,"Segoe UI",Arial,sans-serif;background:#F8FAFC;color:var(--ink);padding:0;}'+
+  '.page{max-width:1400px;margin:0 auto;padding:32px 32px 48px;}'+
 
   // HEADER
-  '<div class="header">'+
-  '<div><h1>'+d.appName+'</h1>'+
-  '<div class="sub">Reporte de Nomina Semanal</div></div>'+
-  '<div class="periodo"><small>Periodo</small>'+
-  '<span>'+d.thuStr+' &nbsp;→&nbsp; '+d.wedStr+'</span></div>'+
+  '.hdr{display:flex;justify-content:space-between;align-items:center;'+
+  'padding:24px 32px;background:var(--white);border-bottom:3px solid var(--blue);margin-bottom:28px;'+
+  'box-shadow:0 1px 3px rgba(0,0,0,.06);}'+
+  '.hdr-left h1{font-size:2rem;font-weight:900;color:var(--blue-d);letter-spacing:-.04em;}'+
+  '.hdr-left p{font-size:.9rem;color:var(--gray);margin-top:2px;}'+
+  '.hdr-right{text-align:right;}'+
+  '.hdr-right .periodo-lbl{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--gray);margin-bottom:4px;}'+
+  '.hdr-right .periodo-val{font-size:1.1rem;font-weight:700;color:var(--blue);}'+
+
+  // KPI CARDS
+  '.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px;}'+
+  '.kpi-card{background:var(--white);border-radius:20px;padding:28px 20px 24px;text-align:center;'+
+  'border:2px solid var(--gray-b);position:relative;overflow:hidden;'+
+  'box-shadow:0 2px 8px rgba(0,0,0,.04);}'+
+  '.kpi-card::before{content:"";position:absolute;top:0;left:0;right:0;height:4px;}'+
+  '.kpi-blue::before{background:var(--blue);}'+
+  '.kpi-green::before{background:var(--green);}'+
+  '.kpi-red::before{background:var(--red);}'+
+  '.kpi-amber::before{background:var(--amber);}'+
+  '.kpi-icon{font-size:1.8rem;margin-bottom:10px;display:block;}'+
+  '.kpi-val{font-size:2.8rem;font-weight:900;line-height:1;margin-bottom:8px;letter-spacing:-.04em;}'+
+  '.kpi-blue .kpi-val{color:var(--blue);}'+
+  '.kpi-green .kpi-val{color:var(--green);}'+
+  '.kpi-red .kpi-val{color:var(--red);}'+
+  '.kpi-amber .kpi-val{color:var(--amber);}'+
+  '.kpi-lbl{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gray);margin-bottom:4px;}'+
+  '.kpi-sub{font-size:.78rem;color:#9CA3AF;}'+
+
+  // CHARTS ROW
+  '.charts-row{display:grid;grid-template-columns:2fr 1.5fr 1fr;gap:16px;margin-bottom:28px;}'+
+  '.card{background:var(--white);border-radius:16px;padding:24px;border:1px solid var(--gray-b);'+
+  'box-shadow:0 2px 8px rgba(0,0,0,.04);}'+
+  '.card-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;'+
+  'color:var(--gray);margin-bottom:18px;display:flex;align-items:center;gap:8px;}'+
+  '.card-title::before{content:"";display:block;width:4px;height:16px;border-radius:2px;background:currentColor;flex-shrink:0;}'+
+  '.card-title.t-blue{color:var(--blue);}'+
+  '.card-title.t-green{color:var(--green);}'+
+  '.card-title.t-purple{color:#7C3AED;}'+
+
+  // TABLES ROW
+  '.tables-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px;}'+
+  '.table-card{background:var(--white);border-radius:16px;overflow:hidden;border:1px solid var(--gray-b);'+
+  'box-shadow:0 2px 8px rgba(0,0,0,.04);}'+
+  '.table-card-hdr{padding:18px 24px;border-bottom:2px solid var(--gray-m);}'+
+  '.table-card-hdr .card-title{margin-bottom:0;}'+
+
+  // TABLAS MODERNAS
+  'table{width:100%;border-collapse:collapse;}'+
+  'thead th{background:var(--gray-m);color:var(--gray);font-size:.7rem;font-weight:700;'+
+  'text-transform:uppercase;letter-spacing:.08em;padding:12px 16px;text-align:left;border:none;}'+
+  'thead th:first-child{border-radius:0;}'+
+  'tbody tr{border-bottom:1px solid var(--gray-m);transition:background .1s;}'+
+  'tbody tr:last-child{border-bottom:none;}'+
+  'tbody tr:hover{background:#F8FAFC;}'+
+  'tbody td{padding:13px 16px;font-size:.85rem;vertical-align:middle;}'+
+  '.td-name{font-weight:600;color:var(--ink);}'+
+  '.td-sub{font-size:.75rem;color:var(--gray);margin-top:2px;}'+
+
+  // BADGES
+  '.badge{display:inline-flex;align-items:center;padding:4px 12px;border-radius:100px;'+
+  'font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}'+
+  '.b-green{background:var(--green-l);color:var(--green-d);border:1px solid #A7F3D0;}'+
+  '.b-red{background:var(--red-l);color:var(--red-d);border:1px solid #FECACA;}'+
+  '.b-amber{background:var(--amber-l);color:var(--amber-d);border:1px solid #FDE68A;}'+
+  '.b-blue{background:var(--blue-l);color:var(--blue-d);border:1px solid #BFDBFE;}'+
+  '.b-gray{background:var(--gray-m);color:var(--gray);border:1px solid var(--gray-b);}'+
+
+  // HRS CHIP
+  '.hrs-chip{display:inline-flex;align-items:center;gap:6px;background:var(--blue-l);'+
+  'border:1px solid #BFDBFE;border-radius:8px;padding:5px 10px;font-size:.82rem;font-weight:700;color:var(--blue-d);}'+
+  '.hrs-chip.zero{background:var(--gray-m);border-color:var(--gray-b);color:var(--gray);}'+
+
+  // BARRA MINI
+  '.bar-wrap{display:flex;align-items:center;gap:8px;margin-top:4px;}'+
+  '.bar-bg{flex:1;height:6px;background:var(--gray-m);border-radius:3px;overflow:hidden;}'+
+  '.bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--blue),#7C3AED);}'+
+  '.bar-val{font-size:.78rem;font-weight:700;color:var(--blue);white-space:nowrap;min-width:32px;text-align:right;}'+
+
+  // TOTAL BANNER
+  '.total-banner{margin:0 16px 16px;border-radius:12px;padding:14px 20px;'+
+  'display:flex;justify-content:space-between;align-items:center;'+
+  'background:linear-gradient(135deg,#1E3A8A,#2563EB);}'+
+  '.total-banner.green{background:linear-gradient(135deg,#065F46,#059669);}'+
+  '.total-banner span:first-child{font-size:.8rem;color:rgba(255,255,255,.75);font-weight:500;}'+
+  '.total-banner span:last-child{font-size:1.4rem;font-weight:900;color:#fff;}'+
+
+  // GASTOS ITEMS
+  '.gasto-group{padding:12px 16px;border-bottom:1px solid var(--gray-m);}'+
+  '.gasto-group:last-child{border-bottom:none;}'+
+  '.gasto-day-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}'+
+  '.gasto-day-name{font-weight:700;font-size:.88rem;}'+
+  '.gasto-day-total{font-weight:700;color:var(--green);font-size:.9rem;}'+
+  '.gasto-proj{background:var(--gray-l);border-radius:8px;padding:8px 12px;margin-bottom:5px;}'+
+  '.gasto-proj-name{font-size:.78rem;font-weight:700;color:var(--blue-d);margin-bottom:5px;}'+
+  '.gasto-item{display:flex;justify-content:space-between;align-items:center;'+
+  'padding:4px 0;font-size:.8rem;}'+
+  '.gasto-item-left{display:flex;align-items:center;gap:8px;}'+
+  '.tipo-pill{background:var(--white);border:1px solid var(--gray-b);border-radius:6px;'+
+  'padding:2px 7px;font-size:.68rem;font-weight:600;color:var(--gray);}'+
+  '.gasto-monto{font-weight:700;color:var(--ink);}'+
+
+  // WORKER TABLE special
+  '.w-row{display:flex;align-items:center;gap:12px;}'+
+  '.w-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#7C3AED);'+
+  'display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.82rem;color:#fff;flex-shrink:0;}'+
+  '.dia-tag{display:inline-flex;align-items:center;gap:4px;background:var(--blue-l);'+
+  'border:1px solid #BFDBFE;border-radius:6px;padding:3px 8px;font-size:.72rem;margin:2px;}'+
+  '.dia-tag.desc{background:var(--red-l);border-color:#FECACA;}'+
+  '.dia-tag-date{color:var(--gray);font-weight:500;}'+
+  '.dia-tag-hrs{font-weight:700;color:var(--blue-d);}'+
+  '.dia-tag.desc .dia-tag-hrs{color:var(--red-d);}'+
+  '.dia-tag-proj{color:#6B7280;font-size:.65rem;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'+
+
+  // PERSONAL TABLE
+  '.est-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;flex-shrink:0;}'+
+  '.dot-green{background:var(--green);} .dot-red{background:var(--red);} .dot-amber{background:var(--amber);} .dot-gray{background:var(--gray);}'+
+
+  // DONUT center text
+  '.donut-wrap{position:relative;max-width:160px;margin:0 auto 16px;}'+
+  '.donut-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;}'+
+  '.donut-center .num{font-size:1.8rem;font-weight:900;color:var(--ink);}'+
+  '.donut-center .lbl{font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;color:var(--gray);}'+
+  '.legend-row{display:flex;align-items:center;justify-content:center;gap:8px;margin:6px 0;font-size:.78rem;}'+
+
+  // PRINT
+  '@media print{'+
+  '@page{size:A4 landscape;margin:8mm;}'+
+  'body{background:#fff!important;padding:0!important;}'+
+  '.page{padding:0!important;max-width:none!important;}'+
+  '.hdr{padding:12px 16px!important;margin-bottom:12px!important;}'+
+  '.kpi-row,.charts-row,.tables-row{gap:8px!important;margin-bottom:12px!important;}'+
+  '.card,.table-card,.kpi-card{box-shadow:none!important;page-break-inside:avoid;}'+
+  '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}'+
+  '</style></head><body>'+
+
+  // ── HEADER ────────────────────────────────────────────────────────────────
+  '<div class="hdr">'+
+  '<div class="hdr-left"><h1>'+d.appName+'</h1><p>Reporte de Nomina Semanal</p></div>'+
+  '<div class="hdr-right"><div class="periodo-lbl">Periodo</div>'+
+  '<div class="periodo-val">'+d.thuStr+' &nbsp;→&nbsp; '+d.wedStr+'</div></div>'+
   '</div>'+
 
-  // KPIs
-  '<div class="grid4">'+
-  '<div class="kpi k-blue"><div class="icon">⏱</div>'+
-  '<div class="val">'+( d.totalHrs?'+'+d.totalHrs+'h':'0h')+'</div>'+
-  '<div class="lbl">Horas Extras</div>'+
-  '<div class="sub2">'+d.workerRows.length+' trabajadores</div></div>'+
+  '<div class="page">'+
 
-  '<div class="kpi k-green"><div class="icon">💰</div>'+
-  '<div class="val">'+money(d.totalGastos)+'</div>'+
-  '<div class="lbl">Gastos Extras</div>'+
-  '<div class="sub2">semana completa</div></div>'+
-
-  '<div class="kpi k-red"><div class="icon">✗</div>'+
-  '<div class="val">'+d.totalFaltas+'</div>'+
-  '<div class="lbl">Faltas</div>'+
-  '<div class="sub2">dias registrados</div></div>'+
-
-  '<div class="kpi k-amber"><div class="icon">🏖</div>'+
-  '<div class="val">'+d.totalVac+'</div>'+
-  '<div class="lbl">Vacaciones</div>'+
-  '<div class="sub2">dias programados</div></div>'+
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+  '<div class="kpi-row">'+
+  '<div class="kpi-card kpi-blue">'+
+  '<span class="kpi-icon">⏱</span>'+
+  '<div class="kpi-val">'+(d.totalHrs?'+'+d.totalHrs+'h':'0h')+'</div>'+
+  '<div class="kpi-lbl">Horas Extras</div>'+
+  '<div class="kpi-sub">'+d.workerRows.length+' trabajadores</div>'+
+  '</div>'+
+  '<div class="kpi-card kpi-green">'+
+  '<span class="kpi-icon">💰</span>'+
+  '<div class="kpi-val">'+money(d.totalGastos)+'</div>'+
+  '<div class="kpi-lbl">Gastos Extras</div>'+
+  '<div class="kpi-sub">semana completa</div>'+
+  '</div>'+
+  '<div class="kpi-card kpi-red">'+
+  '<span class="kpi-icon">✗</span>'+
+  '<div class="kpi-val">'+d.totalFaltas+'</div>'+
+  '<div class="kpi-lbl">Faltas</div>'+
+  '<div class="kpi-sub">dias registrados</div>'+
+  '</div>'+
+  '<div class="kpi-card kpi-amber">'+
+  '<span class="kpi-icon">🏖</span>'+
+  '<div class="kpi-val">'+d.totalVac+'</div>'+
+  '<div class="kpi-lbl">Vacaciones</div>'+
+  '<div class="kpi-sub">dias programados</div>'+
+  '</div>'+
   '</div>'+
 
-  // FILA: Grafica HE + Grafica Gastos + Donut Personal
-  '<div class="grid3">'+
-
-  // Grafica barras HE
-  '<div class="card">'+
-  '<div class="sec-title" style="color:#38bdf8">Horas Extras por Trabajador</div>'+
-  '<canvas id="chartHE" height="220"></canvas>'+
+  // ── CHARTS ROW ────────────────────────────────────────────────────────────
+  '<div class="charts-row">'+
+  '<div class="card"><div class="card-title t-blue">Horas Extras por Trabajador</div>'+
+  '<canvas id="cHE" height="200"></canvas></div>'+
+  '<div class="card"><div class="card-title t-green">Gastos Extras por Dia</div>'+
+  '<canvas id="cG" height="200"></canvas></div>'+
+  '<div class="card"><div class="card-title t-purple">Estado del Personal</div>'+
+  '<div class="donut-wrap"><canvas id="cE" height="160"></canvas>'+
+  '<div class="donut-center"><div class="num">'+d.resumenPersonal.length+'</div>'+
+  '<div class="lbl">total</div></div></div>'+
+  (eActive?'<div class="legend-row"><span class="est-dot dot-green"></span><span style="color:#065F46;font-weight:600">Activos: '+eActive+'</span></div>':'')+
+  (eFalta?'<div class="legend-row"><span class="est-dot dot-red"></span><span style="color:#991B1B;font-weight:600">Falta: '+eFalta+'</span></div>':'')+
+  (eVac?'<div class="legend-row"><span class="est-dot dot-amber"></span><span style="color:#92400E;font-weight:600">Vacaciones: '+eVac+'</span></div>':'')+
+  '</div>'+
   '</div>'+
 
-  // Grafica gastos por dia
-  '<div class="card">'+
-  '<div class="sec-title" style="color:#34d399">Gastos Extras por Dia</div>'+
-  '<canvas id="chartGastos" height="220"></canvas>'+
-  '</div>'+
+  // ── TABLES ROW ────────────────────────────────────────────────────────────
+  '<div class="tables-row">'+
 
-  // Donut estado personal
-  '<div class="card">'+
-  '<div class="sec-title" style="color:#a78bfa">Estado del Personal</div>'+
-  '<canvas id="chartEstado" height="180"></canvas>'+
-  '<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center">'+
-  (estCount.activo?'<span class="badge b-green">Activos: '+estCount.activo+'</span>':'')+
-  (estCount.falta?'<span class="badge b-red">Falta: '+estCount.falta+'</span>':'')+
-  (estCount.vacaciones?'<span class="badge b-amber">Vacaciones: '+estCount.vacaciones+'</span>':'')+
-  (estCount.inactivo?'<span class="badge b-gray">Inactivos: '+estCount.inactivo+'</span>':'')+
-  '</div></div>'+
-  '</div>'+
-
-  // FILA: Detalle HE + Detalle Gastos
-  '<div class="grid2">'+
-
-  // Detalle horas extras
-  '<div class="card-dark">'+
-  '<div class="sec-title" style="color:#38bdf8">Detalle de Horas Extras</div>'+
-  (d.workerRows.length?
-    d.workerRows.map(function(w){
-      var pct=Math.round((w.totalHrs/maxHrs)*100);
-      return '<div class="worker-card">'+
-        '<div class="worker-name">'+w.nombre+
-          (w.faltas?'&nbsp;<span class="badge b-red">Faltas: '+w.faltas+'</span>':
-           '<span class="badge b-green" style="margin-left:6px">Sin faltas</span>')+
+  // Tabla HE detallada
+  '<div class="table-card">'+
+  '<div class="table-card-hdr"><div class="card-title t-blue">Detalle Horas Extras</div></div>'+
+  '<table>'+
+  '<thead><tr>'+
+  '<th>Trabajador</th>'+
+  '<th>Horas semana</th>'+
+  '<th>Dias trabajados</th>'+
+  '</tr></thead>'+
+  '<tbody>'+
+  (d.workerRows.length?d.workerRows.map(function(w){
+    var pct=Math.round((w.totalHrs/maxHrs)*100);
+    var initials=w.nombre.split(' ').map(function(x){return x[0]||'';}).slice(0,2).join('').toUpperCase();
+    return '<tr>'+
+      '<td>'+
+        '<div class="w-row">'+
+          '<div class="w-avatar">'+initials+'</div>'+
+          '<div>'+
+            '<div class="td-name">'+w.nombre+'</div>'+
+            '<div class="td-sub">'+( w.cargo||'Sin cargo')+
+              (w.faltas?' &nbsp;<span class="badge b-red">Falta: '+w.faltas+'d</span>':'')+
+            '</div>'+
+          '</div>'+
         '</div>'+
-        '<div class="worker-cargo">'+( w.cargo||'Sin cargo')+'</div>'+
-        '<div class="hrs-bar-wrap" style="margin-bottom:10px">'+
-          '<div class="hrs-bar"><div class="hrs-bar-fill" style="width:'+pct+'%;background:linear-gradient(90deg,#2563eb,#7c3aed)"></div></div>'+
-          '<span style="font-weight:700;color:#38bdf8;font-size:.9rem;white-space:nowrap">+'+w.totalHrs+'h</span>'+
+      '</td>'+
+      '<td>'+
+        '<div class="bar-wrap">'+
+          '<div class="bar-bg"><div class="bar-fill" style="width:'+pct+'%"></div></div>'+
+          '<div class="bar-val">+'+w.totalHrs+'h</div>'+
         '</div>'+
+      '</td>'+
+      '<td>'+
         '<div>'+w.dias.map(function(dia){
-          return '<span class="day-pill'+(dia.esDescanso?' descanso':'')+'">'+
-            '<span style="color:#94a3b8;font-size:.75rem">'+dia.dateLabel+'</span>'+
-            '<span class="pill-hrs">+'+dia.hrs+'h</span>'+
-            '<span style="color:#64748b;font-size:.72rem">'+dia.proyectoNombre.substring(0,12)+'</span>'+
+          return '<span class="dia-tag'+(dia.esDescanso?' desc':'')+'">'+
+            '<span class="dia-tag-date">'+dia.dateLabel.split(' ').slice(0,2).join(' ')+'</span>'+
+            '<span class="dia-tag-hrs">+'+dia.hrs+'h</span>'+
+            '<span class="dia-tag-proj">'+dia.proyectoNombre.substring(0,10)+'</span>'+
           '</span>';
         }).join('')+'</div>'+
-      '</div>';
-    }).join('')
-    : '<p style="color:#475569;font-size:.85rem;padding:20px 0">Sin horas extras esta semana</p>'
-  )+
-  // Total HE
-  (d.totalHrs?'<div class="total-bar">'+
-    '<span style="font-size:.8rem;opacity:.8">Total horas extras de la semana</span>'+
-    '<span style="font-size:1.6rem;font-weight:900">+'+d.totalHrs+'h</span>'+
-  '</div>':'')+
+      '</td>'+
+    '</tr>';
+  }).join('')
+  :'<tr><td colspan="3" style="text-align:center;color:#9CA3AF;padding:24px">Sin horas extras esta semana</td></tr>')+
+  '</tbody></table>'+
+  (d.totalHrs?'<div class="total-banner"><span>Total horas extras de la semana</span><span>+'+d.totalHrs+'h</span></div>':'')+
   '</div>'+
 
-  // Detalle gastos
-  '<div class="card-dark">'+
-  '<div class="sec-title" style="color:#34d399">Detalle de Gastos</div>'+
+  // Tabla gastos detallada
+  '<div class="table-card">'+
+  '<div class="table-card-hdr"><div class="card-title t-green">Detalle de Gastos Extras</div></div>'+
   (d.gastosRows.length?
     d.gastosRows.map(function(g){
-      return '<div style="margin-bottom:16px">'+
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
-          '<span style="font-weight:700;font-size:.9rem;color:'+(g.esDescanso?'#ef4444':'#f8fafc')+'">'+
-            g.dateLabel+(g.esDescanso?' &nbsp;<span class="badge b-red">Descanso</span>':'')+
+      return '<div class="gasto-group">'+
+        '<div class="gasto-day-hdr">'+
+          '<span class="gasto-day-name">'+g.dateLabel+
+            (g.esDescanso?' <span class="badge b-red" style="font-size:.65rem">Descanso</span>':'')+
           '</span>'+
-          '<span style="font-weight:700;color:#34d399">'+money(g.dayTotal)+'</span>'+
+          '<span class="gasto-day-total">'+money(g.dayTotal)+'</span>'+
         '</div>'+
         g.proyectos.map(function(proj){
-          return '<div style="background:#0f172a;border-radius:10px;padding:10px 12px;margin-bottom:6px">'+
-            '<div style="font-size:.8rem;font-weight:700;color:#7dd3fc;margin-bottom:6px">'+
-              proj.nombre+(proj.lider?' · '+proj.lider:'')+
+          return '<div class="gasto-proj">'+
+            '<div class="gasto-proj-name">'+proj.nombre+(proj.lider?' &nbsp;·&nbsp; <span style="font-weight:400;color:#6B7280">'+proj.lider+'</span>':'')+
+            (proj.gastos.length>1?' <span class="badge b-blue" style="float:right">'+money(proj.subTotal)+'</span>':'')+
             '</div>'+
             proj.gastos.map(function(gs){
               return '<div class="gasto-item">'+
-                '<div><span class="gasto-tipo">'+gs.tipo+'</span>'+gs.desc+'</div>'+
-                '<span style="font-weight:700;white-space:nowrap">'+money(gs.monto)+'</span>'+
+                '<div class="gasto-item-left">'+
+                  '<span class="tipo-pill">'+gs.tipo+'</span>'+
+                  '<span style="color:#374151">'+gs.desc+'</span>'+
+                '</div>'+
+                '<span class="gasto-monto">'+money(gs.monto)+'</span>'+
               '</div>';
             }).join('')+
           '</div>';
         }).join('')+
       '</div>';
     }).join('')
-    : '<p style="color:#475569;font-size:.85rem;padding:20px 0">Sin gastos esta semana</p>'
+    :'<div style="padding:24px;text-align:center;color:#9CA3AF">Sin gastos esta semana</div>'
   )+
-  (d.totalGastos?'<div class="total-bar" style="background:linear-gradient(90deg,#065f46,#059669)">'+
-    '<span style="font-size:.8rem;opacity:.8">Total gastos de la semana</span>'+
-    '<span style="font-size:1.6rem;font-weight:900">'+money(d.totalGastos)+'</span>'+
-  '</div>':'')+
+  (d.totalGastos?'<div class="total-banner green"><span>Total gastos de la semana</span><span>'+money(d.totalGastos)+'</span></div>':'')+
   '</div>'+
   '</div>'+
 
-  // TABLA PERSONAL
-  '<div class="card" style="margin-top:0">'+
-  '<div class="sec-title" style="color:#a78bfa">Personal de la Semana</div>'+
-  '<table><thead><tr>'+
-  '<th>Trabajador</th><th>Cargo</th><th>Estado</th><th>HE esta semana</th><th>Faltas</th><th>Vacaciones</th>'+
-  '</tr></thead><tbody>'+
-  d.resumenPersonal.map(function(p){
+  // ── TABLA PERSONAL COMPLETA ───────────────────────────────────────────────
+  '<div class="table-card" style="margin-bottom:0">'+
+  '<div class="table-card-hdr"><div class="card-title t-purple" style="color:#7C3AED">Estado del Personal</div></div>'+
+  '<table>'+
+  '<thead><tr>'+
+  '<th>Trabajador</th><th>Cargo</th><th>Estado</th>'+
+  '<th>HE semana</th><th>Faltas</th><th>Vacaciones</th>'+
+  '</tr></thead>'+
+  '<tbody>'+
+  d.resumenPersonal.map(function(p,i){
     var heW=d.workerRows.find(function(w){ return w.nombre===p.nombre; });
-    var bCls={activo:'b-green',vacaciones:'b-amber',falta:'b-red',inactivo:'b-gray'};
-    var bLbl={activo:'Activo',vacaciones:'Vacaciones',falta:'Falta',inactivo:'Inactivo'};
-    return '<tr>'+
-      '<td style="font-weight:600">'+p.nombre+'</td>'+
-      '<td style="color:#64748b">'+( p.cargo||'—')+'</td>'+
-      '<td><span class="badge '+(bCls[p.estado]||'b-gray')+'">'+(bLbl[p.estado]||p.estado)+'</span></td>'+
-      '<td style="font-weight:700;color:#38bdf8">'+(heW?'+'+heW.totalHrs+'h':'—')+'</td>'+
-      '<td>'+(heW&&heW.faltas?'<span class="badge b-red">'+heW.faltas+' dia(s)</span>':'<span style="color:#475569">0</span>')+'</td>'+
-      '<td>'+(heW&&heW.vacaciones?'<span class="badge b-amber">'+heW.vacaciones+' dia(s)</span>':'<span style="color:#475569">0</span>')+'</td>'+
+    var bMap={activo:'b-green',vacaciones:'b-amber',falta:'b-red',inactivo:'b-gray'};
+    var lMap={activo:'Activo',vacaciones:'Vacaciones',falta:'Falta',inactivo:'Inactivo'};
+    var dotMap={activo:'dot-green',vacaciones:'dot-amber',falta:'dot-red',inactivo:'dot-gray'};
+    var initials=p.nombre.split(' ').map(function(x){return x[0]||'';}).slice(0,2).join('').toUpperCase();
+    var rowBg=i%2===0?'':'background:#F9FAFB;';
+    return '<tr style="'+rowBg+'">'+
+      '<td><div class="w-row">'+
+        '<div class="w-avatar" style="width:30px;height:30px;font-size:.72rem">'+initials+'</div>'+
+        '<span class="td-name">'+p.nombre+'</span>'+
+      '</div></td>'+
+      '<td style="color:#6B7280;font-size:.82rem">'+( p.cargo||'—')+'</td>'+
+      '<td><span class="badge '+(bMap[p.estado]||'b-gray')+'">'+
+        '<span class="est-dot '+(dotMap[p.estado]||'dot-gray')+'"></span>'+
+        (lMap[p.estado]||p.estado)+
+      '</span></td>'+
+      '<td>'+(heW
+        ?'<span class="hrs-chip">+'+heW.totalHrs+'h</span>'
+        :'<span class="hrs-chip zero">—</span>')+
+      '</td>'+
+      '<td>'+(heW&&heW.faltas?'<span class="badge b-red">'+heW.faltas+' dia(s)</span>':'<span style="color:#9CA3AF">0</span>')+'</td>'+
+      '<td>'+(heW&&heW.vacaciones?'<span class="badge b-amber">'+heW.vacaciones+' dia(s)</span>':'<span style="color:#9CA3AF">0</span>')+'</td>'+
     '</tr>';
   }).join('')+
-  '</tbody></table></div>'+
+  '</tbody></table>'+
+  '</div>'+
 
-  // Pie de página
-  '<div style="text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid #1e293b;color:#334155;font-size:.75rem">'+
-  d.appName+' · Reporte de Nomina · '+d.thuStr+' — '+d.wedStr+'</div>'+
+  // Footer
+  '<div style="text-align:center;margin-top:32px;padding-top:16px;border-top:1px solid var(--gray-b);'+
+  'color:#9CA3AF;font-size:.75rem;">'+
+  d.appName+' &nbsp;·&nbsp; Reporte de Nomina &nbsp;·&nbsp; '+d.thuStr+' — '+d.wedStr+
+  '</div>'+
+  '</div>'+
 
-  // Boton imprimir
-  '<button class="print-btn" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>'+
+  // CHARTS JS
+  '<script>(function(){'+
+  'var DEF={responsive:true,maintainAspectRatio:false,'+
+  'plugins:{legend:{display:false},tooltip:{backgroundColor:"#1E293B",titleColor:"#F8FAFC",'+
+  'bodyColor:"#94A3B8",borderColor:"#334155",borderWidth:1,padding:10,cornerRadius:8}}};'+
 
-  // CHARTS
-  '<script>'+
-  '(function(){'+
-  'var DEF={responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false},'+
-  'tooltip:{backgroundColor:"#1e293b",titleColor:"#f8fafc",bodyColor:"#94a3b8",borderColor:"#334155",borderWidth:1}}};'+
-
-  // Chart HE
-  'var ctxHE=document.getElementById("chartHE").getContext("2d");'+
+  // Chart HE — barras horizontales para mejor comparación cuando hay muchos trabajadores
+  'var ctxHE=document.getElementById("cHE").getContext("2d");'+
   'new Chart(ctxHE,{type:"bar",data:{'+
-  'labels:'+JSON.stringify(heLabels)+','+
-  'datasets:[{data:'+JSON.stringify(heVals)+','+
-  'backgroundColor:'+JSON.stringify(heVals.map(function(_,i){ return i%2===0?'#2563eb':'#7c3aed'; }))+','+
-  'borderRadius:8,borderSkipped:false}]},'+
-  'options:Object.assign({},DEF,{scales:{x:{ticks:{color:"#94a3b8",font:{size:11}},grid:{color:"#1e293b"}},'+
-  'y:{ticks:{color:"#94a3b8",callback:function(v){return"+"+v+"h"},font:{size:10}},grid:{color:"#1e293b"},beginAtZero:true}}})});'+
+  'labels:'+heLabels+','+
+  'datasets:[{'+
+  'data:'+heVals+','+
+  'backgroundColor:function(ctx){'+
+  'var g=ctx.chart.ctx.createLinearGradient(0,0,0,200);'+
+  'g.addColorStop(0,"#3B82F6");g.addColorStop(1,"#7C3AED");return g;},'+
+  'borderRadius:6,borderSkipped:false,barThickness:20}]},'+
+  'options:Object.assign({},DEF,{'+
+  'plugins:Object.assign({},DEF.plugins,{'+
+  'tooltip:{callbacks:{label:function(c){return" +"+c.raw+"h";}},'+
+  'backgroundColor:"#1E293B",titleColor:"#F8FAFC",bodyColor:"#94A3B8",borderColor:"#334155",borderWidth:1,padding:10,cornerRadius:8}}),'+
+  'scales:{'+
+  'x:{ticks:{color:"#6B7280",font:{size:11}},grid:{color:"#F3F4F6"},border:{display:false}},'+
+  'y:{ticks:{color:"#6B7280",callback:function(v){return"+"+v+"h"},font:{size:10}},'+
+  'grid:{color:"#F3F4F6"},border:{display:false},beginAtZero:true}}})});'+
 
   // Chart Gastos
-  'var ctxG=document.getElementById("chartGastos").getContext("2d");'+
+  'var ctxG=document.getElementById("cG").getContext("2d");'+
   'new Chart(ctxG,{type:"bar",data:{'+
-  'labels:'+JSON.stringify(gLabels)+','+
-  'datasets:[{data:'+JSON.stringify(gVals)+','+
-  'backgroundColor:'+JSON.stringify(gVals.map(function(_,i){ return i%2===0?'#059669':'#10b981'; }))+','+
-  'borderRadius:8,borderSkipped:false}]},'+
-  'options:Object.assign({},DEF,{scales:{x:{ticks:{color:"#94a3b8",font:{size:10}},grid:{color:"#1e293b"}},'+
-  'y:{ticks:{color:"#94a3b8",callback:function(v){return"$"+v.toLocaleString("es-MX")},font:{size:9}},grid:{color:"#1e293b"},beginAtZero:true}}})});'+
+  'labels:'+gLabels+','+
+  'datasets:[{data:'+gVals+','+
+  'backgroundColor:function(ctx){var g=ctx.chart.ctx.createLinearGradient(0,0,0,200);'+
+  'g.addColorStop(0,"#10B981");g.addColorStop(1,"#059669");return g;},'+
+  'borderRadius:6,borderSkipped:false,barThickness:28}]},'+
+  'options:Object.assign({},DEF,{'+
+  'plugins:Object.assign({},DEF.plugins,{'+
+  'tooltip:{callbacks:{label:function(c){return" $"+c.raw.toLocaleString("es-MX");}},'+
+  'backgroundColor:"#1E293B",titleColor:"#F8FAFC",bodyColor:"#94A3B8",borderColor:"#334155",borderWidth:1,padding:10,cornerRadius:8}}),'+
+  'scales:{'+
+  'x:{ticks:{color:"#6B7280",font:{size:11}},grid:{display:false},border:{display:false}},'+
+  'y:{ticks:{color:"#6B7280",callback:function(v){return"$"+v.toLocaleString("es-MX")},font:{size:9}},'+
+  'grid:{color:"#F3F4F6"},border:{display:false},beginAtZero:true}}})});'+
 
-  // Chart Estado (donut)
-  'var ctxE=document.getElementById("chartEstado").getContext("2d");'+
-  'var eLabels=["Activos","Vacaciones","Falta","Inactivos"];'+
-  'var eVals=['+estCount.activo+','+estCount.vacaciones+','+estCount.falta+','+estCount.inactivo+'];'+
-  'var eColors=["#10b981","#f59e0b","#ef4444","#6b7280"];'+
-  'var eData=eLabels.filter(function(_,i){return eVals[i]>0;});'+
-  'var eD=eVals.filter(function(v){return v>0;});'+
-  'var eC=eColors.filter(function(_,i){return eVals[i]>0;});'+
-  'new Chart(ctxE,{type:"doughnut",data:{labels:eData,datasets:[{data:eD,backgroundColor:eC,borderWidth:2,borderColor:"#1e293b",hoverOffset:6}]},'+
-  'options:{responsive:true,cutout:"65%",plugins:{legend:{position:"bottom",labels:{color:"#94a3b8",font:{size:11},padding:12}},'+
-  'tooltip:{backgroundColor:"#1e293b",titleColor:"#f8fafc",bodyColor:"#94a3b8"}}}});'+
-  '})();'+
-  '<\/script></body></html>';
+  // Chart Estado Donut
+  'var ctxE=document.getElementById("cE").getContext("2d");'+
+  'var eD=['+eActive+','+eFalta+','+eVac+','+eInac+'].filter(function(v){return v>0;});'+
+  'var eL=["Activos","Falta","Vacaciones","Inactivos"].filter(function(_,i){'+
+  'return ['+eActive+','+eFalta+','+eVac+','+eInac+'][i]>0;});'+
+  'var eC=["#10B981","#EF4444","#F59E0B","#9CA3AF"].filter(function(_,i){'+
+  'return ['+eActive+','+eFalta+','+eVac+','+eInac+'][i]>0;});'+
+  'new Chart(ctxE,{type:"doughnut",data:{labels:eL,datasets:[{data:eD,backgroundColor:eC,'+
+  'borderWidth:3,borderColor:"#FFFFFF",hoverOffset:4}]},'+
+  'options:{responsive:true,maintainAspectRatio:true,cutout:"70%",'+
+  'plugins:{legend:{display:false},'+
+  'tooltip:{callbacks:{label:function(c){return" "+c.label+": "+c.raw+" personas";}},'+
+  'backgroundColor:"#1E293B",titleColor:"#F8FAFC",bodyColor:"#94A3B8",borderColor:"#334155",borderWidth:1,padding:10,cornerRadius:8}}}});'+
+  '})();<\/script></body></html>';
 
-  // Guardar como PDF via Blob + iframe oculto + print automático
+  // Guardar como Blob + iframe oculto + print automático
   var blob=new Blob([html],{type:'text/html;charset=utf-8'});
   var url=URL.createObjectURL(blob);
-
-  // Crear iframe oculto para imprimir sin popup
   var existing=document.getElementById('_nomina_iframe');
   if(existing) existing.remove();
   var iframe=document.createElement('iframe');
@@ -3544,25 +3631,21 @@ function _abrirReporteHTML(d){
   iframe.style.cssText='position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:none;opacity:0;';
   iframe.src=url;
   document.body.appendChild(iframe);
-
   iframe.onload=function(){
-    // Esperar a que Chart.js renderice las gráficas (500ms)
     setTimeout(function(){
       try{
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
-        // Limpiar después de imprimir
         setTimeout(function(){ URL.revokeObjectURL(url); },60000);
-        toast('✓ Selecciona "Guardar como PDF" en el diálogo','ok');
+        toast('Selecciona "Guardar como PDF" en el dialogo','ok');
       }catch(e){
-        // Fallback: descarga directa del HTML
         var a=document.createElement('a');
         a.href=url; a.download='Nomina_'+d.thuStr+'_'+d.wedStr+'.html';
         document.body.appendChild(a); a.click();
         document.body.removeChild(a);
-        toast('Reporte descargado como HTML','ok');
+        toast('Reporte descargado','ok');
       }
-    },500);
+    },800);
   };
 }
 
