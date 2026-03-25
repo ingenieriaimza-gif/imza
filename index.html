@@ -3173,17 +3173,12 @@ function copyWeekHE(){
     });
   });
 
-  var totalHrs=0, totalGastos2=0, totalFaltas=0, totalVac=0;
+  var totalHrs=0, totalGastos2=0;
   S.personal.filter(function(p){ return workerData[p.id]; }).forEach(function(p){
     totalHrs+=workerData[p.id].reduce(function(s,d){ return s+d.hrs; },0);
   });
   Object.keys(gastosWk).forEach(function(date){
     totalGastos2+=gastosWk[date].reduce(function(s,a){ return s+sumG(a.gastos); },0);
-  });
-  S.personal.forEach(function(p){
-    var abs=getWorkerAbsences(p.id,thuStr,wedStr);
-    if(abs.faltas.length>0) totalFaltas++;
-    if(abs.vacaciones.length>0) totalVac++;
   });
 
   var workerRows=S.personal.filter(function(p){ return workerData[p.id]; }).map(function(p){
@@ -3227,6 +3222,10 @@ function copyWeekHE(){
         vacacionesDates:abs.vacaciones.map(function(ds){ return fmtD(ds); })
       };
     });
+
+  // Totales derivados de resumenPersonal — siempre consistentes con la tabla
+  var totalFaltas=resumenPersonal.filter(function(p){ return p.faltas>0; }).length;
+  var totalVac=resumenPersonal.filter(function(p){ return p.vacaciones>0; }).length;
 
   var data={
     thuStr:fmtDate(thuStr), wedStr:fmtDate(wedStr), appName:appName,
