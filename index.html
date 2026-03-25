@@ -1313,6 +1313,8 @@ function startRealtime(){
         if(!isChange||_applyingCloudData) return;
         var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device)||'';
         if(dev&&dev===detectDevice()) return;
+        // No actualizar estado S si el usuario tiene una sheet abierta (podría estar editando)
+        if(isSheetOpen()) return;
         pullFromCloud().then(function(u){ if(u){ rAll(true); updateSyncUI(true); } });
       }catch(e){}
     };
@@ -1418,9 +1420,13 @@ function openS(id){
 }
 function closeS(id){
   document.getElementById(id).classList.remove('open');
-  // Always try to push (save already stored locally, push is non-blocking)
+  // Push cambios locales primero, luego pull para capturar lo que llegó mientras estaba abierta
   clearTimeout(_syncTimer);
-  pushToCloud().catch(function(){});
+  pushToCloud().then(function(){
+    pullFromCloud().then(function(u){ if(u) rAll(true); });
+  }).catch(function(){
+    pullFromCloud().then(function(u){ if(u) rAll(true); });
+  });
 }
 document.querySelectorAll('.sov').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)closeS(el.id);}));
 
@@ -1855,17 +1861,20 @@ function isUserInteracting(){
 function rAll(fromSync){
   var scroll=document.getElementById('scroll');
   var scrollTop=scroll?scroll.scrollTop:0;
-  var savedStep=typeof aCurStep!=='undefined'?aCurStep:1;
-  var sheetWasOpen=isSheetOpen();
 
   if(fromSync){
     if(_rAllTimer) clearTimeout(_rAllTimer);
     _rAllTimer=setTimeout(function(){
+      // Si hay una sheet/modal abierta o el usuario interactuó en los últimos 4s,
+      // posponer el render hasta que termine — verificar cada 500ms
+      if(isUserInteracting()){
+        _rAllTimer=setTimeout(function(){ rAll(true); }, 500);
+        return;
+      }
       _syncRendering=true;
-      // Freeze scroll before update
       if(scroll) scroll.style.overflow='hidden';
       requestAnimationFrame(function(){
-        // Update only current screen — minimal DOM change
+        // Actualizar sólo pantalla activa — no tocar sheets ni modals
         try{
           switch(curP){
             case 'inicio':    rInicio(); break;
@@ -1877,7 +1886,7 @@ function rAll(fromSync){
             case 'config':    rCfgStats(); break;
           }
         }catch(e){}
-        // Also update other screens silently
+        // Actualizar pantallas no visibles en el siguiente frame
         requestAnimationFrame(function(){
           try{
             if(curP!=='inicio') rInicio();
@@ -1887,12 +1896,10 @@ function rAll(fromSync){
             if(curP!=='personal') rPers();
             if(curP!=='nomina') rNom();
           }catch(e){}
-          // Restore scroll silently
           if(scroll){
             scroll.scrollTop=scrollTop;
             scroll.style.overflow='';
           }
-          if(sheetWasOpen) try{ shStep(savedStep); }catch(e){}
           _syncRendering=false;
           _rAllTimer=null;
         });
@@ -4369,24 +4376,15 @@ function applyRoleRestrictions(){
   startRealtime();
   startLiveSync();
   startPresence();
-  // Backup polling every 30s (safety net only)
+  // Polling de seguridad cada 30s — el WS + liveSync son los principales
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
   _visorInterval=setInterval(function(){
     if(!_currentUser||_applyingCloudData) return;
-    if(Date.now()-_lastInteraction < 1500) return;
+    if(document.hidden) return;
+    if(isSheetOpen()) return; // nunca interrumpir si hay una sheet abierta
+    if(Date.now()-_lastInteraction < 3000) return;
     syncNow();
-  }, 5000);
-  // On login: always force pull to get latest data
-  setTimeout(function(){
-    // Flush any pending outbox, then fetch latest events
-    if(_outbox&&_outbox.filter(function(e){ return e.status==='pending'; }).length){
-      flushOutbox();
-    }
-    fetchNewEvents().then(function(updated){
-      if(updated) rAll(true);
-      updateSyncUI(true);
-    }).catch(function(){ updateSyncUI(false); });
-  }, 300);
+  }, 30000);
 }
 
 var _visorInterval=null;
@@ -4958,23 +4956,20 @@ window.addEventListener('offline',function(){
 document.addEventListener('visibilitychange',function(){
   if(!_currentUser) return;
   if(document.visibilityState==='hidden'){
-    // Going to background — push pending changes
-    clearTimeout(_syncTimer);
-    _syncTimer=null;
-    if(Object.keys(_changeLog).length>0||_pendingPush){
+    // Al ir a background — push cambios pendientes
+    if(_pendingPush||Object.keys(_changeLog||{}).length>0){
       pushToCloud().catch(function(){});
     }
   }
   if(document.visibilityState==='visible'){
-    // Coming to foreground — force fresh pull
-    _lastInteraction=0;
-    _remoteUpdatedAt=''; // force live sync to pull on next tick
+    // Al volver al frente — forzar pull fresco
+    _remoteUpdatedAt='';
     setTimeout(function(){
-      if(!_pendingPush&&!_pushInProgress&&Object.keys(_changeLog).length===0){
-        pullFromCloud(true).then(function(u){ if(u) rAll(true); updateSyncUI(true); })
+      if(!_isPushing){
+        pullFromCloud().then(function(u){ if(u) rAll(true); updateSyncUI(true); })
         .catch(function(){ updateSyncUI(false); });
       }
-    }, 200);
+    }, 300);
   }
 });
 
