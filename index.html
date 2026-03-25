@@ -3226,366 +3226,296 @@ function _abrirReporteHTML(d){
   var money=function(n){ return '$'+Number(n||0).toLocaleString('es-MX'); };
   var maxHrs=d.workerRows.reduce(function(m,w){ return Math.max(m,w.totalHrs); },1);
 
-  // ── SVG barras HORIZONTALES (para HE — nombres largos) ───────────────────
-  function svgBarsH(items, color1, color2, fmtVal, W){
-    if(!items.length) return '<div style="color:#94A3B8;font-size:11px;padding:8px">Sin datos</div>';
+  // ── SVG barras horizontales para HE ──────────────────────────────────────
+  function svgBarsH(items,W){
+    if(!items.length) return '<div style="color:#94A3B8;font-size:10px;padding:6px">Sin datos</div>';
     var n=items.length;
-    var lw=72;  // ancho fijo para el nombre
-    var bh=10;  // altura de cada barra
-    var gap=5;  // espacio entre barras
-    var rowH=bh+gap;
-    var H=n*rowH+4;
-    var chartW=W-lw-36; // espacio para valor al final
+    var lw=82, rw=28, bh=9, gap=4;
+    var chartW=W-lw-rw-8;
+    var H=n*(bh+gap)+4;
     var maxV=items.reduce(function(m,x){return Math.max(m,x.v);},1);
     var out='<svg width="'+W+'" height="'+H+'" style="display:block;overflow:visible">';
     items.forEach(function(item,i){
-      var y=i*rowH+2;
-      var bw=Math.max(4,Math.round((item.v/maxV)*chartW));
-      var col=(i%2===0)?color1:color2;
-      // fondo de pista
-      out+='<rect x="'+lw+'" y="'+y+'" width="'+chartW+'" height="'+bh+'" rx="3" fill="#F1F5F9"/>';
-      // barra de valor
-      out+='<rect x="'+lw+'" y="'+y+'" width="'+bw+'" height="'+bh+'" rx="3" fill="'+col+'"/>';
-      // nombre completo alineado derecha
-      var nm=item.l.length>11?item.l.substring(0,11):item.l;
-      out+='<text x="'+(lw-4)+'" y="'+(y+bh/2)+'" text-anchor="end" dominant-baseline="middle" font-size="8.5" fill="#475569" font-family="Arial">'+nm+'</text>';
-      // valor a la derecha
-      out+='<text x="'+(lw+bw+3)+'" y="'+(y+bh/2)+'" dominant-baseline="middle" font-size="8.5" font-weight="700" fill="'+col+'" font-family="Arial">'+fmtVal(item.v)+'</text>';
+      var y=i*(bh+gap);
+      var bw=Math.max(2,Math.round((item.v/maxV)*chartW));
+      var col=i%2===0?'#3B82F6':'#7C3AED';
+      out+='<rect x="'+lw+'" y="'+y+'" width="'+chartW+'" height="'+bh+'" rx="2" fill="#EFF6FF"/>';
+      out+='<rect x="'+lw+'" y="'+y+'" width="'+bw+'" height="'+bh+'" rx="2" fill="'+col+'"/>';
+      out+='<text x="'+(lw-3)+'" y="'+(y+bh/2+0.5)+'" text-anchor="end" dominant-baseline="middle" font-size="8" fill="#374151" font-family="Arial,sans-serif">'+item.l+'</text>';
+      out+='<text x="'+(lw+bw+3)+'" y="'+(y+bh/2+0.5)+'" dominant-baseline="middle" font-size="8" font-weight="700" fill="'+col+'" font-family="Arial,sans-serif">+'+item.v+'h</text>';
     });
     out+='</svg>';
     return out;
   }
 
-  // ── SVG barras VERTICALES (para gastos — pocos items, labels cortos) ──────
-  function svgBarsV(items, color1, color2, fmtVal, W, H){
-    if(!items.length) return '<div style="color:#94A3B8;font-size:11px;padding:8px">Sin datos</div>';
+  // ── SVG barras verticales para gastos ─────────────────────────────────────
+  function svgBarsV(items,W,H){
+    if(!items.length) return '<div style="color:#94A3B8;font-size:10px;padding:6px">Sin datos</div>';
     var n=items.length;
-    var lh=18, ch=H-lh;
+    var lh=14, ch=H-lh;
     var maxV=items.reduce(function(m,x){return Math.max(m,x.v);},1);
-    var bw=Math.max(14,Math.min(36,Math.floor((W-20)/(n*1.5))));
-    var total_w=n*(bw+6)-6;
-    var startX=Math.floor((W-total_w)/2);
+    var bw=Math.max(16,Math.min(40,Math.floor((W-20)/(n*1.4))));
+    var total=n*bw+(n-1)*6;
+    var sx=Math.floor((W-total)/2);
     var out='<svg width="'+W+'" height="'+H+'" style="display:block">';
     for(var g=1;g<=3;g++){
-      var gy=Math.round(4+(ch-8)*(1-g/3));
+      var gy=Math.round(2+(ch-4)*(1-g/3));
       out+='<line x1="0" y1="'+gy+'" x2="'+W+'" y2="'+gy+'" stroke="#F1F5F9" stroke-width="1"/>';
     }
     items.forEach(function(item,i){
-      var bhi=Math.max(4,Math.round((item.v/maxV)*(ch-12)));
-      var bx=startX+i*(bw+6);
-      var by=ch-bhi;
-      var col=(i%2===0)?color1:color2;
+      var bhi=Math.max(3,Math.round((item.v/maxV)*(ch-10)));
+      var bx=sx+i*(bw+6), by=ch-bhi;
+      var col=i%2===0?'#059669':'#10B981';
       out+='<rect x="'+bx+'" y="'+by+'" width="'+bw+'" height="'+bhi+'" rx="3" fill="'+col+'"/>';
-      out+='<text x="'+(bx+bw/2)+'" y="'+(by-3)+'" text-anchor="middle" font-size="8" fill="#64748B" font-family="Arial">'+fmtVal(item.v)+'</text>';
-      var lbl=item.l.length>8?item.l.substring(0,8):item.l;
-      out+='<text x="'+(bx+bw/2)+'" y="'+(H-3)+'" text-anchor="middle" font-size="8.5" fill="#94A3B8" font-family="Arial">'+lbl+'</text>';
+      out+='<text x="'+(bx+bw/2)+'" y="'+(by-2)+'" text-anchor="middle" font-size="7.5" fill="#64748B" font-family="Arial,sans-serif">'+money(item.v)+'</text>';
+      out+='<text x="'+(bx+bw/2)+'" y="'+(H-1)+'" text-anchor="middle" font-size="8" fill="#94A3B8" font-family="Arial,sans-serif">'+item.l+'</text>';
     });
     out+='</svg>';
     return out;
   }
-
-  // ── SVG donut ─────────────────────────────────────────────────────────────
-  function svgDonut(vals,cols,total,sz){
-    var r=sz/2-8, cx=sz/2, cy=sz/2;
-    if(!total) return '<svg width="'+sz+'" height="'+sz+'"><circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="#E2E8F0" stroke-width="10"/></svg>';
-    var a=-Math.PI/2, out='<svg width="'+sz+'" height="'+sz+'">';
-    vals.forEach(function(v,i){
-      if(!v) return;
-      var sw=v/total*2*Math.PI;
-      var x1=cx+r*Math.cos(a), y1=cy+r*Math.sin(a);
-      var a2=a+sw, x2=cx+r*Math.cos(a2), y2=cy+r*Math.sin(a2);
-      out+='<path d="M '+cx+' '+cy+' L '+x1.toFixed(1)+' '+y1.toFixed(1)+' A '+r+' '+r+' 0 '+(sw>Math.PI?1:0)+' 1 '+x2.toFixed(1)+' '+y2.toFixed(1)+' Z" fill="'+cols[i]+'"/>';
-      a=a2;
-    });
-    out+='<circle cx="'+cx+'" cy="'+cy+'" r="'+(r*0.6)+'" fill="white"/>';
-    out+='<text x="'+cx+'" y="'+(cy+1)+'" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="900" font-family="Arial" fill="#0F172A">'+total+'</text>';
-    out+='</svg>';
-    return out;
-  }
-
-  var estC={activo:0,vacaciones:0,falta:0,inactivo:0};
-  d.resumenPersonal.forEach(function(p){ estC[p.estado]=(estC[p.estado]||0)+1; });
 
   var heItems=d.workerRows.map(function(w){
-    // Primer nombre + primer apellido para que quepan en barra horizontal
-    var parts=w.nombre.trim().split(' ');
-    var label=parts[0]+(parts[1]?' '+parts[1]:'');
-    return {l:label, v:w.totalHrs};
+    var p=w.nombre.trim().split(' ');
+    return {l:(p[0]+(p[1]?' '+p[1].charAt(0)+'.':'')), v:w.totalHrs};
   });
-  var gItems=d.gastosRows.map(function(g){ return {l:g.dateLabel.split(' ').slice(0,2).join(' '),v:g.dayTotal}; });
-
+  var gItems=d.gastosRows.map(function(g){
+    return {l:g.dateLabel.split(' ').slice(0,2).join(' '),v:g.dayTotal};
+  });
   function ini(n){ return n.split(' ').map(function(x){return x[0]||'';}).slice(0,2).join('').toUpperCase(); }
+
+  // Altura dinámica del chart HE según cantidad de trabajadores
+  var heChartH=d.workerRows.length*(9+4)+8;
 
   var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'+
   '<title>Nomina '+d.thuStr+'</title>'+
   '<style>'+
-  // Base — todo en px fijos para impresión predecible
   '*{margin:0;padding:0;box-sizing:border-box;}'+
-  'html{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
-  'body{font-family:"Segoe UI",-apple-system,Arial,sans-serif;font-size:11px;'+
-  'background:#F8FAFC;color:#0F172A;line-height:1.4;}'+
+  'html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
+  'body{font-family:"Segoe UI",-apple-system,Arial,sans-serif;font-size:10px;background:#F8FAFC;color:#0F172A;line-height:1.3;}'+
+  '.page{width:960px;margin:0 auto;padding:14px 16px 20px;}'+
 
-  // Layout de página fija
-  '.page{width:1050px;margin:0 auto;padding:18px 20px 24px;}'+
-
-  // HEADER con banda de color sólida
-  '.hdr{background:#1E3A8A;border-radius:10px;padding:16px 22px;margin-bottom:14px;'+
+  // HEADER
+  '.hdr{background:#1E3A8A;border-radius:8px;padding:12px 18px;margin-bottom:10px;'+
   'display:flex;justify-content:space-between;align-items:center;}'+
-  '.hdr-co{color:#FFFFFF;}'+
-  '.hdr-co h1{font-size:22px;font-weight:900;letter-spacing:-.03em;line-height:1;}'+
-  '.hdr-co p{font-size:10px;color:#93C5FD;margin-top:3px;letter-spacing:.05em;text-transform:uppercase;}'+
-  '.hdr-per{text-align:right;}'+
-  '.hdr-per .pl{font-size:9px;color:#93C5FD;text-transform:uppercase;letter-spacing:.08em;}'+
-  '.hdr-per .pv{font-size:14px;font-weight:800;color:#FFFFFF;margin-top:3px;}'+
+  '.hdr h1{font-size:19px;font-weight:900;color:#fff;letter-spacing:-.03em;}'+
+  '.hdr p{font-size:8.5px;color:#93C5FD;margin-top:2px;text-transform:uppercase;letter-spacing:.06em;}'+
+  '.hdr-r{text-align:right;}'+
+  '.hdr-r .lbl{font-size:8px;color:#93C5FD;text-transform:uppercase;letter-spacing:.08em;}'+
+  '.hdr-r .val{font-size:13px;font-weight:800;color:#fff;margin-top:2px;}'+
 
-  // KPI row compacta — 4 cols fijas
-  '.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}'+
-  '.kpi{border-radius:8px;padding:12px 14px;border:1px solid;text-align:center;}'+
-  '.kpi-b{background:#EFF6FF;border-color:#BFDBFE;}'+
-  '.kpi-g{background:#F0FDF4;border-color:#BBF7D0;}'+
-  '.kpi-r{background:#FEF2F2;border-color:#FECACA;}'+
-  '.kpi-a{background:#FFFBEB;border-color:#FDE68A;}'+
-  '.kpi .kv{font-size:26px;font-weight:900;line-height:1;margin:4px 0;}'+
-  '.kpi-b .kv{color:#1D4ED8;}.kpi-g .kv{color:#059669;}.kpi-r .kv{color:#DC2626;}.kpi-a .kv{color:#D97706;}'+
-  '.kpi .kl{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#64748B;}'+
-  '.kpi .ks{font-size:9px;color:#94A3B8;margin-top:2px;}'+
+  // KPIs — 4 en fila, sin iconos grandes, compactos
+  '.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;}'+
+  '.kpi{border-radius:7px;padding:10px 12px;border-left:3px solid transparent;}'+
+  '.kpi-b{background:#EFF6FF;border-color:#2563EB;}'+
+  '.kpi-g{background:#F0FDF4;border-color:#059669;}'+
+  '.kpi-r{background:#FEF2F2;border-color:#DC2626;}'+
+  '.kpi-a{background:#FFFBEB;border-color:#D97706;}'+
+  '.kpi .lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748B;}'+
+  '.kpi .val{font-size:22px;font-weight:900;line-height:1;margin:3px 0 2px;}'+
+  '.kpi-b .val{color:#1D4ED8;}.kpi-g .val{color:#059669;}.kpi-r .val{color:#DC2626;}.kpi-a .val{color:#D97706;}'+
+  '.kpi .sub{font-size:8px;color:#94A3B8;}'+
 
-  // GRID 3 columnas: chart HE | chart Gastos | Donut+leyenda
-  '.g3{display:grid;grid-template-columns:1fr 1fr 180px;gap:10px;margin-bottom:14px;}'+
+  // FILA GRÁFICAS — 2 cols (HE izquierda, gastos derecha), sin donut
+  '.row-charts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}'+
 
-  // GRID 2 columnas para tablas de detalle
-  '.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}'+
+  // Cards genéricas
+  '.card{background:#fff;border-radius:7px;border:1px solid #E2E8F0;padding:10px 12px;}'+
+  '.ch{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;'+
+  'margin-bottom:7px;display:flex;align-items:center;gap:4px;color:#64748B;}'+
+  '.ch-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}'+
 
-  // Card base
-  '.card{background:#FFFFFF;border-radius:8px;border:1px solid #E2E8F0;padding:12px 14px;overflow:hidden;}'+
-
-  // Título de sección
-  '.st{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;'+
-  'color:#64748B;margin-bottom:8px;display:flex;align-items:center;gap:5px;}'+
-  '.st-bar{width:3px;height:11px;border-radius:2px;flex-shrink:0;}'+
-  '.st-b .st-bar{background:#2563EB;}.st-g .st-bar{background:#059669;}'+
-  '.st-p .st-bar{background:#7C3AED;}.st-s .st-bar{background:#0F172A;}'+
-
-  // Donut card
-  '.donut-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;}'+
-  '.leg{font-size:9.5px;display:flex;flex-direction:column;gap:4px;}'+
-  '.leg-i{display:flex;align-items:center;gap:5px;}'+
-  '.ld{width:7px;height:7px;border-radius:50%;flex-shrink:0;}'+
-  '.leg-t{color:#475569;flex:1;}.leg-n{font-weight:700;color:#0F172A;}'+
-
-  // Tablas compactas
-  'table{width:100%;border-collapse:collapse;font-size:10px;}'+
-  'th{background:#F8FAFC;color:#94A3B8;font-size:8.5px;font-weight:700;text-transform:uppercase;'+
-  'letter-spacing:.07em;padding:6px 8px;text-align:left;border-bottom:2px solid #F1F5F9;}'+
-  'td{padding:7px 8px;border-bottom:1px solid #F8FAFC;vertical-align:middle;}'+
-  'tr:hover td{background:#FAFAFA;}'+
+  // Tablas — layout fijo, sin overflow
+  'table{width:100%;border-collapse:collapse;table-layout:fixed;}'+
+  'th{background:#F8FAFC;color:#94A3B8;font-size:7.5px;font-weight:700;text-transform:uppercase;'+
+  'letter-spacing:.07em;padding:5px 7px;text-align:left;border-bottom:1.5px solid #F1F5F9;white-space:nowrap;overflow:hidden;}'+
+  'td{padding:5px 7px;border-bottom:1px solid #F9FAFB;vertical-align:middle;overflow:hidden;}'+
   'tr:last-child td{border-bottom:none;}'+
 
-  // Avatar
-  '.av{width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#7C3AED);'+
-  'color:#fff;font-size:7.5px;font-weight:800;display:inline-flex;align-items:center;'+
-  'justify-content:center;flex-shrink:0;margin-right:6px;}'+
-  '.nc{display:flex;align-items:center;}'+
-  '.nm{font-weight:700;font-size:10px;color:#0F172A;}'+
-  '.ns{font-size:8.5px;color:#94A3B8;margin-top:1px;}'+
+  // Tabla HE header
+  '.the{background:linear-gradient(90deg,#1E3A8A,#2563EB);padding:8px 12px;'+
+  'display:flex;justify-content:space-between;align-items:center;border-radius:7px 7px 0 0;}'+
+  '.the span{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#fff;}'+
+  '.the strong{font-size:11px;font-weight:900;color:#fff;}'+
 
-  // Barra mini HE
-  '.bar{display:flex;align-items:center;gap:5px;}'+
-  '.bg2{flex:1;height:4px;background:#EFF6FF;border-radius:2px;overflow:hidden;min-width:40px;}'+
-  '.bf{height:100%;border-radius:2px;background:linear-gradient(90deg,#3B82F6,#7C3AED);}'+
-  '.bv{font-size:9.5px;font-weight:700;color:#2563EB;white-space:nowrap;min-width:28px;}'+
+  // Tabla Gastos header
+  '.tge{background:linear-gradient(90deg,#065F46,#059669);padding:8px 12px;'+
+  'display:flex;justify-content:space-between;align-items:center;border-radius:7px 7px 0 0;}'+
+  '.tge span{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#fff;}'+
+  '.tge strong{font-size:11px;font-weight:900;color:#fff;}'+
 
-  // Pills de días
+  // Tabla personal header
+  '.tpe{background:#0F172A;padding:8px 12px;border-radius:7px 7px 0 0;}'+
+  '.tpe span{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94A3B8;}'+
+
+  // Avatar mini
+  '.av{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#7C3AED);'+
+  'color:#fff;font-size:7px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}'+
+
+  // Barra mini
+  '.bar{display:flex;align-items:center;gap:4px;}'+
+  '.bbg{height:4px;background:#EFF6FF;border-radius:2px;overflow:hidden;}'+
+  '.bbf{height:100%;border-radius:2px;background:linear-gradient(90deg,#3B82F6,#7C3AED);}'+
+
+  // Pills días
   '.dp{display:flex;flex-wrap:wrap;gap:2px;}'+
-  '.di{display:inline-flex;align-items:center;gap:2px;padding:1px 5px;border-radius:4px;'+
-  'background:#EFF6FF;border:1px solid #DBEAFE;font-size:8px;white-space:nowrap;}'+
-  '.di.des{background:#FEF2F2;border-color:#FECACA;}'+
-  '.dd{color:#94A3B8;}.dh{font-weight:700;color:#1E40AF;}.di.des .dh{color:#991B1B;}'+
+  '.di{display:inline-flex;align-items:center;gap:2px;padding:1px 4px;border-radius:3px;'+
+  'background:#EFF6FF;border:1px solid #DBEAFE;font-size:7.5px;white-space:nowrap;}'+
+  '.di.x{background:#FEF2F2;border-color:#FECACA;}'+
+  '.dd{color:#94A3B8;}.dh{font-weight:700;color:#1E40AF;}.di.x .dh{color:#991B1B;}'+
 
-  // Badge
-  '.bd{display:inline-flex;align-items:center;padding:1px 6px;border-radius:100px;'+
-  'font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;}'+
-  '.b-b{background:#DBEAFE;color:#1E40AF;}.b-g{background:#D1FAE5;color:#065F46;}'+
-  '.b-r{background:#FEE2E2;color:#991B1B;}.b-a{background:#FEF3C7;color:#92400E;}'+
-  '.b-gr{background:#F1F5F9;color:#475569;}'+
-  '.dot2{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:3px;}'+
+  // Badges
+  '.bd{display:inline-flex;align-items:center;padding:1px 5px;border-radius:100px;'+
+  'font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;}'+
+  '.bb{background:#DBEAFE;color:#1E40AF;}.bg{background:#D1FAE5;color:#065F46;}'+
+  '.br{background:#FEE2E2;color:#991B1B;}.ba{background:#FEF3C7;color:#92400E;}'+
+  '.bgr{background:#F1F5F9;color:#475569;}'+
+  '.dot{width:5px;height:5px;border-radius:50%;display:inline-block;margin-right:3px;}'+
   '.dg{background:#10B981;}.dr{background:#EF4444;}.da{background:#F59E0B;}.dgr{background:#94A3B8;}'+
 
-  // Gastos
-  '.gday{padding:8px 10px;border-bottom:1px solid #F8FAFC;}'+
-  '.gday:last-child{border-bottom:none;}'+
-  '.gdh{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;}'+
-  '.gdn{font-size:10px;font-weight:700;color:#0F172A;}'+
-  '.gdt{font-size:10px;font-weight:700;color:#059669;}'+
-  '.gproj{background:#F8FAFC;border-radius:5px;padding:5px 7px;margin-bottom:3px;}'+
-  '.gpn{font-size:8.5px;font-weight:700;color:#1E40AF;margin-bottom:2px;}'+
-  '.gitem{display:flex;justify-content:space-between;align-items:center;padding:1px 0;font-size:9px;}'+
+  // Tipo gasto
   '.gtipo{background:#EFF6FF;border:1px solid #BFDBFE;border-radius:3px;padding:0 4px;'+
-  'font-size:7.5px;font-weight:600;color:#2563EB;margin-right:4px;display:inline-block;}'+
-  '.gmonto{font-weight:700;color:#0F172A;}'+
+  'font-size:7px;font-weight:600;color:#2563EB;margin-right:3px;display:inline-block;white-space:nowrap;}'+
 
-  // Total banners
-  '.tot-b{border-radius:0 0 7px 7px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;}'+
-  '.tot-blue{background:linear-gradient(90deg,#1E3A8A,#2563EB);}'+
-  '.tot-green{background:linear-gradient(90deg,#065F46,#059669);}'+
-  '.tot-b .tl{font-size:9px;color:rgba(255,255,255,.75);}'+
-  '.tot-b .tv{font-size:15px;font-weight:900;color:#fff;}'+
+  // Total footer
+  '.tf{padding:7px 12px;display:flex;justify-content:space-between;align-items:center;}'+
+  '.tf-b{background:linear-gradient(90deg,#1E3A8A,#2563EB);border-radius:0 0 7px 7px;}'+
+  '.tf-g{background:linear-gradient(90deg,#065F46,#059669);border-radius:0 0 7px 7px;}'+
+  '.tf span{font-size:8px;color:rgba(255,255,255,.75);}'+
+  '.tf strong{font-size:12px;font-weight:900;color:#fff;}'+
 
-  // Tabla personal al final
-  '.pers-hdr{background:#0F172A;color:#fff;}'+
-  'th.ph{background:#1E293B!important;color:#94A3B8!important;}'+
-  'td.pa{background:#F8FAFC;}'+
-
-  // PRINT
+  // PRINT — critical
   '@media print{'+
-  '@page{size:A4 landscape;margin:6mm 8mm;}'+
-  'body{background:#fff!important;font-size:10px!important;}'+
+  '@page{size:A4 landscape;margin:5mm 7mm;}'+
+  'body{background:#fff!important;font-size:9px!important;}'+
   '.page{width:100%!important;padding:0!important;}'+
-  '.hdr{margin-bottom:8px!important;padding:10px 14px!important;border-radius:6px!important;}'+
-  '.hdr-co h1{font-size:16px!important;}'+
-  '.kpi-row{gap:6px!important;margin-bottom:8px!important;}'+
-  '.kpi .kv{font-size:20px!important;}'+
-  '.g3,.g2{gap:6px!important;margin-bottom:8px!important;}'+
-  '.card{padding:8px 10px!important;}'+
-  'td,th{padding:4px 6px!important;}'+
-  '.card,.kpi{page-break-inside:avoid;}'+
+  '.hdr{margin-bottom:6px!important;padding:8px 12px!important;border-radius:5px!important;}'+
+  '.hdr h1{font-size:15px!important;}.hdr-r .val{font-size:11px!important;}'+
+  '.kpis{gap:5px!important;margin-bottom:6px!important;}'+
+  '.kpi .val{font-size:18px!important;}'+
+  '.row-charts{gap:5px!important;margin-bottom:6px!important;}'+
+  '.card{padding:7px 9px!important;}'+
+  'th{padding:4px 6px!important;font-size:7px!important;}'+
+  'td{padding:4px 6px!important;font-size:8.5px!important;}'+
+  '.av{width:19px!important;height:19px!important;font-size:6.5px!important;}'+
+  '.kpi{padding:7px 9px!important;}'+
+  // Evitar que tablas se corten a la mitad
+  'tr{page-break-inside:avoid;}'+
+  'thead{display:table-header-group;}'+
+  '.card,.kpi,div[style*="border-radius"]{page-break-inside:avoid;}'+
   '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}'+
   '</style></head><body><div class="page">'+
 
-  // ══ HEADER ════════════════════════════════════════════════════════════════
+  // ══ HEADER ═══════════════════════════════════════════════════════════════
   '<div class="hdr">'+
-  '<div class="hdr-co"><h1>'+d.appName+'</h1><p>Nómina Semanal</p></div>'+
-  '<div class="hdr-per"><div class="pl">Periodo</div>'+
-  '<div class="pv">'+d.thuStr+' &nbsp;→&nbsp; '+d.wedStr+'</div></div>'+
+  '<div><h1>'+d.appName+'</h1><p>Nómina Semanal</p></div>'+
+  '<div class="hdr-r"><div class="lbl">Periodo</div>'+
+  '<div class="val">'+d.thuStr+' → '+d.wedStr+'</div></div>'+
   '</div>'+
 
-  // ══ KPIs ══════════════════════════════════════════════════════════════════
-  '<div class="kpi-row">'+
-  '<div class="kpi kpi-b"><div class="kl">⏱ Horas Extras</div>'+
-  '<div class="kv">'+(d.totalHrs?'+'+d.totalHrs+'h':'0h')+'</div>'+
-  '<div class="ks">'+d.workerRows.length+' trabajadores</div></div>'+
+  // ══ KPIs ═════════════════════════════════════════════════════════════════
+  '<div class="kpis">'+
+  '<div class="kpi kpi-b">'+
+  '<div class="lbl">⏱ Horas Extras</div>'+
+  '<div class="val">'+(d.totalHrs?'+'+d.totalHrs+'h':'0h')+'</div>'+
+  '<div class="sub">'+d.workerRows.length+' trabajadores con HE</div></div>'+
 
-  '<div class="kpi kpi-g"><div class="kl">💰 Gastos Extras</div>'+
-  '<div class="kv">'+money(d.totalGastos)+'</div>'+
-  '<div class="ks">semana completa</div></div>'+
+  '<div class="kpi kpi-g">'+
+  '<div class="lbl">💰 Gastos Extras</div>'+
+  '<div class="val">'+money(d.totalGastos)+'</div>'+
+  '<div class="sub">semana completa</div></div>'+
 
-  '<div class="kpi kpi-r"><div class="kl">✗ Faltas</div>'+
-  '<div class="kv">'+d.totalFaltas+'</div>'+
-  '<div class="ks">dias registrados</div></div>'+
+  '<div class="kpi kpi-r">'+
+  '<div class="lbl">✗ Faltas</div>'+
+  '<div class="val">'+d.totalFaltas+'</div>'+
+  '<div class="sub">dias registrados</div></div>'+
 
-  '<div class="kpi kpi-a"><div class="kl">🏖 Vacaciones</div>'+
-  '<div class="kv">'+d.totalVac+'</div>'+
-  '<div class="ks">dias programados</div></div>'+
+  '<div class="kpi kpi-a">'+
+  '<div class="lbl">🏖 Vacaciones</div>'+
+  '<div class="val">'+d.totalVac+'</div>'+
+  '<div class="sub">dias programados</div></div>'+
   '</div>'+
 
-  // ══ FILA: Gráfica HE | Gráfica Gastos | Donut ═════════════════════════
-  '<div class="g3">'+
-
+  // ══ GRÁFICAS — 2 columnas, sin donut ════════════════════════════════════
+  '<div class="row-charts">'+
   '<div class="card">'+
-  '<div class="st st-b"><div class="st-bar"></div>Horas Extras por Trabajador</div>'+
-  svgBarsH(heItems,'#3B82F6','#7C3AED',function(v){return'+'+v+'h';},310)+
+  '<div class="ch"><span class="ch-dot" style="background:#2563EB"></span>Horas Extras por Trabajador</div>'+
+  svgBarsH(heItems,410)+
   '</div>'+
-
   '<div class="card">'+
-  '<div class="st st-g"><div class="st-bar"></div>Gastos Extras por Día</div>'+
-  svgBarsV(gItems,'#059669','#10B981',function(v){return money(v);},310,130)+
-  '</div>'+
-
-  '<div class="card">'+
-  '<div class="st st-p"><div class="st-bar"></div>Personal</div>'+
-  '<div class="donut-row">'+
-  svgDonut([estC.activo,estC.falta,estC.vacaciones,estC.inactivo],
-           ['#10B981','#EF4444','#F59E0B','#9CA3AF'],d.resumenPersonal.length,80)+
-  '<div class="leg">'+
-  (estC.activo?'<div class="leg-i"><span class="ld" style="background:#10B981"></span><span class="leg-t">Activos</span><span class="leg-n">'+estC.activo+'</span></div>':'')+
-  (estC.falta?'<div class="leg-i"><span class="ld" style="background:#EF4444"></span><span class="leg-t">Falta</span><span class="leg-n">'+estC.falta+'</span></div>':'')+
-  (estC.vacaciones?'<div class="leg-i"><span class="ld" style="background:#F59E0B"></span><span class="leg-t">Vac.</span><span class="leg-n">'+estC.vacaciones+'</span></div>':'')+
-  '</div></div>'+
+  '<div class="ch"><span class="ch-dot" style="background:#059669"></span>Gastos Extras por Día</div>'+
+  svgBarsV(gItems,410,110)+
   '</div>'+
   '</div>'+
 
-  // ══ TABLA HE — horizontal compacta, todo en 1 fila ════════════════════
-  '<div style="background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:10px;">'+
-  '<div style="background:linear-gradient(90deg,#1E3A8A,#2563EB);padding:8px 14px;display:flex;justify-content:space-between;align-items:center;">'+
-  '<div class="st" style="color:#fff;margin-bottom:0;font-size:9px"><div class="st-bar" style="background:#93C5FD"></div>DETALLE DE HORAS EXTRAS</div>'+
-  (d.totalHrs?'<span style="font-size:12px;font-weight:900;color:#fff">+'+d.totalHrs+'h total</span>':'')+
+  // ══ TABLA HE — full width ════════════════════════════════════════════════
+  '<div style="border-radius:7px;overflow:hidden;margin-bottom:8px;border:1px solid #E2E8F0;">'+
+  '<div class="the">'+
+  '<span>Detalle de Horas Extras</span>'+
+  (d.totalHrs?'<strong>+'+d.totalHrs+'h total semana</strong>':'')+
   '</div>'+
-  '<table style="table-layout:fixed;">'+
+  '<table>'+
   '<colgroup>'+
-  '<col style="width:28px">'+   // avatar
-  '<col style="width:120px">'+  // nombre
-  '<col style="width:62px">'+   // cargo
-  '<col style="width:36px">'+   // estado
-  '<col style="width:52px">'+   // hrs + barra
-  '<col>'+                       // días (resto)
+  '<col style="width:22px">'+
+  '<col style="width:140px">'+
+  '<col style="width:100px">'+
+  '<col style="width:34px">'+
+  '<col style="width:70px">'+
+  '<col>'+
   '</colgroup>'+
   '<thead><tr>'+
-  '<th colspan="2">Trabajador</th>'+
-  '<th>Cargo</th>'+
-  '<th style="text-align:center">Est.</th>'+
-  '<th style="text-align:center">Hrs</th>'+
-  '<th>Días trabajados</th>'+
+  '<th></th><th>Trabajador</th><th>Cargo</th>'+
+  '<th style="text-align:center">Est</th>'+
+  '<th>Horas</th><th>Días trabajados (fecha · horas · proyecto)</th>'+
   '</tr></thead><tbody>'+
   (d.workerRows.length?d.workerRows.map(function(w,i){
     var pct=Math.round((w.totalHrs/maxHrs)*100);
     var bg=i%2?'#FAFAFA':'#fff';
     return '<tr style="background:'+bg+'">'+
-      '<td style="width:28px;padding:5px 4px 5px 8px;">'+
-        '<div class="av">'+ini(w.nombre)+'</div>'+
-      '</td>'+
-      '<td style="padding:5px 6px 5px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+
-        '<div class="nm" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:118px">'+w.nombre+'</div>'+
-      '</td>'+
-      '<td style="font-size:8.5px;color:#64748B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60px">'+
-        (w.cargo||'—')+
-      '</td>'+
-      '<td style="text-align:center;">'+
-        (w.faltas
-          ?'<span class="bd b-r" style="font-size:7px">F:'+w.faltas+'</span>'
-          :'<span class="bd b-g" style="font-size:7px">✓</span>')+
+      '<td style="padding:4px 4px 4px 8px"><div class="av">'+ini(w.nombre)+'</div></td>'+
+      '<td style="font-weight:600;font-size:9.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:138px">'+w.nombre+'</td>'+
+      '<td style="color:#64748B;font-size:8.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:98px">'+(w.cargo||'—')+'</td>'+
+      '<td style="text-align:center">'+
+        (w.faltas?'<span class="bd br">F:'+w.faltas+'</span>':'<span class="bd bg">✓</span>')+
       '</td>'+
       '<td>'+
-        '<div style="display:flex;align-items:center;gap:4px;">'+
-          '<div style="flex:1;height:4px;background:#EFF6FF;border-radius:2px;overflow:hidden;min-width:24px;">'+
-            '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#3B82F6,#7C3AED);border-radius:2px;"></div>'+
-          '</div>'+
-          '<span style="font-size:9px;font-weight:700;color:#2563EB;white-space:nowrap;">+'+w.totalHrs+'h</span>'+
+        '<div class="bar">'+
+          '<div class="bbg" style="width:38px"><div class="bbf" style="width:'+pct+'%"></div></div>'+
+          '<span style="font-size:9px;font-weight:700;color:#2563EB;margin-left:3px">+'+w.totalHrs+'h</span>'+
         '</div>'+
       '</td>'+
-      '<td>'+
-        '<div style="display:flex;flex-wrap:wrap;gap:2px;">'+
-          w.dias.map(function(dia){
-            var dc=dia.esDescanso?'background:#FEF2F2;border:1px solid #FECACA;':'background:#EFF6FF;border:1px solid #DBEAFE;';
-            var hc=dia.esDescanso?'color:#991B1B;':'color:#1E40AF;';
-            var date=dia.dateLabel.split(' ').slice(0,2).join(' ');
-            return '<span style="display:inline-flex;align-items:center;gap:2px;padding:1px 5px;border-radius:4px;'+dc+'font-size:7.5px;white-space:nowrap;">'+
-              '<span style="color:#94A3B8;">'+date+'</span>'+
-              '<span style="font-weight:700;'+hc+'">+'+dia.hrs+'h</span>'+
-            '</span>';
-          }).join('')+
-        '</div>'+
-      '</td>'+
+      '<td><div class="dp">'+
+        w.dias.map(function(dia){
+          var lbl=dia.dateLabel.split(' ').slice(0,2).join(' ');
+          var proj=dia.proyectoNombre.length>14?dia.proyectoNombre.substring(0,13)+'…':dia.proyectoNombre;
+          return '<span class="di'+(dia.esDescanso?' x':'')+'">'+
+            '<span class="dd">'+lbl+'</span>'+
+            '<span class="dh">+'+dia.hrs+'h</span>'+
+            '<span style="color:#94A3B8;font-size:7px">'+proj+'</span>'+
+          '</span>';
+        }).join('')+
+      '</div></td>'+
     '</tr>';
-  }).join('')
-  :'<tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:12px">Sin horas extras esta semana</td></tr>')+
-  '</tbody></table></div>'+
-
-  // ══ TABLA GASTOS — horizontal compacta ════════════════════════════════
-  '<div style="background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:10px;">'+
-  '<div style="background:linear-gradient(90deg,#065F46,#059669);padding:8px 14px;display:flex;justify-content:space-between;align-items:center;">'+
-  '<div class="st" style="color:#fff;margin-bottom:0;font-size:9px"><div class="st-bar" style="background:#6EE7B7"></div>DETALLE DE GASTOS EXTRAS</div>'+
-  (d.totalGastos?'<span style="font-size:12px;font-weight:900;color:#fff">'+money(d.totalGastos)+' total</span>':'')+
+  }).join(''):'<tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:10px">Sin horas extras</td></tr>')+
+  '</tbody></table>'+
+  (d.totalHrs?'<div class="tf tf-b"><span>Total horas extras de la semana</span><strong>+'+d.totalHrs+'h</strong></div>':'')+
   '</div>'+
-  '<table style="table-layout:fixed;">'+
+
+  // ══ TABLA GASTOS — full width ════════════════════════════════════════════
+  '<div style="border-radius:7px;overflow:hidden;margin-bottom:8px;border:1px solid #E2E8F0;">'+
+  '<div class="tge">'+
+  '<span>Detalle de Gastos Extras</span>'+
+  (d.totalGastos?'<strong>'+money(d.totalGastos)+' total semana</strong>':'')+
+  '</div>'+
+  '<table>'+
   '<colgroup>'+
-  '<col style="width:90px">'+  // fecha
-  '<col style="width:130px">'+  // proyecto + líder
-  '<col style="width:52px">'+  // tipo
-  '<col>'+                       // descripción
-  '<col style="width:64px">'+  // monto
+  '<col style="width:105px">'+
+  '<col style="width:160px">'+
+  '<col style="width:60px">'+
+  '<col>'+
+  '<col style="width:72px">'+
   '</colgroup>'+
   '<thead><tr>'+
-  '<th>Fecha</th>'+
+  '<th>Fecha · Total día</th>'+
   '<th>Proyecto · Líder</th>'+
   '<th style="text-align:center">Tipo</th>'+
   '<th>Descripción</th>'+
@@ -3594,91 +3524,93 @@ function _abrirReporteHTML(d){
   (d.gastosRows.length?function(){
     var rows='';
     d.gastosRows.forEach(function(g){
-      var firstOfDay=true;
+      var firstDay=true;
+      var totalItems=g.proyectos.reduce(function(s,p){return s+p.gastos.length;},0);
       g.proyectos.forEach(function(proj){
-        var firstOfProj=true;
+        var firstProj=true;
+        var projItems=proj.gastos.length;
         proj.gastos.forEach(function(gs,gi){
-          var isFirstRow=firstOfDay&&firstOfProj&&gi===0;
-          var totalDayItems=g.proyectos.reduce(function(s,p){return s+p.gastos.length;},0);
-          var bg=g.esDescanso?'background:#FEF9F9;':'';
-          rows+='<tr style="border-bottom:1px solid #F8FAFC;'+bg+'">'+
-            // Fecha (solo en primera fila del día con rowspan)
-            (isFirstRow
-              ?'<td style="padding:5px 8px;vertical-align:top;" rowspan="'+totalDayItems+'">'+
+          var bg=g.esDescanso?'background:#FFFBF9;':'';
+          rows+='<tr style="border-bottom:1px solid #F9FAFB;'+bg+'">'+
+            (firstDay&&firstProj&&gi===0
+              ?'<td style="vertical-align:top;padding:5px 7px;" rowspan="'+totalItems+'">'+
                 '<div style="font-weight:700;font-size:9px;color:'+(g.esDescanso?'#DC2626':'#0F172A')+'">'+
-                  g.dateLabel+(g.esDescanso?' <span class="bd b-r" style="font-size:7px">D</span>':'')+
+                  g.dateLabel+(g.esDescanso?' <span class="bd br" style="font-size:6.5px;padding:0 3px">D</span>':'')+
                 '</div>'+
-                '<div style="font-size:9px;font-weight:700;color:#059669;margin-top:2px">'+money(g.dayTotal)+'</div>'+
-              '</td>'
-              :'')+
-            // Proyecto+líder (solo en primera fila del proyecto)
-            (firstOfProj&&gi===0
-              ?'<td style="padding:5px 6px;vertical-align:top;font-size:8.5px;" rowspan="'+proj.gastos.length+'">'+
-                '<span style="font-weight:700;color:#1E40AF;">'+proj.nombre+'</span>'+
-                (proj.lider?'<br><span style="color:#64748B;font-weight:400;">'+proj.lider+'</span>':'')+
-              '</td>'
-              :'')+
-            '<td style="text-align:center;padding:5px 4px;">'+
-              '<span style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:3px;padding:1px 5px;font-size:7.5px;font-weight:600;color:#2563EB;">'+gs.tipo+'</span>'+
+                '<div style="font-weight:700;color:#059669;font-size:9.5px;margin-top:2px">'+money(g.dayTotal)+'</div>'+
+              '</td>':'')+ 
+            (firstProj&&gi===0
+              ?'<td style="vertical-align:top;padding:5px 7px;font-size:8.5px;" rowspan="'+projItems+'">'+
+                '<div style="font-weight:700;color:#1E40AF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:158px">'+proj.nombre+'</div>'+
+                (proj.lider?'<div style="color:#64748B;font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:158px">'+proj.lider+'</div>':'')+
+              '</td>':'')+
+            '<td style="text-align:center;padding:5px 4px">'+
+              '<span class="gtipo">'+gs.tipo+'</span>'+
             '</td>'+
-            '<td style="font-size:8.5px;padding:5px 6px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">'+gs.desc+'</td>'+
-            '<td style="text-align:right;font-weight:700;font-size:9px;padding:5px 8px;color:#0F172A;white-space:nowrap;">'+money(gs.monto)+'</td>'+
+            '<td style="font-size:8.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">'+gs.desc+'</td>'+
+            '<td style="text-align:right;font-weight:700;font-size:9px;white-space:nowrap">'+money(gs.monto)+'</td>'+
           '</tr>';
-          firstOfProj=false;
+          firstProj=false; firstDay=false;
         });
-        firstOfDay=false;
       });
     });
     return rows;
-  }()
-  :'<tr><td colspan="5" style="text-align:center;color:#94A3B8;padding:12px">Sin gastos esta semana</td></tr>')+
-  '</tbody></table></div>'+
+  }():'<tr><td colspan="5" style="text-align:center;color:#94A3B8;padding:10px">Sin gastos</td></tr>')+
+  '</tbody></table>'+
+  (d.totalGastos?'<div class="tf tf-g"><span>Total gastos de la semana</span><strong>'+money(d.totalGastos)+'</strong></div>':'')+
+  '</div>'+
 
-  // ══ TABLA PERSONAL COMPLETA ════════════════════════════════════════════
-  '<div style="background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;margin-top:0;">'+
-  '<div style="background:#0F172A;padding:8px 12px;">'+
-  '<div class="st st-s" style="color:#94A3B8;margin-bottom:0">'+
-  '<div class="st-bar" style="background:#94A3B8"></div>Estado del Personal</div></div>'+
-  '<table><thead><tr>'+
-  '<th class="ph">Trabajador</th><th class="ph">Cargo</th><th class="ph">Estado</th>'+
-  '<th class="ph">HE Semana</th><th class="ph">Faltas</th><th class="ph">Vacaciones</th>'+
+  // ══ TABLA PERSONAL — full width ══════════════════════════════════════════
+  '<div style="border-radius:7px;overflow:hidden;border:1px solid #E2E8F0;">'+
+  '<div class="tpe"><span>Estado del Personal</span></div>'+
+  '<table>'+
+  '<colgroup>'+
+  '<col style="width:22px">'+
+  '<col style="width:150px">'+
+  '<col style="width:120px">'+
+  '<col style="width:66px">'+
+  '<col style="width:70px">'+
+  '<col style="width:50px">'+
+  '<col style="width:64px">'+
+  '</colgroup>'+
+  '<thead><tr>'+
+  '<th></th><th>Trabajador</th><th>Cargo</th>'+
+  '<th style="text-align:center">Estado</th>'+
+  '<th style="text-align:center">HE Semana</th>'+
+  '<th style="text-align:center">Faltas</th>'+
+  '<th style="text-align:center">Vacaciones</th>'+
   '</tr></thead><tbody>'+
   d.resumenPersonal.map(function(p,i){
-    var heW=d.workerRows.find(function(w){ return w.nombre===p.nombre; });
-    var bm={activo:'b-g',vacaciones:'b-a',falta:'b-r',inactivo:'b-gr'};
-    var lm={activo:'Activo',vacaciones:'Vacaciones',falta:'Falta',inactivo:'Inactivo'};
+    var heW=d.workerRows.find(function(w){return w.nombre===p.nombre;});
+    var bm={activo:'bg',vacaciones:'ba',falta:'br',inactivo:'bgr'};
+    var lm={activo:'Activo',vacaciones:'Vac.',falta:'Falta',inactivo:'Inact.'};
     var dm={activo:'dg',vacaciones:'da',falta:'dr',inactivo:'dgr'};
-    var bg=i%2?'#F8FAFC':'#fff';
+    var bg=i%2?'#FAFAFA':'#fff';
     return '<tr style="background:'+bg+'">'+
-      '<td><div class="nc">'+
-        '<div class="av">'+ini(p.nombre)+'</div>'+
-        '<div><div class="nm">'+p.nombre+'</div></div>'+
-      '</div></td>'+
-      '<td style="color:#64748B;font-size:9.5px">'+( p.cargo||'—')+'</td>'+
-      '<td><span class="bd '+(bm[p.estado]||'b-gr')+'">'+
-        '<span class="dot2 '+(dm[p.estado]||'dgr')+'"></span>'+
-        (lm[p.estado]||p.estado)+
+      '<td style="padding:4px 4px 4px 8px"><div class="av">'+ini(p.nombre)+'</div></td>'+
+      '<td style="font-weight:600;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:148px">'+p.nombre+'</td>'+
+      '<td style="color:#64748B;font-size:8.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:118px">'+(p.cargo||'—')+'</td>'+
+      '<td style="text-align:center"><span class="bd '+(bm[p.estado]||'bgr')+'">'+
+        '<span class="dot '+(dm[p.estado]||'dgr')+'"></span>'+(lm[p.estado]||p.estado)+
       '</span></td>'+
-      '<td>'+(heW?'<span class="bd b-b">+'+heW.totalHrs+'h</span>':'<span style="color:#CBD5E1">—</span>')+'</td>'+
-      '<td>'+(heW&&heW.faltas?'<span class="bd b-r">'+heW.faltas+'d</span>':'<span style="color:#CBD5E1">0</span>')+'</td>'+
-      '<td>'+(heW&&heW.vacaciones?'<span class="bd b-a">'+heW.vacaciones+'d</span>':'<span style="color:#CBD5E1">0</span>')+'</td>'+
+      '<td style="text-align:center">'+(heW?'<span class="bd bb">+'+heW.totalHrs+'h</span>':'<span style="color:#CBD5E1">—</span>')+'</td>'+
+      '<td style="text-align:center">'+(heW&&heW.faltas?'<span class="bd br">'+heW.faltas+'d</span>':'<span style="color:#CBD5E1">0</span>')+'</td>'+
+      '<td style="text-align:center">'+(heW&&heW.vacaciones?'<span class="bd ba">'+heW.vacaciones+'d</span>':'<span style="color:#CBD5E1">0</span>')+'</td>'+
     '</tr>';
   }).join('')+
   '</tbody></table></div>'+
 
-  // Footer
-  '<div style="text-align:center;margin-top:12px;padding-top:8px;border-top:1px solid #F1F5F9;'+
-  'color:#CBD5E1;font-size:8.5px;">'+d.appName+' · Nómina Semanal · '+d.thuStr+' — '+d.wedStr+'</div>'+
+  '<div style="text-align:center;margin-top:10px;padding-top:7px;border-top:1px solid #F1F5F9;'+
+  'color:#CBD5E1;font-size:7.5px;">'+d.appName+' · Nómina Semanal · '+d.thuStr+' — '+d.wedStr+'</div>'+
   '</div></body></html>';
 
-  // Blob + iframe + print
   var blob=new Blob([html],{type:'text/html;charset=utf-8'});
   var url=URL.createObjectURL(blob);
   var ex=document.getElementById('_nomina_iframe');
   if(ex) ex.remove();
   var ifr=document.createElement('iframe');
   ifr.id='_nomina_iframe';
-  ifr.style.cssText='position:fixed;left:-9999px;top:-9999px;width:1400px;height:1200px;border:none;opacity:0;pointer-events:none;';
+  ifr.style.cssText='position:fixed;left:-9999px;top:-9999px;width:1100px;height:1400px;border:none;opacity:0;pointer-events:none;';
   ifr.src=url;
   document.body.appendChild(ifr);
   ifr.onload=function(){
