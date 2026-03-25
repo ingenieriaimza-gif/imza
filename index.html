@@ -3216,300 +3216,337 @@ function copyWeekHE(){
 function _generarNominaDocx(data, fileName){
   function run(docx){
     var D=docx, AT=D.AlignmentType, BS=D.BorderStyle, WT=D.WidthType,
-        ST=D.ShadingType, VA=D.VerticalAlign, TT=D.TabStopType;
+        ST=D.ShadingType, VA=D.VerticalAlign;
 
     // ── Paleta ────────────────────────────────────────────────────────────────
-    var C={
-      azul:'1B3A6B', azulM:'2E5FAC', azulL:'EBF2FF',
-      verde:'1A6B3C', verdeL:'EBF7EF',
-      rojo:'9B1C1C',  rojoL:'FEF2F2',
-      gris:'6B7280',  grisL:'F9FAFB', grisMid:'E5E7EB',
-      oro:'92400E',   oroL:'FFFBEB',
-      blanco:'FFFFFF', negro:'111827'
-    };
-    var W=9360; // content width (US Letter 1" margins)
+    var AZUL='1E3A5F', AZUL2='2563EB', AZUL_L='DBEAFE', AZUL_LL='EFF6FF';
+    var VERDE='065F46', VERDE2='059669', VERDE_L='D1FAE5', VERDE_LL='ECFDF5';
+    var ROJO='991B1B', ROJO2='DC2626', ROJO_L='FEE2E2', ROJO_LL='FEF2F2';
+    var AMBAR='92400E', AMBAR2='D97706', AMBAR_L='FEF3C7', AMBAR_LL='FFFBEB';
+    var GRIS='374151', GRIS2='6B7280', GRIS_L='F3F4F6', GRIS_LL='F9FAFB';
+    var BLANCO='FFFFFF', NEGRO='111827', SLATE='1E293B';
+    var W=9360;
 
     // ── Primitivos ────────────────────────────────────────────────────────────
-    function b(color,size){ return {style:BS.SINGLE,size:size||4,color:color||'CCCCCC'}; }
+    function bd(c,s){ return {style:BS.SINGLE,size:s||4,color:c}; }
     function nb(){ return {style:BS.NIL,size:0,color:'FFFFFF'}; }
-    function allB(c,s){ var x=b(c,s); return {top:x,bottom:x,left:x,right:x}; }
-    function noB(){ var x=nb(); return {top:x,bottom:x,left:x,right:x}; }
-    function onlyBottom(c,s){ return {top:nb(),left:nb(),right:nb(),bottom:b(c,s)}; }
+    function AB(c,s){ var x=bd(c,s); return {top:x,bottom:x,left:x,right:x}; }
+    function NB(){ var x=nb(); return {top:x,bottom:x,left:x,right:x}; }
+    function OB(c,s){ return {top:nb(),left:nb(),right:nb(),bottom:bd(c,s)}; }
 
-    function run_(t,o){
+    function R(t,o){
       o=o||{};
       return new D.TextRun({text:String(t==null?'':t),bold:o.b,italics:o.i,
-        size:o.sz||20,color:o.c||C.negro,font:'Calibri',
-        highlight:o.hl||undefined});
+        size:o.sz||20,color:o.c||NEGRO,font:o.font||'Calibri',underline:o.u?{}:undefined});
     }
-    function p(children,o){
+    function P(ch,o){
       o=o||{};
-      if(!Array.isArray(children)) children=[children];
+      if(!Array.isArray(ch)) ch=[ch];
       return new D.Paragraph({
         alignment:o.al||AT.LEFT,
-        spacing:{before:o.bf||0,after:o.af||0,line:o.line||240},
-        border:o.border,
+        spacing:{before:o.bf||0,after:o.af||0,line:o.ln||276},
         shading:o.fill?{fill:o.fill,type:ST.CLEAR}:undefined,
-        indent:o.indent,
-        children:children
+        border:o.border,
+        children:ch
       });
     }
-    function cell(ch,o){
+    function C(ch,o){
       o=o||{};
       if(!Array.isArray(ch)) ch=[ch];
       return new D.TableCell({
         width:{size:o.w||100,type:WT.DXA},
-        columnSpan:o.span,
-        rowSpan:o.rowSpan,
+        columnSpan:o.span,rowSpan:o.rs,
         shading:o.fill?{fill:o.fill,type:ST.CLEAR}:undefined,
-        borders:o.bd||allB(C.grisMid,4),
-        margins:{top:o.mt||60,bottom:o.mb||60,left:o.ml||100,right:o.mr||100},
+        borders:o.bd||AB(GRIS_L,4),
+        margins:{top:o.mt||80,bottom:o.mb||80,left:o.ml||120,right:o.mr||120},
         verticalAlign:o.va||VA.CENTER,
         children:ch
       });
     }
-    function row(cells,o){
-      o=o||{};
-      return new D.TableRow({tableHeader:o.th,cantSplit:true,children:cells});
-    }
-    function tbl(rows,cols,o){
-      o=o||{};
-      return new D.Table({
-        width:{size:W,type:WT.DXA},
-        columnWidths:cols,
-        layout:D.TableLayoutType?D.TableLayoutType.FIXED:'fixed',
-        rows:rows
-      });
+    function ROW(cells,o){ return new D.TableRow({tableHeader:o&&o.th,cantSplit:true,children:cells}); }
+    function TBL(rows,cols){
+      return new D.Table({width:{size:W,type:WT.DXA},columnWidths:cols,rows:rows});
     }
     function money(n){ return '$'+Number(n||0).toLocaleString('es-MX'); }
-    function gap(lines){
+    function SP(n){ var a=[]; for(var i=0;i<(n||1);i++) a.push(P([R('')])); return a; }
+
+    // ── Barra de progreso simulada con celdas ────────────────────────────────
+    // Devuelve una fila de tabla que simula una barra horizontal
+    function barRow(label, value, max, color, w){
+      var filled=max>0?Math.round((value/max)*20):0;
+      var empty=20-filled;
+      var barW=Math.floor(w*0.6);
+      var lblW=w-barW;
+      var cellW=Math.floor(barW/20);
+      var cells=[
+        C(P([R(label,{sz:18,c:GRIS})],{al:AT.LEFT}),{w:lblW,bd:NB(),fill:BLANCO})
+      ];
+      for(var i=0;i<filled;i++)
+        cells.push(C(P([R('')]),{w:cellW,fill:color,bd:AB(BLANCO,4),mt:30,mb:30}));
+      for(var j=0;j<empty;j++)
+        cells.push(C(P([R('')]),{w:cellW,fill:GRIS_L,bd:AB(BLANCO,4),mt:30,mb:30}));
+      cells.push(C(P([R(String(value)+'h',{sz:18,b:true,c:color})],{al:AT.RIGHT}),
+        {w:lblW,bd:NB(),fill:BLANCO}));
+      var allCols=[lblW];
+      for(var k=0;k<20;k++) allCols.push(cellW);
+      allCols.push(lblW);
+      return {row:ROW(cells), cols:allCols};
+    }
+
+    // ── BLOQUE: Banner portada ────────────────────────────────────────────────
+    function mkPortada(){
+      return TBL([
+        ROW([
+          C([
+            P([R(data.appName,{b:true,sz:52,c:BLANCO,font:'Calibri'})],{al:AT.LEFT,af:60}),
+            P([R('REPORTE DE NOMINA SEMANAL',{sz:22,c:'93C5FD',font:'Calibri'})],{al:AT.LEFT,af:40}),
+            P([R(data.thuStr+'   →   '+data.wedStr,{sz:24,b:true,c:BLANCO,font:'Calibri'})],{al:AT.LEFT})
+          ],{w:W,fill:AZUL,bd:NB(),mt:200,mb:200,ml:300})
+        ])
+      ],[W]);
+    }
+
+    // ── BLOQUE: 4 KPI cards ────────────────────────────────────────────────
+    function mkKPIs(){
+      var cw=Math.floor(W/4);
+      var cards=[
+        {icon:'⏱',lbl:'HORAS EXTRAS',val:data.totalHrs?'+'+data.totalHrs+'h':'0h',
+         sub:data.workerRows.length+' trabajadores',fill:AZUL2,light:AZUL_LL,tc:AZUL2},
+        {icon:'$',lbl:'GASTOS EXTRAS',val:data.totalGastos?money(data.totalGastos):'$0',
+         sub:'semana completa',fill:VERDE2,light:VERDE_LL,tc:VERDE2},
+        {icon:'✗',lbl:'FALTAS',val:String(data.totalFaltas),
+         sub:'dias registrados',fill:data.totalFaltas?ROJO2:GRIS2,
+         light:data.totalFaltas?ROJO_LL:GRIS_LL,tc:data.totalFaltas?ROJO2:GRIS2},
+        {icon:'🏖',lbl:'VACACIONES',  val:String(data.totalVac),
+         sub:'dias programados',fill:AMBAR2,light:AMBAR_LL,tc:AMBAR2}
+      ];
+      return TBL([ROW(cards.map(function(k){
+        return C([
+          P([R(k.lbl,{sz:15,b:true,c:k.tc,font:'Calibri'})],{al:AT.CENTER,af:50}),
+          P([R(k.val,{sz:42,b:true,c:k.tc,font:'Calibri'})],{al:AT.CENTER,af:30}),
+          P([R(k.sub,{sz:16,c:GRIS2,i:true,font:'Calibri'})],{al:AT.CENTER})
+        ],{w:cw,fill:k.light,bd:AB(k.fill,8),mt:160,mb:160});
+      }))],[cw,cw,cw,W-cw*3]);
+    }
+
+    // ── BLOQUE: Tabla HE con barras por trabajador ─────────────────────────
+    function mkHESection(){
       var out=[];
-      for(var i=0;i<(lines||1);i++) out.push(p([run_('')]));
+      // Título de sección
+      out.push(TBL([ROW([
+        C(P([R('  ⏱  HORAS EXTRAS POR TRABAJADOR',{b:true,sz:22,c:BLANCO})],{al:AT.LEFT}),
+          {w:W,fill:AZUL,bd:NB(),mt:120,mb:120})
+      ])],[W]));
+
+      // Calcular máximo para escalar barras
+      var maxHrs=data.workerRows.reduce(function(m,w){return Math.max(m,w.totalHrs);},0)||1;
+
+      data.workerRows.forEach(function(w,wi){
+        var bg=wi%2===0?BLANCO:AZUL_LL;
+        // Tarjeta del trabajador: nombre+barra | días detalle
+        var barData=barRow(w.nombre,w.totalHrs,maxHrs,AZUL2,3800);
+        var barcols=barData.cols;
+        var detailW=W-3800;
+
+        // Fila principal con nombre, barra y detalle en 2 columnas
+        var diasHtml=w.dias.map(function(d){
+          return d.dateLabel+(d.esDescanso?' [D]':'')+': +'+d.hrs+'h  '+d.proyectoNombre;
+        }).join('\n');
+
+        // Construir sub-filas por día
+        var dayRows=[];
+        w.dias.forEach(function(d,di){
+          var dayBg=d.esDescanso?ROJO_LL:(di%2===0?BLANCO:GRIS_LL);
+          dayRows.push(ROW([
+            C(P([R(d.dateLabel,{sz:18,b:d.esDescanso,c:d.esDescanso?ROJO2:NEGRO})],{al:AT.CENTER}),
+              {w:1200,fill:dayBg,bd:AB(GRIS_L,4)}),
+            C(P([R(d.proyectoNombre,{sz:17,c:GRIS})+
+                 (d.lider?R('  '+d.lider,{sz:15,c:GRIS2,i:true}):R(''))],{al:AT.LEFT}),
+              {w:2200,fill:dayBg,bd:AB(GRIS_L,4)}),
+            C(P([R(d.esDescanso?'DESC':'',{sz:16,b:true,c:ROJO2})],{al:AT.CENTER}),
+              {w:400,fill:d.esDescanso?ROJO_L:dayBg,bd:AB(GRIS_L,4)}),
+            C(P([R('+'+d.hrs+'h',{sz:20,b:true,c:AZUL2})],{al:AT.CENTER}),
+              {w:800,fill:AZUL_L,bd:AB(AZUL_L,4)})
+          ]));
+        });
+
+        // Encabezado del trabajador
+        out.push(TBL([
+          ROW([
+            // Col izq: nombre + cargo + barra
+            C([
+              P([R(w.nombre,{b:true,sz:24,c:AZUL})],{af:30}),
+              P([R(w.cargo||'Sin cargo',{sz:18,c:GRIS2,i:true})],{af:50}),
+              // Mini barra
+              TBL([barData.row],barcols),
+              P([R('')]),
+              ...(w.faltas?[P([R('  ✗ Faltas: '+w.faltas+' dia(s)',{sz:17,c:ROJO2,b:true})],{af:0})]:
+                  [P([R('  ✓ Sin faltas',{sz:17,c:VERDE2})],{af:0})])
+            ],{w:4600,fill:bg,bd:AB(GRIS_L,4),mt:140,mb:140}),
+            // Col der: detalle por día
+            C([
+              ROW?undefined:null, // placeholder
+              TBL([
+                ROW([
+                  C(P([R('Fecha',{sz:16,b:true,c:BLANCO})],{al:AT.CENTER}),{w:1200,fill:AZUL2,bd:AB(AZUL2,4),mt:50,mb:50}),
+                  C(P([R('Proyecto',{sz:16,b:true,c:BLANCO})],{al:AT.LEFT}),{w:2200,fill:AZUL2,bd:AB(AZUL2,4),mt:50,mb:50}),
+                  C(P([R('D',{sz:16,b:true,c:BLANCO})],{al:AT.CENTER}),{w:400,fill:AZUL2,bd:AB(AZUL2,4),mt:50,mb:50}),
+                  C(P([R('Hrs',{sz:16,b:true,c:BLANCO})],{al:AT.CENTER}),{w:800,fill:AZUL2,bd:AB(AZUL2,4),mt:50,mb:50})
+                ],{th:true})
+              ].concat(dayRows),[1200,2200,400,800]),
+              P([R('')]),
+              P([R('Total semana: +'+w.totalHrs+'h',{sz:19,b:true,c:AZUL2})],{al:AT.RIGHT})
+            ].filter(Boolean),{w:W-4600,fill:GRIS_LL,bd:AB(GRIS_L,4),mt:80,mb:80})
+          ])
+        ],[4600,W-4600]));
+
+        out=out.concat(SP(0));
+      });
+
+      // Total general
+      out.push(TBL([ROW([
+        C(P([R('TOTAL HORAS EXTRAS DE LA SEMANA',{b:true,sz:20,c:BLANCO})],{al:AT.RIGHT}),
+          {w:W-1600,fill:AZUL,bd:NB(),mt:100,mb:100}),
+        C(P([R('+'+data.totalHrs+'h',{b:true,sz:28,c:BLANCO})],{al:AT.CENTER}),
+          {w:1600,fill:AZUL2,bd:NB(),mt:100,mb:100})
+      ])],[W-1600,1600]));
       return out;
     }
 
-    // ── Helpers de diseño ────────────────────────────────────────────────────
-    // Fila de encabezado de tabla con fondo azul
-    function hdrRow(labels,widths,colors){
-      return row(labels.map(function(lbl,i){
-        return cell(p([run_(lbl,{b:true,sz:18,c:C.blanco})],{al:AT.CENTER}),
-          {w:widths[i],fill:colors?colors[i]:C.azulM,bd:allB(C.azulM,4)});
-      }),{th:true});
-    }
-    // Fila de datos con fondo alterno
-    function dataRow(cells_def){
-      return row(cells_def.map(function(d){
-        return cell(
-          p([run_(d.txt,{sz:d.sz||19,b:d.b,c:d.c||C.negro,i:d.i})],{al:d.al||AT.LEFT}),
-          {w:d.w,fill:d.fill,span:d.span,bd:d.bd||allB(C.grisMid,4),mt:d.mt||60,mb:d.mb||60}
-        );
-      }));
-    }
-    // Fila de total (fondo oscuro al final de tabla)
-    function totalRow(label,value,cols,fillCol){
-      var labelW=cols.slice(0,-1).reduce(function(s,x){return s+x;},0);
-      var valW=cols[cols.length-1];
-      return row([
-        cell(p([run_(label,{b:true,sz:19,c:C.blanco})],{al:AT.RIGHT}),
-          {w:labelW,span:cols.length-1,fill:fillCol||C.azulM,bd:allB(fillCol||C.azulM,4)}),
-        cell(p([run_(value,{b:true,sz:20,c:C.blanco})],{al:AT.CENTER}),
-          {w:valW,fill:fillCol||C.azulM,bd:allB(fillCol||C.azulM,4)})
-      ]);
-    }
+    // ── BLOQUE: Tabla Gastos ───────────────────────────────────────────────
+    function mkGastosSection(){
+      var out=[];
+      out.push(TBL([ROW([
+        C(P([R('  $  GASTOS EXTRAS POR DIA',{b:true,sz:22,c:BLANCO})],{al:AT.LEFT}),
+          {w:W,fill:VERDE,bd:NB(),mt:120,mb:120})
+      ])],[W]));
 
-    // ── DOCUMENTO ────────────────────────────────────────────────────────────
-    var sections=[];
-
-    // === SECCIÓN 1: ENCABEZADO + KPIs + PERSONAL (todo en 1 página) ===
-    var sec1=[];
-
-    // Encabezado tipo membrete
-    sec1.push(tbl([
-      row([
-        // Nombre empresa
-        cell(
-          [p([run_(data.appName,{b:true,sz:36,c:C.azul})]),
-           p([run_('Nómina Semanal',{sz:20,c:C.gris})])],
-          {w:5600,fill:C.blanco,bd:noB()}
-        ),
-        // Período
-        cell(
-          [p([run_('Período',{sz:16,c:C.gris,b:true})],{al:AT.RIGHT}),
-           p([run_(data.thuStr+' – '+data.wedStr,{sz:22,b:true,c:C.azul})],{al:AT.RIGHT})],
-          {w:3760,fill:C.blanco,bd:noB()}
-        )
-      ])
-    ],[5600,3760]));
-
-    // Línea separadora
-    sec1.push(p([run_('')],{border:{bottom:{style:BS.SINGLE,size:12,color:C.azulM,space:1}},bf:40,af:120}));
-
-    // KPIs en 4 columnas iguales
-    var kw=Math.floor(W/4);
-    var kpis=[
-      {lbl:'Horas extras',   val:data.totalHrs?'+'+data.totalHrs+'h':'—',  fill:C.azulL, c:C.azulM},
-      {lbl:'Con horas extra',val:String(data.workerRows.length||0)+' trab.',fill:C.grisL, c:C.azul},
-      {lbl:'Gastos extras',  val:data.totalGastos?money(data.totalGastos):'—',fill:C.verdeL,c:C.verde},
-      {lbl:'Faltas / Vac.',  val:data.totalFaltas+' / '+data.totalVac,      fill:data.totalFaltas?C.rojoL:C.grisL,c:data.totalFaltas?C.rojo:C.gris}
-    ];
-    sec1.push(tbl([
-      row(kpis.map(function(k){
-        return cell(
-          [p([run_(k.lbl,{sz:16,c:k.c,b:true})],{al:AT.CENTER,af:40}),
-           p([run_(k.val,{sz:30,b:true,c:k.c})],{al:AT.CENTER})],
-          {w:kw,fill:k.fill,bd:allB(C.grisMid,4),mt:100,mb:100}
-        );
-      }))
-    ],[kw,kw,kw,W-kw*3]));
-
-    // === TABLA MAESTRA: Personal + HE en una sola tabla compacta ===
-    if(data.workerRows.length){
-      sec1=sec1.concat(gap(1));
-      sec1.push(p([run_('HORAS EXTRAS',{b:true,sz:18,c:C.azulM})],
-        {border:{bottom:{style:BS.SINGLE,size:6,color:C.azulM,space:1}},af:80}));
-
-      // Columnas: Trabajador | Cargo | Día | Proyecto | D | Hrs
-      var heCols=[1800,1400,1400,2800,500,1460];
-      var heHdr=hdrRow(['Trabajador','Cargo','Fecha','Proyecto','D','Hrs'],heCols);
-      var heRows=[heHdr];
-
-      data.workerRows.forEach(function(w,wi){
-        var bg=wi%2===0?C.blanco:C.grisL;
-        // Fila de nombre del trabajador (span en días)
-        if(w.dias.length>1){
-          // Primera fila con rowSpan para nombre y cargo
-          var d0=w.dias[0];
-          heRows.push(row([
-            cell([p([run_(w.nombre,{b:true,sz:19,c:C.negro})]),
-                  w.faltas?p([run_('Faltas: '+w.faltas,{sz:16,c:C.rojo,i:true})]):p([run_('')])],
-              {w:heCols[0],fill:bg,rowSpan:w.dias.length,bd:allB(C.grisMid,4)}),
-            cell(p([run_(w.cargo||'—',{sz:18,c:C.gris,i:true})]),
-              {w:heCols[1],fill:bg,rowSpan:w.dias.length,bd:allB(C.grisMid,4)}),
-            cell(p([run_(d0.dateLabel,{sz:18})],{al:AT.CENTER}),
-              {w:heCols[2],fill:d0.esDescanso?C.rojoL:bg,bd:allB(C.grisMid,4)}),
-            cell(p([run_(d0.proyectoNombre+(d0.lider?' – '+d0.lider:''),{sz:17})]),
-              {w:heCols[3],fill:bg,bd:allB(C.grisMid,4)}),
-            cell(p([run_(d0.esDescanso?'D':'',{sz:16,b:true,c:C.rojo})],{al:AT.CENTER}),
-              {w:heCols[4],fill:d0.esDescanso?C.rojoL:bg,bd:allB(C.grisMid,4)}),
-            cell(p([run_('+'+d0.hrs+'h',{sz:20,b:true,c:C.azulM})],{al:AT.CENTER}),
-              {w:heCols[5],fill:C.azulL,bd:allB(C.grisMid,4)})
-          ]));
-          // Filas adicionales (sin nombre/cargo por rowSpan)
-          for(var j=1;j<w.dias.length;j++){
-            var dj=w.dias[j];
-            heRows.push(row([
-              cell(p([run_(dj.dateLabel,{sz:18})],{al:AT.CENTER}),
-                {w:heCols[2],fill:dj.esDescanso?C.rojoL:bg,bd:allB(C.grisMid,4)}),
-              cell(p([run_(dj.proyectoNombre+(dj.lider?' – '+dj.lider:''),{sz:17})]),
-                {w:heCols[3],fill:bg,bd:allB(C.grisMid,4)}),
-              cell(p([run_(dj.esDescanso?'D':'',{sz:16,b:true,c:C.rojo})],{al:AT.CENTER}),
-                {w:heCols[4],fill:dj.esDescanso?C.rojoL:bg,bd:allB(C.grisMid,4)}),
-              cell(p([run_('+'+dj.hrs+'h',{sz:20,b:true,c:C.azulM})],{al:AT.CENTER}),
-                {w:heCols[5],fill:C.azulL,bd:allB(C.grisMid,4)})
-            ]));
-          }
-        } else {
-          // Un solo día — fila plana
-          var d1=w.dias[0]||{dateLabel:'—',proyectoNombre:'—',lider:'',hrs:0,esDescanso:false};
-          heRows.push(row([
-            cell([p([run_(w.nombre,{b:true,sz:19})]),
-                  w.faltas?p([run_('Faltas: '+w.faltas,{sz:16,c:C.rojo,i:true})]):p([run_('')])],
-              {w:heCols[0],fill:bg,bd:allB(C.grisMid,4)}),
-            cell(p([run_(w.cargo||'—',{sz:18,c:C.gris,i:true})]),
-              {w:heCols[1],fill:bg,bd:allB(C.grisMid,4)}),
-            cell(p([run_(d1.dateLabel,{sz:18})],{al:AT.CENTER}),
-              {w:heCols[2],fill:d1.esDescanso?C.rojoL:bg,bd:allB(C.grisMid,4)}),
-            cell(p([run_(d1.proyectoNombre+(d1.lider?' – '+d1.lider:''),{sz:17})]),
-              {w:heCols[3],fill:bg,bd:allB(C.grisMid,4)}),
-            cell(p([run_(d1.esDescanso?'D':'',{sz:16,b:true,c:C.rojo})],{al:AT.CENTER}),
-              {w:heCols[4],fill:d1.esDescanso?C.rojoL:bg,bd:allB(C.grisMid,4)}),
-            cell(p([run_('+'+d1.hrs+'h',{sz:20,b:true,c:C.azulM})],{al:AT.CENTER}),
-              {w:heCols[5],fill:C.azulL,bd:allB(C.grisMid,4)})
-          ]));
-        }
-        // Subtotal por trabajador
-        var subCols=[1800+1400+1400+2800+500, 1460];
-        heRows.push(row([
-          cell(p([run_(w.nombre+' — total semana',{sz:17,c:C.gris,i:true})],{al:AT.RIGHT}),
-            {w:subCols[0],span:5,fill:C.grisL,bd:onlyBottom(C.grisMid,4),mt:40,mb:40}),
-          cell(p([run_('+'+w.totalHrs+'h',{b:true,sz:20,c:C.azulM})],{al:AT.CENTER}),
-            {w:subCols[1],fill:C.azulL,bd:onlyBottom(C.grisMid,4),mt:40,mb:40})
-        ]));
-      });
-
-      // Total general HE
-      heRows.push(totalRow('TOTAL HORAS EXTRAS','+'+data.totalHrs+'h',heCols,C.azulM));
-      sec1.push(tbl(heRows,heCols));
-    }
-
-    // === TABLA DE GASTOS ===
-    if(data.gastosRows.length){
-      sec1=sec1.concat(gap(1));
-      sec1.push(p([run_('GASTOS EXTRAS',{b:true,sz:18,c:C.verde})],
-        {border:{bottom:{style:BS.SINGLE,size:6,color:C.verde,space:1}},af:80}));
-
-      var gCols=[1400,1800,1000,2500,2660];
-      var gHdr=hdrRow(['Fecha','Proyecto','Tipo','Descripción','Monto'],gCols,
-        [C.verde,C.verde,C.verde,C.verde,C.verde]);
-      var gRows=[gHdr];
-      var ri=0;
-      data.gastosRows.forEach(function(g){
-        var dayBg=g.esDescanso?C.rojoL:C.blanco;
-        g.proyectos.forEach(function(proj){
-          proj.gastos.forEach(function(gs,gi){
-            var bg=ri%2===0?C.blanco:C.grisL;
-            gRows.push(row([
-              cell(p([run_(gi===0?g.dateLabel:'',{sz:18,b:gi===0,c:gi===0&&g.esDescanso?C.rojo:C.negro})],{al:AT.CENTER}),
-                {w:gCols[0],fill:gi===0?dayBg:bg,bd:allB(C.grisMid,4)}),
-              cell(p([run_(gi===0?proj.nombre+(proj.lider?' – '+proj.lider:''):'',{sz:17})]),
-                {w:gCols[1],fill:bg,bd:allB(C.grisMid,4)}),
-              cell(p([run_(gs.tipo,{sz:18})],{al:AT.CENTER}),
-                {w:gCols[2],fill:bg,bd:allB(C.grisMid,4)}),
-              cell(p([run_(gs.desc,{sz:18})]),
-                {w:gCols[3],fill:bg,bd:allB(C.grisMid,4)}),
-              cell(p([run_(money(gs.monto),{sz:19,b:true})],{al:AT.RIGHT}),
-                {w:gCols[4],fill:bg,bd:allB(C.grisMid,4)})
-            ]));
-            ri++;
+      var gCols=[1200,1800,900,3200,2260];
+      out.push(TBL([
+        ROW([
+          C(P([R('Fecha',{sz:17,b:true,c:BLANCO})],{al:AT.CENTER}),{w:gCols[0],fill:VERDE,bd:AB(VERDE,4),mt:80,mb:80}),
+          C(P([R('Proyecto',{sz:17,b:true,c:BLANCO})]),{w:gCols[1],fill:VERDE,bd:AB(VERDE,4),mt:80,mb:80}),
+          C(P([R('Tipo',{sz:17,b:true,c:BLANCO})],{al:AT.CENTER}),{w:gCols[2],fill:VERDE,bd:AB(VERDE,4),mt:80,mb:80}),
+          C(P([R('Descripcion',{sz:17,b:true,c:BLANCO})]),{w:gCols[3],fill:VERDE,bd:AB(VERDE,4),mt:80,mb:80}),
+          C(P([R('Monto',{sz:17,b:true,c:BLANCO})],{al:AT.RIGHT}),{w:gCols[4],fill:VERDE,bd:AB(VERDE,4),mt:80,mb:80})
+        ],{th:true})
+      ].concat(function(){
+        var rows=[], ri=0;
+        data.gastosRows.forEach(function(g){
+          g.proyectos.forEach(function(proj){
+            proj.gastos.forEach(function(gs,gi){
+              var bg=ri%2===0?BLANCO:VERDE_LL;
+              rows.push(ROW([
+                C(P([R(gi===0?g.dateLabel:'',{sz:18,b:gi===0&&g.esDescanso,
+                     c:g.esDescanso?ROJO2:GRIS})],{al:AT.CENTER}),
+                  {w:gCols[0],fill:gi===0&&g.esDescanso?ROJO_LL:bg,bd:AB(GRIS_L,4)}),
+                C(P([R(gi===0?proj.nombre:''+(gi===0&&proj.lider?'\n'+proj.lider:''),{sz:17})]),
+                  {w:gCols[1],fill:bg,bd:AB(GRIS_L,4)}),
+                C(P([R(gs.tipo,{sz:17,c:GRIS})],{al:AT.CENTER}),
+                  {w:gCols[2],fill:bg,bd:AB(GRIS_L,4)}),
+                C(P([R(gs.desc,{sz:18})]),{w:gCols[3],fill:bg,bd:AB(GRIS_L,4)}),
+                C(P([R(money(gs.monto),{sz:19,b:true,c:VERDE})],{al:AT.RIGHT}),
+                  {w:gCols[4],fill:bg,bd:AB(GRIS_L,4)})
+              ]));
+              ri++;
+            });
           });
+          // Subtotal día
+          rows.push(ROW([
+            C(P([R(g.dateLabel+' — total',{sz:16,c:GRIS2,i:true})],{al:AT.RIGHT}),
+              {w:gCols.slice(0,-1).reduce(function(s,x){return s+x;},0),span:4,
+               fill:VERDE_L,bd:OB(VERDE2,6),mt:50,mb:50}),
+            C(P([R(money(g.dayTotal),{sz:19,b:true,c:VERDE})],{al:AT.RIGHT}),
+              {w:gCols[4],fill:VERDE_L,bd:OB(VERDE2,6),mt:50,mb:50})
+          ]));
         });
-        // Subtotal del día
-        gRows.push(row([
-          cell(p([run_(g.dateLabel+' — total',{sz:16,c:C.gris,i:true})],{al:AT.RIGHT}),
-            {w:gCols.slice(0,-1).reduce(function(s,x){return s+x;},0),span:4,
-             fill:C.grisL,bd:onlyBottom(C.grisMid,4),mt:30,mb:30}),
-          cell(p([run_(money(g.dayTotal),{sz:19,b:true,c:C.verde})],{al:AT.RIGHT}),
-            {w:gCols[4],fill:C.verdeL,bd:onlyBottom(C.grisMid,4),mt:30,mb:30})
-        ]));
-      });
-      gRows.push(totalRow('TOTAL GASTOS',money(data.totalGastos),gCols,C.verde));
-      sec1.push(tbl(gRows,gCols));
+        return rows;
+      }()),gCols));
+
+      // Total gastos
+      out.push(TBL([ROW([
+        C(P([R('TOTAL GASTOS DE LA SEMANA',{b:true,sz:20,c:BLANCO})],{al:AT.RIGHT}),
+          {w:W-2000,fill:VERDE,bd:NB(),mt:100,mb:100}),
+        C(P([R(money(data.totalGastos),{b:true,sz:24,c:BLANCO})],{al:AT.CENTER}),
+          {w:2000,fill:VERDE2,bd:NB(),mt:100,mb:100})
+      ])],[W-2000,2000]));
+      return out;
     }
 
-    // Footer del documento
-    sec1=sec1.concat(gap(1));
-    sec1.push(p([run_(data.appName+' · Generado automáticamente',{sz:16,c:C.gris,i:true})],
-      {border:{top:{style:BS.SINGLE,size:4,color:C.grisMid,space:1}},bf:120,al:AT.CENTER}));
+    // ── BLOQUE: Tabla resumen personal ────────────────────────────────────
+    function mkPersonalSection(){
+      if(!data.resumenPersonal.length) return [];
+      var out=[];
+      out.push(TBL([ROW([
+        C(P([R('  👷  ESTADO DEL PERSONAL',{b:true,sz:22,c:BLANCO})],{al:AT.LEFT}),
+          {w:W,fill:SLATE,bd:NB(),mt:120,mb:120})
+      ])],[W]));
 
-    // Header Word
-    var docHeader=new D.Header({children:[
-      tbl([row([
-        cell([p([run_(data.appName,{b:true,sz:22,c:C.azul})])],{w:5000,bd:noB(),mb:0}),
-        cell([p([run_('Nómina  '+data.thuStr+' – '+data.wedStr,{sz:18,c:C.gris})],{al:AT.RIGHT})],
-          {w:4360,bd:noB(),mb:0})
-      ])],[5000,4360]),
-      p([run_('')],{border:{bottom:{style:BS.SINGLE,size:6,color:C.azulM,space:1}},af:80})
-    ]});
+      var eFill={activo:VERDE_L,vacaciones:AMBAR_L,falta:ROJO_L,inactivo:GRIS_L};
+      var eColor={activo:VERDE2,vacaciones:AMBAR2,falta:ROJO2,inactivo:GRIS2};
+      var eBd={activo:VERDE2,vacaciones:AMBAR2,falta:ROJO2,inactivo:GRIS2};
+      var eLabel={activo:'ACTIVO',vacaciones:'VACACIONES',falta:'FALTA',inactivo:'INACTIVO'};
+
+      var pCols=[3200,2600,1200,2360];
+      var pRows=[ROW([
+        C(P([R('Trabajador',{sz:17,b:true,c:BLANCO})]),{w:pCols[0],fill:SLATE,bd:AB(SLATE,4),mt:70,mb:70}),
+        C(P([R('Cargo',{sz:17,b:true,c:BLANCO})]),{w:pCols[1],fill:SLATE,bd:AB(SLATE,4),mt:70,mb:70}),
+        C(P([R('Estado',{sz:17,b:true,c:BLANCO})],{al:AT.CENTER}),{w:pCols[2],fill:SLATE,bd:AB(SLATE,4),mt:70,mb:70}),
+        C(P([R('HE esta semana',{sz:17,b:true,c:BLANCO})],{al:AT.CENTER}),{w:pCols[3],fill:SLATE,bd:AB(SLATE,4),mt:70,mb:70})
+      ],{th:true})];
+
+      data.resumenPersonal.forEach(function(p,i){
+        var bg=i%2===0?BLANCO:GRIS_LL;
+        var est=p.estado||'activo';
+        var heW=data.workerRows.find(function(w){return w.nombre===p.nombre;});
+        var heVal=heW?'+'+heW.totalHrs+'h':'—';
+        var heC=heW?AZUL2:GRIS2;
+        pRows.push(ROW([
+          C(P([R(p.nombre,{sz:19,b:true})]),{w:pCols[0],fill:bg,bd:AB(GRIS_L,4)}),
+          C(P([R(p.cargo||'—',{sz:18,c:GRIS2,i:true})]),{w:pCols[1],fill:bg,bd:AB(GRIS_L,4)}),
+          C(P([R(eLabel[est]||est.toUpperCase(),{sz:16,b:true,c:eColor[est]||GRIS2})],{al:AT.CENTER}),
+            {w:pCols[2],fill:eFill[est]||GRIS_L,bd:AB(eBd[est]||GRIS_L,4)}),
+          C(P([R(heVal,{sz:19,b:true,c:heC})],{al:AT.CENTER}),
+            {w:pCols[3],fill:heW?AZUL_L:bg,bd:AB(GRIS_L,4)})
+        ]));
+      });
+      out.push(TBL(pRows,pCols));
+      return out;
+    }
+
+    // ── ARMAR DOCUMENTO ──────────────────────────────────────────────────────
+    var children=[];
+    children.push(mkPortada());
+    children=children.concat(SP(1));
+    children.push(mkKPIs());
+    children=children.concat(SP(1));
+    if(data.resumenPersonal.length){
+      children=children.concat(mkPersonalSection());
+      children=children.concat(SP(1));
+    }
+    if(data.workerRows.length){
+      children=children.concat(mkHESection());
+      children=children.concat(SP(1));
+    }
+    if(data.gastosRows.length){
+      children=children.concat(mkGastosSection());
+    }
+
+    // Pie
+    children=children.concat(SP(1));
+    children.push(P([
+      R(data.appName+' · Reporte generado automaticamente · '+data.thuStr+' – '+data.wedStr,
+        {sz:15,c:GRIS2,i:true})
+    ],{al:AT.CENTER,border:{top:{style:BS.SINGLE,size:4,color:GRIS_L,space:1}},bf:120}));
 
     var doc=new D.Document({
       styles:{default:{document:{run:{font:'Calibri',size:20}}}},
       sections:[{
         properties:{page:{
           size:{width:12240,height:15840},
-          margin:{top:720,right:720,bottom:720,left:720}
+          margin:{top:600,right:600,bottom:600,left:600}
         }},
-        headers:{default:docHeader},
-        children:sec1
+        children:children
       }]
     });
 
