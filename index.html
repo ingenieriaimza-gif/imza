@@ -556,8 +556,8 @@ if('serviceWorker' in navigator){
             <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--txt3)">Horas extras</div><div style="font-size:24px;font-weight:900;color:var(--red)" id="nom-wk-total-hrs">0h</div></div>
             <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--txt3)">Trabajadores</div><div style="font-size:24px;font-weight:900;color:var(--txt)" id="nom-wk-total-w">0</div></div>
             <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--txt3)">Gastos extras</div><div style="font-size:24px;font-weight:900;color:var(--green)" id="nom-wk-total-g">$0</div></div>
-            <button onclick="copyWeekHE()" style="width:40px;height:40px;border-radius:12px;border:none;background:rgba(37,211,102,0.15);color:#25d166;display:flex;align-items:center;justify-content:center;cursor:pointer">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            <button onclick="copyWeekHE()" style="width:40px;height:40px;border-radius:12px;border:none;background:rgba(37,211,102,0.15);color:#25d166;display:flex;align-items:center;justify-content:center;cursor:pointer" title="Descargar Word">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
             </button>
           </div>
         </div>
@@ -3146,6 +3146,7 @@ function copyWeekHE(){
   const wedDt=new Date(thuStr+'T12:00:00');wedDt.setDate(wedDt.getDate()+6);
   const wedStr=wedDt.getFullYear()+'-'+String(wedDt.getMonth()+1).padStart(2,'0')+'-'+String(wedDt.getDate()).padStart(2,'0');
 
+  // Armar datos
   const workerData={};
   Object.keys(S.actividades).forEach(date=>{
     if(weekKey(date)!==Number(_nomWk)) return;
@@ -3157,8 +3158,6 @@ function copyWeekHE(){
       });
     });
   });
-
-  // Gather gastos for this week too
   const gastosWk={};
   Object.keys(S.actividades).sort().forEach(date=>{
     if(weekKey(date)!==Number(_nomWk)) return;
@@ -3170,116 +3169,193 @@ function copyWeekHE(){
     });
   });
 
-  // ── Calcular totales ────────────────────────────────────────────────────────
-  let totalHrs=0;
-  let totalGastosSem=0;
-  S.personal.filter(p=>workerData[p.id]).forEach(p=>{
-    totalHrs+=workerData[p.id].reduce((s,d)=>s+d.hrs,0);
-  });
-  Object.keys(gastosWk).forEach(date=>{
-    totalGastosSem+=gastosWk[date].reduce((s,a)=>s+sumG(a.gastos),0);
+  let totalHrs=0, totalGastos2=0, totalFaltas=0, totalVac=0;
+  S.personal.filter(p=>workerData[p.id]).forEach(p=>{totalHrs+=workerData[p.id].reduce((s,d)=>s+d.hrs,0);});
+  Object.keys(gastosWk).forEach(date=>{totalGastos2+=gastosWk[date].reduce((s,a)=>s+sumG(a.gastos),0);});
+  S.personal.forEach(p=>{
+    const abs=getWorkerAbsences(p.id,thuStr,wedStr);
+    totalFaltas+=abs.faltas.length; totalVac+=abs.vacaciones.length;
   });
 
-  const L=[];
-  const S1='─────────────────────';
-  const S2='━━━━━━━━━━━━━━━━━━━━━';
+  const workerRows=S.personal.filter(p=>workerData[p.id]).map(p=>{
+    const abs=getWorkerAbsences(p.id,thuStr,wedStr);
+    const dias=workerData[p.id].sort((a,b)=>a.date.localeCompare(b.date)).map(d=>({
+      dateLabel:fmtD(d.date), proyectoNombre:gpn(d.proyectoId),
+      lider:gpl(d.proyectoId)||'', hrs:d.hrs, esDescanso:isWeekend(d.date)||isFestivo(d.date)
+    }));
+    return {nombre:p.nombre,cargo:p.cargo||'',totalHrs:dias.reduce((s,d)=>s+d.hrs,0),faltas:abs.faltas.length,vacaciones:abs.vacaciones.length,dias};
+  });
 
-  // ENCABEZADO
-  L.push('📋 *NÓMINA SEMANAL*');
-  L.push(S2);
-  L.push(`🗓 ${fmtDate(thuStr)}  al  ${fmtDate(wedStr)}`);
-  L.push('');
+  const gastosRows=Object.keys(gastosWk).sort().map(date=>({
+    dateLabel:fmtD(date), esDescanso:isWeekend(date)||isFestivo(date),
+    dayTotal:gastosWk[date].reduce((s,a)=>s+sumG(a.gastos),0),
+    proyectos:gastosWk[date].map(a=>({
+      nombre:gpn(a.proyectoId), lider:gpl(a.proyectoId)||'',
+      subTotal:sumG(a.gastos),
+      gastos:a.gastos
+    }))
+  }));
 
-  // RESUMEN
-  {
-    // Count total faltas/vacaciones across all workers this week
-    let totalFaltas=0, totalVac=0;
-    S.personal.forEach(p=>{
-      const abs=getWorkerAbsences(p.id, thuStr, wedStr);
-      totalFaltas+=abs.faltas.length;
-      totalVac+=abs.vacaciones.length;
-    });
-    L.push('📊 *RESUMEN*');
-    if(totalHrs)        L.push(`⏱ Horas extras: +${totalHrs}h (${Object.keys(workerData).length} trabajadores)`);
-    if(totalGastosSem)  L.push(`💰 Gastos extras: $${totalGastosSem.toLocaleString()}`);
-    if(totalFaltas)     L.push(`❌ Faltas de la semana: ${totalFaltas}`);
-    if(totalVac)        L.push(`🏖 Días de vacaciones: ${totalVac}`);
-    L.push('');
-  }
+  const appName=localStorage.getItem('cp4_appname')||'IMZA';
+  const payload={
+    thuStr:fmtDate(thuStr), wedStr:fmtDate(wedStr), appName,
+    workerRows, gastosRows,
+    totalHrs, totalGastos:totalGastos2, totalFaltas, totalVac,
+    resumenPersonal:S.personal.filter(p=>p.estado!=='inactivo').map(p=>({nombre:p.nombre,cargo:p.cargo||'',estado:p.estado||'activo'}))
+  };
 
-  // ── HORAS EXTRAS ──────────────────────────────────────────────────────────
-  if(Object.keys(workerData).length){
-    L.push(S2);
-    L.push('⏱ HORAS EXTRAS');
-    L.push('');
-    S.personal.filter(p=>workerData[p.id]).forEach(p=>{
-      const days=workerData[p.id].sort((a,b)=>a.date.localeCompare(b.date));
-      const wkTotal=days.reduce((s,d)=>s+d.hrs,0);
-      const abs=getWorkerAbsences(p.id, thuStr, wedStr);
-      L.push(S1);
-      L.push(`👷 *${p.nombre}*`);
-      if(p.cargo) L.push(p.cargo);
-      L.push(`Total semana: *+${wkTotal}h*`);
-      if(abs.faltas.length)     L.push(`❌ Faltas: ${abs.faltas.length} día${abs.faltas.length>1?'s':''}`);
-      if(abs.vacaciones.length) L.push(`🏖 Vacaciones: ${abs.vacaciones.length} día${abs.vacaciones.length>1?'s':''}`);
-      L.push('');
-      days.forEach((d,i)=>{
-        L.push(`${i+1}. ${fmtD(d.date)}${isWeekend(d.date)?' 🔴':''}`);
-        L.push(`🏗 [${gcode(d.proyectoId)}] ${gpn(d.proyectoId)}`);
-        const ldr=gpl(d.proyectoId);
-        if(ldr) L.push(`👤 Líder: ${ldr}`);
-        L.push(`⏱ Horas extra: +${d.hrs}h`);
-        if(i<days.length-1) L.push('');
-      });
-      if(abs.faltas.length){
-        L.push('');
-        L.push('❌ *Días de falta:*');
-        abs.faltas.forEach(ds=>L.push(`• ${fmtD(ds)}`));
-      }
-      if(abs.vacaciones.length){
-        L.push('');
-        L.push('🏖 *Días de vacaciones:*');
-        abs.vacaciones.forEach(ds=>L.push(`• ${fmtD(ds)}`));
-      }
-      L.push('');
-    });
-  }
+  // Nombre del archivo con rango de fechas
+  const dFmt=s=>s.replace(/-/g,'');
+  const fileName='Nomina_'+dFmt(thuStr)+'_'+dFmt(wedStr)+'.docx';
 
-  // ── GASTOS EXTRAS ─────────────────────────────────────────────────────────
-  if(Object.keys(gastosWk).length){
-    L.push(S2);
-    L.push('💰 GASTOS EXTRAS');
-    L.push('');
-    Object.keys(gastosWk).sort().forEach(date=>{
-      const dayTotal=gastosWk[date].reduce((s,a)=>s+sumG(a.gastos),0);
-      L.push(S1);
-      L.push(`📅 ${fmtD(date)}${isWeekend(date)?' 🔴':''}`);
-      L.push(`💰 Total del día: $${dayTotal.toLocaleString()}`);
-      L.push('');
-      gastosWk[date].forEach((a,ai)=>{
-        const ldr=gpl(a.proyectoId);
-        const aTotal=sumG(a.gastos);
-        L.push(`🏗 [${gcode(a.proyectoId)}] ${gpn(a.proyectoId)}`);
-        if(ldr) L.push(`👤 Líder: ${ldr}`);
-        a.gastos.forEach(g=>{
-          L.push(`• ${g.tipo}: ${g.desc}`);
-          L.push(`  $${g.monto.toLocaleString()}`);
+  toast('Generando Word...','ok');
+  _generarNominaDocx(payload, fileName);
+}
+
+function _generarNominaDocx(data, fileName){
+  // Cargar docx desde CDN si no está disponible
+  function run(docx){
+    const {
+      Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell,
+      AlignmentType,BorderStyle,WidthType,ShadingType,VerticalAlign,
+      LevelFormat,PageNumberElement,Header,Footer,TabStopType
+    }=docx;
+
+    const AZUL='1B3A6B',AZUL_MED='2E5FAC',AZUL_CLR='D6E4F7',GRIS_CLR='F2F4F7';
+    const VERDE='1A7A4A',VERDE_CLR='D4EDDA',ROJO='B91C1C',ROJO_CLR='FDE8E8';
+    const ORO='B45309',ORO_CLR='FEF3C7',BLANCO='FFFFFF',NEGRO='111111',GRIS_TXT='555555';
+    const money=n=>'$'+Number(n).toLocaleString('es-MX');
+    const brd=(c='CCCCCC',s=6)=>({style:BorderStyle.SINGLE,size:s,color:c});
+    const nob=()=>({style:BorderStyle.NIL,size:0,color:'FFFFFF'});
+    const bdrs=(c='CCCCCC')=>({top:brd(c),bottom:brd(c),left:brd(c),right:brd(c)});
+    const noBdrs=()=>({top:nob(),bottom:nob(),left:nob(),right:nob()});
+    const cell=(ch,o={})=>new TableCell({borders:o.borders||bdrs(o.bc||'CCCCCC'),width:{size:o.w||1,type:WidthType.DXA},shading:o.fill?{fill:o.fill,type:ShadingType.CLEAR}:undefined,margins:{top:o.mt||80,bottom:o.mb||80,left:o.ml||140,right:o.mr||140},verticalAlign:o.va||VerticalAlign.CENTER,columnSpan:o.span,children:Array.isArray(ch)?ch:[ch]});
+    const txt=(t,o={})=>new TextRun({text:String(t??''),bold:o.bold,italics:o.italic,size:o.size||22,color:o.color||NEGRO,font:'Arial'});
+    const para=(ch,o={})=>new Paragraph({alignment:o.align||AlignmentType.LEFT,spacing:{before:o.before||0,after:o.after||80},border:o.border,children:Array.isArray(ch)?ch:[ch]});
+    const sp=(p=120)=>new Paragraph({spacing:{before:p,after:0},children:[new TextRun('')]});
+    const W=9360;
+
+    function kpiTable(){
+      const kpis=[
+        {label:'Horas extras',value:data.totalHrs?`+${data.totalHrs}h`:'—',fill:AZUL_CLR,tc:AZUL_MED},
+        {label:'Trabajadores c/HE',value:String(data.workerRows.length||'—'),fill:GRIS_CLR,tc:AZUL},
+        {label:'Gastos extras',value:data.totalGastos?money(data.totalGastos):'—',fill:VERDE_CLR,tc:VERDE},
+        {label:'Faltas / Vacaciones',value:`${data.totalFaltas} / ${data.totalVac}`,fill:data.totalFaltas?ROJO_CLR:GRIS_CLR,tc:data.totalFaltas?ROJO:GRIS_TXT}
+      ];
+      const cw=Math.floor(W/4);
+      return new Table({width:{size:W,type:WidthType.DXA},columnWidths:[cw,cw,cw,W-cw*3],rows:[new TableRow({children:kpis.map(k=>cell([para([txt(k.label,{size:18,color:k.tc})],{align:AlignmentType.CENTER,after:40}),para([txt(k.value,{size:36,bold:true,color:k.tc})],{align:AlignmentType.CENTER})],{fill:k.fill,w:cw,borders:noBdrs(),mt:160,mb:160}))})]});
+    }
+
+    function persTable(){
+      const cols=[3800,2760,2800];
+      const eFill={activo:VERDE_CLR,vacaciones:ORO_CLR,falta:ROJO_CLR,inactivo:GRIS_CLR};
+      const eColor={activo:VERDE,vacaciones:ORO,falta:ROJO,inactivo:GRIS_TXT};
+      return new Table({width:{size:W,type:WidthType.DXA},columnWidths:cols,rows:[
+        new TableRow({tableHeader:true,children:[cell(para([txt('Trabajador',{bold:true,size:20,color:BLANCO})]),{fill:AZUL,w:cols[0],bc:AZUL}),cell(para([txt('Cargo',{bold:true,size:20,color:BLANCO})]),{fill:AZUL,w:cols[1],bc:AZUL}),cell(para([txt('Estado',{bold:true,size:20,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL,w:cols[2],bc:AZUL})]}),
+        ...data.resumenPersonal.map((p,i)=>new TableRow({children:[cell(para([txt(p.nombre,{bold:true,size:20})]),{fill:i%2?GRIS_CLR:BLANCO,w:cols[0]}),cell(para([txt(p.cargo||'—',{size:20,color:GRIS_TXT})]),{fill:i%2?GRIS_CLR:BLANCO,w:cols[1]}),cell(para([txt(p.estado,{size:20,bold:true,color:eColor[p.estado]||GRIS_TXT})],{align:AlignmentType.CENTER}),{fill:eFill[p.estado]||GRIS_CLR,w:cols[2]})]}))
+      ]});
+    }
+
+    function heTable(w){
+      const cols=[2600,3560,1400,1800];
+      return new Table({width:{size:W,type:WidthType.DXA},columnWidths:cols,rows:[
+        new TableRow({tableHeader:true,children:[cell(para([txt('Fecha',{bold:true,size:19,color:BLANCO})]),{fill:AZUL_MED,w:cols[0],bc:AZUL_MED}),cell(para([txt('Proyecto / Líder',{bold:true,size:19,color:BLANCO})]),{fill:AZUL_MED,w:cols[1],bc:AZUL_MED}),cell(para([txt('Descanso',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL_MED,w:cols[2],bc:AZUL_MED}),cell(para([txt('Hrs extras',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL_MED,w:cols[3],bc:AZUL_MED})]}),
+        ...w.dias.map((d,i)=>new TableRow({children:[cell(para([txt(d.dateLabel,{size:19})]),{fill:i%2?GRIS_CLR:BLANCO,w:cols[0]}),cell([para([txt(d.proyectoNombre,{size:19,bold:true})],{after:20}),...(d.lider?[para([txt('Líder: '+d.lider,{size:17,color:GRIS_TXT,italic:true})])]:[] )],{fill:i%2?GRIS_CLR:BLANCO,w:cols[1]}),cell(para([txt(d.esDescanso?'Sí':'—',{size:19,bold:d.esDescanso,color:d.esDescanso?ROJO:GRIS_TXT})],{align:AlignmentType.CENTER}),{fill:d.esDescanso?ROJO_CLR:(i%2?GRIS_CLR:BLANCO),w:cols[2]}),cell(para([txt(`+${d.hrs}h`,{size:22,bold:true,color:AZUL_MED})],{align:AlignmentType.CENTER}),{fill:AZUL_CLR,w:cols[3]})]})),
+        new TableRow({children:[cell(para([txt('TOTAL',{bold:true,size:20,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:AZUL,w:cols[0]+cols[1]+cols[2],span:3,bc:AZUL}),cell(para([txt(`+${w.totalHrs}h`,{size:24,bold:true,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL,w:cols[3],bc:AZUL})]})
+      ]});
+    }
+
+    function gastosTable(g){
+      const cols=[3000,1760,2800,1800];
+      const rows=[];
+      let ri=0;
+      g.proyectos.forEach(proj=>{
+        proj.gastos.forEach((gs,gi)=>{
+          const fill=ri%2?GRIS_CLR:BLANCO;
+          rows.push(new TableRow({children:[
+            cell(gi===0?[para([txt(proj.nombre,{size:19,bold:true})],{after:20}),...(proj.lider?[para([txt('Líder: '+proj.lider,{size:16,color:GRIS_TXT,italic:true})])]:[])]:[para([txt('',{size:19})])],{fill,w:cols[0]}),
+            cell(para([txt(gs.tipo,{size:19})],{align:AlignmentType.CENTER}),{fill,w:cols[1]}),
+            cell(para([txt(gs.desc,{size:19})]),{fill,w:cols[2]}),
+            cell(para([txt(money(gs.monto),{size:19,bold:true})],{align:AlignmentType.RIGHT}),{fill,w:cols[3]})
+          ]})); ri++;
         });
-        if(a.gastos.length>1) L.push(`Subtotal: $${aTotal.toLocaleString()}`);
-        if(ai<gastosWk[date].length-1) L.push('');
+        if(proj.gastos.length>1) rows.push(new TableRow({children:[cell(para([txt('Subtotal proyecto',{size:18,color:GRIS_TXT,italic:true})],{align:AlignmentType.RIGHT}),{fill:GRIS_CLR,w:cols[0]+cols[1]+cols[2],span:3}),cell(para([txt(money(proj.subTotal),{size:19,bold:true,color:VERDE})],{align:AlignmentType.RIGHT}),{fill:VERDE_CLR,w:cols[3]})]}));
       });
-      L.push('');
+      rows.push(new TableRow({children:[cell(para([txt('TOTAL DEL DÍA',{bold:true,size:20,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:VERDE,w:cols[0]+cols[1]+cols[2],span:3,bc:VERDE}),cell(para([txt(money(g.dayTotal),{size:22,bold:true,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:VERDE,w:cols[3],bc:VERDE})]}));
+      return new Table({width:{size:W,type:WidthType.DXA},columnWidths:cols,rows:[
+        new TableRow({tableHeader:true,children:[cell(para([txt('Proyecto',{bold:true,size:19,color:BLANCO})]),{fill:VERDE,w:cols[0],bc:VERDE}),cell(para([txt('Tipo',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:VERDE,w:cols[1],bc:VERDE}),cell(para([txt('Descripción',{bold:true,size:19,color:BLANCO})]),{fill:VERDE,w:cols[2],bc:VERDE}),cell(para([txt('Monto',{bold:true,size:19,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:VERDE,w:cols[3],bc:VERDE})]}),
+        ...rows
+      ]});
+    }
+
+    function secHdr(title,fill){
+      return new Table({width:{size:W,type:WidthType.DXA},columnWidths:[W],rows:[new TableRow({children:[cell(para([txt(title,{bold:true,size:26,color:BLANCO})],{align:AlignmentType.LEFT}),{fill:fill||AZUL,w:W,borders:noBdrs(),mt:140,mb:140,ml:200})]})]});
+    }
+
+    const docHeader=new Header({children:[
+      new Table({width:{size:W,type:WidthType.DXA},columnWidths:[5000,4360],rows:[new TableRow({children:[cell(para([txt(data.appName,{bold:true,size:28,color:AZUL})]),{w:5000,borders:noBdrs()}),cell(para([txt('Nómina Semanal',{size:20,color:GRIS_TXT})],{align:AlignmentType.RIGHT}),{w:4360,borders:noBdrs()})]})]}),
+      new Paragraph({border:{bottom:{style:BorderStyle.SINGLE,size:8,color:AZUL_MED,space:1}},spacing:{before:60,after:120},children:[]})
+    ]});
+    const docFooter=new Footer({children:[new Paragraph({border:{top:{style:BorderStyle.SINGLE,size:6,color:'CCCCCC',space:1}},spacing:{before:100,after:60},tabStops:[{type:TabStopType.RIGHT,position:W}],children:[txt(data.appName+' — Documento generado automáticamente',{size:16,color:GRIS_TXT}),new TextRun({text:'\tPágina ',size:16,color:GRIS_TXT,font:'Arial'}),new TextRun({children:[new PageNumberElement()],size:16,color:GRIS_TXT,font:'Arial'})]})]}); 
+
+    const ch=[];
+    // Portada
+    ch.push(new Table({width:{size:W,type:WidthType.DXA},columnWidths:[W],rows:[new TableRow({children:[cell([para([txt('NÓMINA SEMANAL',{bold:true,size:52,color:BLANCO})],{align:AlignmentType.CENTER,after:80}),para([txt(data.thuStr+' — '+data.wedStr,{size:26,color:'BDD7EE'})],{align:AlignmentType.CENTER,after:80}),para([txt(data.appName,{size:22,color:'9DC3E6',italic:true})],{align:AlignmentType.CENTER})],{fill:AZUL,w:W,borders:noBdrs(),mt:280,mb:280})]})]});
+    ch.push(sp(200));
+    // KPIs
+    ch.push(secHdr('Resumen de la Semana',AZUL_MED));ch.push(sp(120));ch.push(kpiTable());ch.push(sp(200));
+    // Personal
+    if(data.resumenPersonal.length){ch.push(secHdr('Personal Registrado',AZUL));ch.push(sp(120));ch.push(persTable());ch.push(sp(200));}
+    // HE
+    if(data.workerRows.length){
+      ch.push(secHdr('Horas Extras por Trabajador',AZUL_MED));
+      data.workerRows.forEach(w=>{
+        ch.push(sp(160));
+        ch.push(new Table({width:{size:W,type:WidthType.DXA},columnWidths:[7000,2360],rows:[new TableRow({children:[cell([para([txt(w.nombre,{bold:true,size:24,color:AZUL})],{after:20}),...(w.cargo?[para([txt(w.cargo,{size:20,color:GRIS_TXT,italic:true})])]:[] )],{fill:AZUL_CLR,w:7000,borders:noBdrs(),ml:160}),cell([para([txt(`+${w.totalHrs}h`,{bold:true,size:36,color:AZUL_MED})],{align:AlignmentType.CENTER}),para([txt('total semana',{size:16,color:GRIS_TXT})],{align:AlignmentType.CENTER})],{fill:AZUL_CLR,w:2360,borders:noBdrs()})]})]});
+        if(w.faltas||w.vacaciones){const b=[];if(w.faltas)b.push(txt(`  Faltas: ${w.faltas}d  `,{size:18,bold:true,color:ROJO}));if(w.vacaciones)b.push(txt(`  Vacaciones: ${w.vacaciones}d  `,{size:18,bold:true,color:ORO}));ch.push(sp(60));ch.push(para(b,{before:60}));}
+        ch.push(sp(80));ch.push(heTable(w));
+      });
+      ch.push(sp(120));
+      ch.push(new Table({width:{size:W,type:WidthType.DXA},columnWidths:[7000,2360],rows:[new TableRow({children:[cell(para([txt('TOTAL HORAS EXTRAS DE LA SEMANA',{bold:true,size:22,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:AZUL,w:7000,bc:AZUL}),cell(para([txt(`+${data.totalHrs}h`,{bold:true,size:28,color:BLANCO})],{align:AlignmentType.CENTER}),{fill:AZUL,w:2360,bc:AZUL})]})]});
+      ch.push(sp(200));
+    }
+    // Gastos
+    if(data.gastosRows.length){
+      ch.push(secHdr('Gastos Extras por Día',VERDE));
+      data.gastosRows.forEach(g=>{
+        ch.push(sp(160));
+        ch.push(new Table({width:{size:W,type:WidthType.DXA},columnWidths:[7000,2360],rows:[new TableRow({children:[cell([para([txt(g.dateLabel,{bold:true,size:24,color:VERDE})],{after:g.esDescanso?20:0}),...(g.esDescanso?[para([txt('Día de descanso',{size:18,color:ROJO,italic:true})])]:[] )],{fill:VERDE_CLR,w:7000,borders:noBdrs(),ml:160}),cell([para([txt(money(g.dayTotal),{bold:true,size:28,color:VERDE})],{align:AlignmentType.CENTER}),para([txt('total del día',{size:16,color:GRIS_TXT})],{align:AlignmentType.CENTER})],{fill:VERDE_CLR,w:2360,borders:noBdrs()})]})]});
+        ch.push(sp(80));ch.push(gastosTable(g));
+      });
+      ch.push(sp(120));
+      ch.push(new Table({width:{size:W,type:WidthType.DXA},columnWidths:[7000,2360],rows:[new TableRow({children:[cell(para([txt('TOTAL GASTOS EXTRAS DE LA SEMANA',{bold:true,size:22,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:VERDE,w:7000,bc:VERDE}),cell(para([txt(money(data.totalGastos),{bold:true,size:28,color:BLANCO})],{align:AlignmentType.RIGHT}),{fill:VERDE,w:2360,bc:VERDE})]})]});
+      ch.push(sp(200));
+    }
+    ch.push(new Paragraph({border:{top:{style:BorderStyle.SINGLE,size:8,color:AZUL_MED,space:1}},spacing:{before:200,after:80},children:[txt('Generado por '+data.appName,{size:18,color:GRIS_TXT,italic:true})]}));
+
+    const doc=new Document({
+      styles:{default:{document:{run:{font:'Arial',size:22}}}},
+      sections:[{properties:{page:{size:{width:12240,height:15840},margin:{top:1080,right:1080,bottom:1080,left:1080}}},headers:{default:docHeader},footers:{default:docFooter},children:ch}]
     });
+
+    Packer.toBlob(doc).then(blob=>{
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url; a.download=fileName;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast('✓ Word descargado','ok');
+    }).catch(e=>{ console.error(e); toast('Error generando Word','err'); });
   }
 
-  // CIERRE
-  L.push(S2);
-  L.push('📋 Fin del reporte');
-
-  const text=L.join('\n');
-  if(navigator.clipboard&&navigator.clipboard.writeText){
-    navigator.clipboard.writeText(text).then(()=>toast('✓ Copiado — pégalo en WhatsApp','ok')).catch(()=>fallbackCopy(text));
-  } else { fallbackCopy(text); }
+  // Cargar docx UMD desde CDN si no está en window
+  if(window.docx){ run(window.docx); return; }
+  const s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/docx@9.5.3/dist/index.umd.cjs';
+  s.onload=()=>{ window.docx=window.docx||{}; run(window.docx); };
+  s.onerror=()=>toast('Sin conexión para generar Word','err');
+  document.head.appendChild(s);
 }
 
 // Get the Thursday date string for the week containing dateStr
