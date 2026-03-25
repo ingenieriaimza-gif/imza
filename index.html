@@ -4263,18 +4263,22 @@ function sendMagicLink(){
   var errEl=document.getElementById('login-error');
   if(!email||!email.includes('@')){ errEl.textContent='Ingresa un correo válido'; return; }
   var btn=document.querySelector('#login-step-email button');
+
+  function resetBtn(){ if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; } }
+
   if(btn){ btn.disabled=true; btn.textContent='Verificando...'; }
-  // Fetch users directly from Supabase
+  errEl.textContent='';
+
+  // Primero verificar en usuarios cacheados localmente para respuesta inmediata
+  var cachedUsers=S.users||[];
+  var cachedFound=cachedUsers.find(function(u){ return (u.email||'').toLowerCase()===email; });
+
   fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
     credentials:'omit',
-    headers:{
-      'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',
-      'Authorization':'Bearer sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY'
-    }
+    headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY'}
   }).then(function(r){ return r.json(); }).then(function(rows){
-    if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; }
+    resetBtn();
     var users=(rows&&rows[0]&&rows[0].data&&rows[0].data.users)||[];
-    // Update local users
     if(users.length) S.users=users;
     var found=users.find(function(u){ return (u.email||'').toLowerCase()===email; });
     if(!found){
@@ -4283,8 +4287,11 @@ function sendMagicLink(){
     }
     _doSendMagicLink(email,errEl,btn);
   }).catch(function(){
-    if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; }
-    if(!navigator.onLine){
+    resetBtn();
+    // Fallback a usuarios cacheados si Supabase no responde
+    if(cachedFound){
+      _doSendMagicLink(email,errEl,btn);
+    } else if(!navigator.onLine){
       errEl.textContent='Sin internet. Conéctate para iniciar sesión.';
     } else {
       errEl.textContent='Error de conexión. Intenta de nuevo.';
@@ -4505,12 +4512,30 @@ function applyRoleRestrictions(){
 var _visorInterval=null;
 
 function logout(){
-  _currentUser=null;
+  // Detener todos los timers antes de limpiar estado
   if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
-  if(_realtimeWs){ _realtimeWs.onclose=null; _realtimeWs.close(); _realtimeWs=null; }
+  if(_liveTimer){ clearInterval(_liveTimer); _liveTimer=null; }
+  if(_presenceTimer){ clearInterval(_presenceTimer); _presenceTimer=null; }
+  if(_onlineRefreshTimer){ clearInterval(_onlineRefreshTimer); _onlineRefreshTimer=null; }
+  if(_realtimeWs){ _realtimeWs.onclose=null; _realtimeWs.onerror=null; _realtimeWs.close(); _realtimeWs=null; }
+  if(_realtimeHb){ clearInterval(_realtimeHb); _realtimeHb=null; }
+
+  // Limpiar sesión local
+  _currentUser=null;
   localStorage.removeItem('cp4_session');
+  localStorage.removeItem('cp4_auth_token');
+  localStorage.removeItem('cp4_refresh_token');
+
+  // Intentar cerrar sesión en Supabase Auth (no bloqueante)
+  try{
+    fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/logout',{
+      method:'POST', credentials:'omit',
+      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',
+               'Authorization':'Bearer '+(localStorage.getItem('cp4_auth_token')||'')}
+    }).catch(function(){});
+  }catch(e){}
+
   document.getElementById('app').style.display='none';
-  getSbClient().auth.signOut();
   showLogin();
 }
 
