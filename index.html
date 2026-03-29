@@ -3204,6 +3204,7 @@ function copyWeekHE(){
     };
   });
 
+  var appName=localStorage.getItem('cp4_appname')||'IMZA';
   // resumenPersonal: solo trabajadores con actividad en la semana
   // (HE registradas, falta o vacaciones)
   var resumenPersonal=S.personal.map(function(p){
@@ -3420,8 +3421,6 @@ function _abrirReporteHTML(d){
   // PRINT
   '@media print{'+
   '@page{size:A4 landscape;margin:5mm 6mm;}'+
-  '@page{@top-left{content:none}@top-center{content:none}@top-right{content:none}'+
-  '@bottom-left{content:none}@bottom-center{content:none}@bottom-right{content:none}}'+
   'body{background:#fff!important;}'+
   '.page{width:100%!important;padding:0!important;}'+
   '.hdr{margin-bottom:6px!important;padding:8px 12px!important;}'+
