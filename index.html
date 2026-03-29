@@ -2475,100 +2475,232 @@ function restoreAccordionState(container, state){
 
 function togH(head){head.nextElementSibling.classList.toggle('open');}
 
+// ── Función auxiliar para abrir reporte HTML desde historial ─────────────────
+function _abrirReporteHistorial(titulo, subtitulo, fecha, secciones){
+  var appName=localStorage.getItem('cp4_appname')||'IMZA';
+  var fmtFN=function(s){ return s.replace(/\s+/g,'-'); };
+  var pdfName=appName+'_Reporte_'+fmtFN(fecha);
+
+  var css=
+  '*{margin:0;padding:0;box-sizing:border-box;}'+
+  'html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
+  'body{font-family:"Segoe UI",-apple-system,Arial,sans-serif;font-size:10px;background:#F8FAFC;color:#0F172A;line-height:1.35;}'+
+  '.page{width:680px;margin:0 auto;padding:16px;}'+
+  // Header
+  '.hdr{background:#1E3A8A;border-radius:8px;padding:12px 18px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;}'+
+  '.hdr h1{font-size:17px;font-weight:900;color:#fff;letter-spacing:-.03em;}'+
+  '.hdr p{font-size:8px;color:#93C5FD;margin-top:2px;text-transform:uppercase;letter-spacing:.06em;}'+
+  '.hdr-r{text-align:right;}'+
+  '.hdr-r .hl{font-size:7.5px;color:#93C5FD;text-transform:uppercase;letter-spacing:.08em;}'+
+  '.hdr-r .hv{font-size:11px;font-weight:800;color:#fff;margin-top:2px;}'+
+  // Sección
+  '.sec{background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:10px;}'+
+  '.sec-hdr{padding:8px 12px;display:flex;justify-content:space-between;align-items:center;}'+
+  '.sec-hdr-b{background:linear-gradient(90deg,#1E3A8A,#2563EB);}'+
+  '.sec-hdr-g{background:linear-gradient(90deg,#065F46,#059669);}'+
+  '.sec-hdr-s{background:#0F172A;}'+
+  '.sec-hdr-r{background:linear-gradient(90deg,#991B1B,#DC2626);}'+
+  '.sec-hdr-a{background:linear-gradient(90deg,#92400E,#D97706);}'+
+  '.sec-hdr span{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#fff;}'+
+  '.sec-hdr strong{font-size:11px;font-weight:900;color:#fff;}'+
+  // Tabla
+  'table{width:100%;border-collapse:collapse;table-layout:fixed;}'+
+  'th{background:#F8FAFC;color:#94A3B8;font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:5px 8px;text-align:left;border-bottom:2px solid #E2E8F0;white-space:nowrap;}'+
+  'td{padding:5px 8px;font-size:9px;border-bottom:1px solid #F8FAFC;vertical-align:middle;word-break:break-word;}'+
+  'tr:last-child td{border-bottom:none;}'+
+  // Avatar
+  '.av{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#7C3AED);color:#fff;font-size:7px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}'+
+  // Badges
+  '.bd{display:inline-flex;align-items:center;padding:1px 6px;border-radius:100px;font-size:7.5px;font-weight:700;white-space:nowrap;}'+
+  '.bb{background:#DBEAFE;color:#1E40AF;}.bg{background:#D1FAE5;color:#065F46;}'+
+  '.br{background:#FEE2E2;color:#991B1B;}.ba{background:#FEF3C7;color:#92400E;}'+
+  '.bgr{background:#F1F5F9;color:#475569;}'+
+  // Separador
+  '.sep{height:2px;background:#E2E8F0;border:none;}'+
+  // Footer
+  '.ft{padding:6px 12px;display:flex;justify-content:space-between;align-items:center;}'+
+  '.ft-b{background:linear-gradient(90deg,#1E3A8A,#2563EB);}'+
+  '.ft-g{background:linear-gradient(90deg,#065F46,#059669);}'+
+  '.ft span{font-size:8px;color:rgba(255,255,255,.75);}.ft strong{font-size:11px;font-weight:900;color:#fff;}'+
+  // Print
+  '@media print{'+
+  '@page{size:A4 portrait;margin:8mm 10mm;}'+
+  'body{background:#fff!important;}'+
+  '.page{width:100%!important;padding:0!important;}'+
+  'tr{page-break-inside:avoid!important;}'+
+  'thead{display:table-header-group!important;}'+
+  '.sec{page-break-inside:auto!important;}'+
+  '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}';
+
+  // Construir cuerpo con las secciones
+  var body='';
+  secciones.forEach(function(sec){
+    body+='<div class="sec">';
+    body+='<div class="sec-hdr sec-hdr-'+(sec.color||'b')+'">'+
+      '<span>'+sec.titulo+'</span>'+
+      (sec.total?'<strong>'+sec.total+'</strong>':'')+
+    '</div>';
+    if(sec.tabla){
+      body+='<table>';
+      if(sec.tabla.cols){
+        body+='<colgroup>';
+        sec.tabla.cols.forEach(function(w){ body+='<col style="width:'+w+'">'; });
+        body+='</colgroup>';
+      }
+      body+='<thead><tr>';
+      sec.tabla.heads.forEach(function(h){ body+='<th'+(h.right?' style="text-align:right"':'')+(h.center?' style="text-align:center"':'')+'>'+h.t+'</th>'; });
+      body+='</tr></thead><tbody>';
+      sec.tabla.rows.forEach(function(row,ri){
+        body+='<tr style="background:'+(ri%2?'#FAFAFA':'#fff')+'">';
+        row.forEach(function(cel){ body+='<td'+(cel.right?' style="text-align:right;'+( cel.style||'')+'"':(cel.style?' style="'+cel.style+'"':''))+'>'+cel.v+'</td>'; });
+        body+='</tr>';
+      });
+      body+='</tbody></table>';
+    }
+    if(sec.footer){
+      body+='<div class="ft ft-'+(sec.footerColor||'b')+'"><span>'+sec.footer.label+'</span><strong>'+sec.footer.value+'</strong></div>';
+    }
+    body+='</div>';
+  });
+
+  var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'+
+  '<title>'+pdfName+'</title>'+
+  '<style>'+css+'</style></head><body><div class="page">'+
+  '<div class="hdr">'+
+  '<div><h1>'+appName+'</h1><p>'+subtitulo+'</p></div>'+
+  '<div class="hdr-r"><div class="hl">Fecha</div><div class="hv">'+fecha+'</div></div>'+
+  '</div>'+
+  body+
+  '<div style="text-align:center;margin-top:12px;padding-top:8px;border-top:1px solid #F1F5F9;color:#CBD5E1;font-size:7.5px;">'+
+  appName+' · '+subtitulo+' · '+fecha+'</div>'+
+  '</div></body></html>';
+
+  var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var ex=document.getElementById('_hist_iframe');
+  if(ex) ex.remove();
+  var ifr=document.createElement('iframe');
+  ifr.id='_hist_iframe';
+  ifr.style.cssText='position:fixed;left:-9999px;top:-9999px;width:800px;height:1200px;border:none;opacity:0;pointer-events:none;';
+  ifr.src=url;
+  document.body.appendChild(ifr);
+  ifr.onload=function(){
+    setTimeout(function(){
+      try{
+        var oldTitle=document.title;
+        document.title=pdfName;
+        ifr.contentWindow.focus();
+        ifr.contentWindow.print();
+        setTimeout(function(){ document.title=oldTitle; URL.revokeObjectURL(url); },60000);
+        toast('Selecciona "Guardar como PDF" en el dialogo','ok');
+      }catch(e){
+        var a=document.createElement('a');
+        a.href=url; a.download=pdfName+'.html';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        toast('Reporte descargado','ok');
+      }
+    },200);
+  };
+}
+
 function shareDay(date){
-  const acts=S.actividades[date]||[];
+  var acts=S.actividades[date]||[];
   if(!acts.length){ toast('Sin actividades en este día','err'); return; }
 
-  const wknd=isWeekend(date);
-  const fest=isFestivo(date);
-  const L=[];
-  const SEP='━━━━━━━━━━━━━━━━━━━━';
-  const SEP2='──────────────────────';
+  var appName=localStorage.getItem('cp4_appname')||'IMZA';
+  var wknd=isWeekend(date), fest=isFestivo(date);
+  var fechaLabel=fmtD(date)+(wknd?' · Día de descanso':'')+(fest?' · '+festivoNombre(date):'');
+  var secciones=[];
 
-  // ENCABEZADO
-  L.push('📋 *REPORTE DIARIO*');
-  L.push(SEP);
-  L.push('📅 *'+fmtD(date)+'*');
-  if(wknd) L.push('🔴 Día de descanso');
-  if(fest) L.push('🎌 '+festivoNombre(date));
-  L.push('');
+  // ── Sección por proyecto ──────────────────────────────────────────────────
+  acts.forEach(function(a){
+    var pNom=gpn(a.proyectoId), pCode=gcode(a.proyectoId), pLider=gpl(a.proyectoId)||'';
+    var trabajadores=a.trabajadores||[];
+    var gastos=a.gastos||[];
+    var he=a.horasExtras||{};
+    var totalHE=Object.values(he).reduce(function(s,v){return s+v;},0);
+    var totalG=sumG(gastos);
 
-  // ACTIVIDADES
-  acts.forEach((a,i)=>{
-    const proj=S.proyectos.find(p=>p.id===a.proyectoId)||{};
-    const code=gcode(a.proyectoId);
-    const nombre=gpn(a.proyectoId);
+    // Tabla de personal
+    if(trabajadores.length){
+      var rows=trabajadores.map(function(wid){
+        var nm=gwn(wid);
+        var heV=he[wid]||0;
+        var ini=nm.split(' ').map(function(x){return x[0]||'';}).slice(0,2).join('').toUpperCase();
+        return [
+          {v:'<div style="display:inline-flex;align-items:center;gap:6px"><div class="av">'+ini+'</div><span style="font-weight:600">'+nm+'</span></div>'},
+          {v:heV?'<span class="bd bb">+'+heV+'h</span>':'<span style="color:#CBD5E1">—</span>', center:true}
+        ];
+      });
+      var totalWorkers=trabajadores.length;
+      secciones.push({
+        titulo:'['+pCode+'] '+pNom+(pLider?' · '+pLider:''),
+        total: totalWorkers+' trab.'+(totalHE?' · +'+totalHE+'h':'')+(totalG?' · $'+totalG.toLocaleString('es-MX'):''),
+        color:'b',
+        tabla:{
+          cols:['1fr','60px'],
+          heads:[{t:'Trabajador'},{t:'HE',center:true}],
+          rows:rows
+        }
+      });
+    }
 
-    L.push(SEP2);
-    L.push(`🏗 *Proyecto ${code}*`);
-    L.push(`📌 ${nombre}`);
-    if(proj.lider) L.push(`👤 Líder: ${proj.lider}`);
-    L.push('');
+    // Tabla de gastos si hay
+    if(gastos.length){
+      var grow=gastos.map(function(g){
+        return [
+          {v:'<span class="bd bgr">'+g.tipo+'</span>',style:'white-space:nowrap;width:60px'},
+          {v:g.desc},
+          {v:'$'+Number(g.monto||0).toLocaleString('es-MX'), right:true, style:'font-weight:700;white-space:nowrap'}
+        ];
+      });
+      secciones.push({
+        titulo:'Gastos — '+pNom,
+        color:'g',
+        tabla:{
+          cols:['70px','1fr','80px'],
+          heads:[{t:'Tipo'},{t:'Descripción'},{t:'Monto',right:true}],
+          rows:grow
+        },
+        footer:{label:'Total gastos proyecto', value:'$'+totalG.toLocaleString('es-MX')},
+        footerColor:'g'
+      });
+    }
 
+    // Notas si hay
     if(a.notas){
-      L.push('📝 *Notas:*');
-      L.push(a.notas);
-      L.push('');
-    }
-
-    if((a.trabajadores||[]).length){
-      L.push(`👷 *Personal (${a.trabajadores.length}):*`);
-      a.trabajadores.forEach(id=>{
-        const he=(a.horasExtras||{})[id];
-        L.push('• '+gwn(id)+(he?' ⏱+'+he+'h':''));
+      secciones.push({
+        titulo:'Notas — '+pNom,
+        color:'s',
+        tabla:{
+          cols:['1fr'],
+          heads:[{t:'Observaciones'}],
+          rows:[[{v:a.notas}]]
+        }
       });
-      L.push('');
-    }
-
-    if((a.maquinaria||[]).length){
-      L.push('🚜 *Maquinaria:*');
-      a.maquinaria.forEach(m=>L.push('• '+m));
-      L.push('');
-    }
-
-    const gT=sumG(a.gastos);
-    if(gT){
-      L.push('💰 *Gastos extras:*');
-      (a.gastos||[]).forEach(g=>{
-        L.push(`• ${g.tipo} – ${g.desc}: $${g.monto.toLocaleString()}`);
-      });
-      L.push('Total gastos: $'+gT.toLocaleString());
-      L.push('');
     }
   });
 
-  // RESUMEN FINAL
-  const totalW=new Set(acts.flatMap(a=>a.trabajadores||[])).size;
-  const totalG=acts.reduce((s,a)=>s+sumG(a.gastos),0);
-  const totalHE=acts.reduce((s,a)=>s+Object.values(a.horasExtras||{}).reduce((x,v)=>x+v,0),0);
-  L.push(SEP);
-  L.push('📊 *RESUMEN DEL DÍA*');
-  L.push(`• Proyectos: ${acts.length}`);
-  L.push(`• Personal: ${totalW} trabajadores`);
-  if(totalHE) L.push(`• Horas extras: ${totalHE}h`);
-  if(totalG) L.push(`• Gastos totales: $${totalG.toLocaleString()}`);
-  L.push('');
+  // ── Resumen del día ───────────────────────────────────────────────────────
+  var totalW=new Set(acts.flatMap(function(a){return a.trabajadores||[];})).size;
+  var totalG2=acts.reduce(function(s,a){return s+sumG(a.gastos);},0);
+  var totalHE2=acts.reduce(function(s,a){return s+Object.values(a.horasExtras||{}).reduce(function(x,v){return x+v;},0);},0);
+  secciones.push({
+    titulo:'Resumen del día',
+    color:'s',
+    tabla:{
+      cols:['1fr','1fr'],
+      heads:[{t:'Concepto'},{t:'Total',right:true}],
+      rows:[
+        [{v:'Proyectos trabajados'},{v:String(acts.length),right:true,style:'font-weight:700'}],
+        [{v:'Total trabajadores'},{v:String(totalW),right:true,style:'font-weight:700'}],
+        totalHE2?[{v:'Horas extras'},{v:'+'+totalHE2+'h',right:true,style:'font-weight:700;color:#1E40AF'}]:null,
+        totalG2?[{v:'Gastos del día'},{v:'$'+totalG2.toLocaleString('es-MX'),right:true,style:'font-weight:700;color:#059669'}]:null
+      ].filter(Boolean)
+    }
+  });
 
-  const text=L.join('\n');
-  // Copy to clipboard
-  if(navigator.clipboard&&navigator.clipboard.writeText){
-    navigator.clipboard.writeText(text).then(()=>{
-      toast('✓ Copiado — pégalo en WhatsApp','ok');
-    }).catch(()=>fallbackCopy(text));
-  } else {
-    fallbackCopy(text);
-  }
-}
-
-function fallbackCopy(text){
-  const ta=document.createElement('textarea');
-  ta.value=text;
-  ta.style.cssText='position:fixed;top:0;left:0;opacity:0;font-size:16px';
-  document.body.appendChild(ta);
-  ta.focus();ta.select();
-  try{document.execCommand('copy');toast('✓ Copiado — pégalo en WhatsApp','ok');}
-  catch(e){toast('No se pudo copiar','err');}
-  document.body.removeChild(ta);
+  _abrirReporteHistorial('Reporte Diario','Reporte Diario de Actividades',fechaLabel,secciones);
 }
 
 function shareProj(projId){
@@ -2576,16 +2708,15 @@ function shareProj(projId){
   if(!proj){ toast('Proyecto no encontrado','err'); return; }
 
   if(proj.estado!=='completado'){
-    // Always mark as completed AND copy — just ask for confirmation
     confirmShow(
       '¿Proyecto terminado?',
-      '"'+proj.nombre+'" se marcará como completado y se copiará el reporte.',
+      '"'+proj.nombre+'" se marcará como completado y se generará el reporte.',
       function(){
         proj.estado='completado';
         save(); rAll();
         _doShareProj(projId);
       },
-      'Completar y copiar ✅',
+      'Completar y generar ✅',
       'var(--green)',
       'Cancelar'
     );
@@ -2595,101 +2726,96 @@ function shareProj(projId){
 }
 
 function _doShareProj(projId){
-  const proj=S.proyectos.find(p=>p.id===projId);
-  if(!proj){ toast('Proyecto no encontrado','err'); return; }
+  var proj=S.proyectos.find(function(p){ return p.id===projId; });
+  if(!proj) return;
+  var pCode=gcode(projId), pNom=gpn(projId), pLider=gpl(projId)||'';
+  var appName=localStorage.getItem('cp4_appname')||'IMZA';
 
-  // Gather all activities for this project, sorted oldest → newest
-  const allEntries=[];
-  Object.keys(S.actividades).sort().forEach(date=>{
-    (S.actividades[date]||[]).forEach(a=>{
-      if(a.proyectoId===projId) allEntries.push({date,a});
-    });
-  });
-  if(!allEntries.length){ toast('Sin actividades en este proyecto','err'); return; }
-
-  const L=[];
-  const SEP='━━━━━━━━━━━━━━━━━━━━';
-  const SEP2='──────────────────────';
-  const code=gcode(projId);
-
-  // GROUP BY DATE (newest → oldest)
-  const byDate={};
-  allEntries.forEach(({date,a})=>{ if(!byDate[date]) byDate[date]=[]; byDate[date].push(a); });
-  const dates=Object.keys(byDate).sort((a,b)=>b.localeCompare(a));
-
-  // RESUMEN AL INICIO
-  const totalDias=dates.length;
-  const totalW=new Set(allEntries.flatMap(({a})=>a.trabajadores||[])).size;
-  const totalG=allEntries.reduce((s,{a})=>s+sumG(a.gastos),0);
-  const totalHE=allEntries.reduce((s,{a})=>s+Object.values(a.horasExtras||{}).reduce((x,v)=>x+v,0),0);
-  const ultimo=dates[0]; // newest first now
-
-  const estadoEmoji={activo:'🟢',pausado:'🟡',completado:'✅'}[proj.estado]||'⚪';
-  L.push('📋 *REPORTE DE PROYECTO*');
-  L.push(SEP);
-  L.push(`🏗 *[${code}] ${proj.nombre}*`);
-  if(proj.lider) L.push(`👤 Líder: ${proj.lider}`);
-  if(proj.inicio) L.push(`📅 Inicio: ${fmtDate(proj.inicio)}`);
-  if(proj.diasEstimados) L.push(`📆 Días estimados: ${proj.diasEstimados}`);
-  L.push(`${estadoEmoji} Estado: ${proj.estado}`);
-  L.push('');
-  L.push('📊 *RESUMEN*');
-  L.push(`• Días trabajados: ${totalDias}`);
-  L.push(`• Último día: ${fmtDate(ultimo)}`);
-  L.push(`• Personal involucrado: ${totalW} trabajadores`);
-  if(totalHE) L.push(`• Total horas extras: ${totalHE}h`);
-  if(totalG) L.push(`• Total gastos extras: $${totalG.toLocaleString()}`);
-  L.push('');
-
-  // DETALLE POR DÍA (más reciente primero)
-  dates.forEach(date=>{
-    const acts=byDate[date];
-    L.push(SEP2);
-    L.push(`📅 *${fmtD(date)}*${isWeekend(date)?' 🔴':''}${isFestivo(date)?' 🎌':''}`);
-    L.push('');
-
-    acts.forEach(a=>{
-      if(a.notas){
-        L.push('📝 *Notas:*');
-        L.push(a.notas);
-        L.push('');
-      }
-
-      if((a.trabajadores||[]).length){
-        L.push(`👷 *Personal (${a.trabajadores.length}):*`);
-        a.trabajadores.forEach(id=>{
-          const he=(a.horasExtras||{})[id];
-          L.push('• '+gwn(id)+(he?' ⏱+'+he+'h':''));
-        });
-        L.push('');
-      }
-
-      if((a.maquinaria||[]).length){
-        L.push('🚜 *Maquinaria:*');
-        a.maquinaria.forEach(m=>L.push('• '+m));
-        L.push('');
-      }
-
-      const gT=sumG(a.gastos);
-      if(gT){
-        L.push('💰 *Gastos extras:*');
-        (a.gastos||[]).forEach(g=>{
-          L.push(`• ${g.tipo} – ${g.desc}: $${g.monto.toLocaleString()}`);
-        });
-        L.push('Total: $'+gT.toLocaleString());
-        L.push('');
-      }
+  // Recopilar todos los días con actividad de este proyecto
+  var diasData={};
+  Object.keys(S.actividades).sort().forEach(function(date){
+    (S.actividades[date]||[]).forEach(function(a){
+      if(a.proyectoId!==projId) return;
+      if(!diasData[date]) diasData[date]={trabajadores:{},gastos:[],notas:'',he:{}};
+      (a.trabajadores||[]).forEach(function(wid){
+        diasData[date].trabajadores[wid]=true;
+        if((a.horasExtras||{})[wid]) diasData[date].he[wid]=(diasData[date].he[wid]||0)+(a.horasExtras[wid]||0);
+      });
+      diasData[date].gastos=diasData[date].gastos.concat(a.gastos||[]);
+      if(a.notas) diasData[date].notas+=a.notas+' ';
     });
   });
 
-  const text=L.join('\n');
-  if(navigator.clipboard&&navigator.clipboard.writeText){
-    navigator.clipboard.writeText(text).then(()=>{
-      toast('✓ Copiado — pégalo en WhatsApp','ok');
-    }).catch(()=>fallbackCopy(text));
-  } else {
-    fallbackCopy(text);
-  }
+  var fechas=Object.keys(diasData).sort();
+  if(!fechas.length){ toast('Sin actividad registrada en este proyecto','err'); return; }
+
+  var secciones=[];
+  var allWorkers={}, totalGastos=0, totalHE=0;
+
+  // Sección por día
+  fechas.forEach(function(date){
+    var dd=diasData[date];
+    var wids=Object.keys(dd.trabajadores);
+    var dG=sumG(dd.gastos);
+    var dHE=Object.values(dd.he).reduce(function(s,v){return s+v;},0);
+    totalGastos+=dG; totalHE+=dHE;
+    wids.forEach(function(wid){ allWorkers[wid]=true; });
+
+    var wknd=isWeekend(date), fest=isFestivo(date);
+    var rows=wids.map(function(wid){
+      var nm=gwn(wid);
+      var ini=nm.split(' ').map(function(x){return x[0]||'';}).slice(0,2).join('').toUpperCase();
+      var heV=dd.he[wid]||0;
+      return [
+        {v:'<div style="display:inline-flex;align-items:center;gap:6px"><div class="av">'+ini+'</div><span style="font-weight:600">'+nm+'</span></div>'},
+        {v:heV?'<span class="bd bb">+'+heV+'h</span>':'<span style="color:#CBD5E1">—</span>',center:true}
+      ];
+    });
+
+    var sec={
+      titulo:fmtD(date)+(wknd?' · Descanso':'')+(fest?' · '+festivoNombre(date):''),
+      total:wids.length+' trab.'+(dHE?' · +'+dHE+'h':'')+(dG?' · $'+dG.toLocaleString('es-MX'):''),
+      color:wknd?'r':'b',
+      tabla:{cols:['1fr','60px'],heads:[{t:'Trabajador'},{t:'HE',center:true}],rows:rows}
+    };
+    secciones.push(sec);
+
+    if(dd.gastos.length){
+      var grow=dd.gastos.map(function(g){
+        return [
+          {v:'<span class="bd bgr">'+g.tipo+'</span>',style:'white-space:nowrap'},
+          {v:g.desc},
+          {v:'$'+Number(g.monto||0).toLocaleString('es-MX'),right:true,style:'font-weight:700;white-space:nowrap'}
+        ];
+      });
+      secciones.push({
+        titulo:'Gastos '+fmtD(date),color:'g',
+        tabla:{cols:['70px','1fr','80px'],heads:[{t:'Tipo'},{t:'Descripción'},{t:'Monto',right:true}],rows:grow},
+        footer:{label:'Total del día',value:'$'+dG.toLocaleString('es-MX')},footerColor:'g'
+      });
+    }
+  });
+
+  // Resumen final del proyecto
+  secciones.push({
+    titulo:'Resumen del Proyecto',color:'s',
+    tabla:{cols:['1fr','1fr'],heads:[{t:'Concepto'},{t:'Total',right:true}],
+      rows:[
+        [{v:'Días trabajados'},{v:String(fechas.length),right:true,style:'font-weight:700'}],
+        [{v:'Total trabajadores'},{v:String(Object.keys(allWorkers).length),right:true,style:'font-weight:700'}],
+        totalHE?[{v:'Horas extras totales'},{v:'+'+totalHE+'h',right:true,style:'font-weight:700;color:#1E40AF'}]:null,
+        totalGastos?[{v:'Gastos totales'},{v:'$'+totalGastos.toLocaleString('es-MX'),right:true,style:'font-weight:700;color:#059669'}]:null
+      ].filter(Boolean)
+    }
+  });
+
+  var periodoLabel=fechas.length?fmtD(fechas[0])+(fechas.length>1?' – '+fmtD(fechas[fechas.length-1]):''):'';
+  _abrirReporteHistorial(
+    'Reporte de Proyecto',
+    '['+pCode+'] '+pNom+(pLider?' · '+pLider:''),
+    periodoLabel,
+    secciones
+  );
 }
 
 function projCard(p,i){
