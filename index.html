@@ -3204,28 +3204,39 @@ function copyWeekHE(){
     };
   });
 
-  var appName=localStorage.getItem('cp4_appname')||'IMZA';
-  // Calcular estado correcto de cada trabajador DURANTE esa semana
-  var resumenPersonal=S.personal.filter(function(p){ return p.estado!=='inactivo'; })
-    .map(function(p){
+  // resumenPersonal: solo trabajadores con actividad en la semana
+  // (HE registradas, falta o vacaciones)
+  var resumenPersonal=S.personal.map(function(p){
       var abs=getWorkerAbsences(p.id,thuStr,wedStr);
-      var estSemana='activo';
+      var tieneHE=!!workerData[p.id];
+      var estSemana=p.estado||'activo';
       if(abs.faltas.length>0) estSemana='falta';
       else if(abs.vacaciones.length>0) estSemana='vacaciones';
       return {
         nombre:p.nombre, cargo:p.cargo||'',
         estado:estSemana,
+        estadoActual:p.estado||'activo',
+        tieneHE:tieneHE,
         faltas:abs.faltas.length,
         vacaciones:abs.vacaciones.length,
-        // Fechas exactas para mostrar en el reporte
         faltasDates:abs.faltas.map(function(ds){ return fmtD(ds); }),
         vacacionesDates:abs.vacaciones.map(function(ds){ return fmtD(ds); })
       };
+    })
+    .filter(function(p){
+      // Solo aparece si trabajó (HE), tuvo falta o tuvo vacaciones en la semana
+      return p.tieneHE || p.faltas>0 || p.vacaciones>0;
     });
 
   // Totales derivados de resumenPersonal — siempre consistentes con la tabla
   var totalFaltas=resumenPersonal.filter(function(p){ return p.faltas>0; }).length;
   var totalVac=resumenPersonal.filter(function(p){ return p.vacaciones>0; }).length;
+  // Debug: mostrar quién tiene vacaciones/faltas
+  console.log('[Nomina] Semana '+thuStr+' a '+wedStr);
+  resumenPersonal.forEach(function(p){
+    if(p.faltas>0||p.vacaciones>0)
+      console.log(' →',p.nombre,'| faltas:',p.faltasDates,'| vac:',p.vacacionesDates);
+  });
 
   var data={
     thuStr:fmtDate(thuStr), wedStr:fmtDate(wedStr), appName:appName,
@@ -3409,6 +3420,8 @@ function _abrirReporteHTML(d){
   // PRINT
   '@media print{'+
   '@page{size:A4 landscape;margin:5mm 6mm;}'+
+  '@page{@top-left{content:none}@top-center{content:none}@top-right{content:none}'+
+  '@bottom-left{content:none}@bottom-center{content:none}@bottom-right{content:none}}'+
   'body{background:#fff!important;}'+
   '.page{width:100%!important;padding:0!important;}'+
   '.hdr{margin-bottom:6px!important;padding:8px 12px!important;}'+
