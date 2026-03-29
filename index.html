@@ -2831,30 +2831,49 @@ function _doShareProj(projId){
     '</div>'+
   '</div>';
 
-  // Col 2: Ranking de trabajadores
-  html+='<div class="proj-card" style="padding:10px 14px;">'+
-    '<div style="font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#64748B;margin-bottom:8px;display:flex;align-items:center;gap:4px;">'+
-    '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#7C3AED;flex-shrink:0"></span>'+
-    'Personal del proyecto</div>';
+  // Col 2: Tabla de personal compacta
+  html+='<div class="proj-card" style="padding:0;overflow:hidden;">'+
+    '<div style="background:#1E3A8A;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;">'+
+    '<span style="font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#fff">Personal del proyecto</span>'+
+    '<span style="font-size:8px;color:#93C5FD">'+rankingW.length+' personas</span>'+
+    '</div>'+
+    '<table style="width:100%;border-collapse:collapse;table-layout:fixed;">'+
+    '<colgroup><col style="width:20px"><col><col style="width:28px"><col style="width:32px"></colgroup>'+
+    '<thead><tr>'+
+    '<th colspan="2" style="background:#F8FAFC;color:#94A3B8;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:4px 8px;border-bottom:1px solid #E2E8F0;">Nombre</th>'+
+    '<th style="background:#F8FAFC;color:#94A3B8;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:4px 4px;text-align:center;border-bottom:1px solid #E2E8F0;">Días</th>'+
+    '<th style="background:#F8FAFC;color:#94A3B8;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:4px 6px;text-align:center;border-bottom:1px solid #E2E8F0;">HE</th>'+
+    '</tr></thead><tbody>';
 
   rankingW.forEach(function(w,ri){
     var pct=Math.round((w.dias/fechas.length)*100);
-    var p=S.personal.find(function(x){return x.id===w.wid;})||{};
-    html+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">'+
-      '<div class="av" style="width:22px;height:22px;font-size:7px">'+_ini(w.nm)+'</div>'+
-      '<div style="flex:1;min-width:0;">'+
-        '<div style="font-size:8.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+w.nm+'</div>'+
-        '<div style="display:flex;align-items:center;gap:4px;margin-top:2px;">'+
-          '<div style="flex:1;height:3px;background:#F1F5F9;border-radius:2px;overflow:hidden;">'+
-            '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#2563EB,#7C3AED);border-radius:2px;"></div>'+
-          '</div>'+
-          '<span style="font-size:7.5px;color:#64748B;white-space:nowrap">'+w.dias+'d</span>'+
+    var bg=ri%2?'#FAFAFA':'#fff';
+    html+=
+      '<tr style="background:'+bg+';border-bottom:1px solid #F8FAFC;">'+
+      '<td style="padding:3px 4px 3px 8px;">'+
+        '<div class="av" style="width:19px;height:19px;font-size:6.5px;">'+_ini(w.nm)+'</div>'+
+      '</td>'+
+      '<td style="padding:3px 4px;">'+
+        '<div style="font-size:8.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">'+w.nm+'</div>'+
+        '<div style="height:3px;background:#E2E8F0;border-radius:2px;overflow:hidden;margin-top:2px;max-width:100px;">'+
+          '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#2563EB,#7C3AED);border-radius:2px;"></div>'+
         '</div>'+
-      '</div>'+
-      (w.he?'<span style="font-size:8.5px;font-weight:700;color:#1D4ED8;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:4px;padding:1px 5px;white-space:nowrap">+'+w.he+'h</span>':'');
-    html+='</div>';
+      '</td>'+
+      '<td style="padding:3px 4px;text-align:center;font-size:8.5px;font-weight:700;color:#374151;">'+w.dias+'</td>'+
+      '<td style="padding:3px 6px;text-align:center;">'+
+        (w.he?'<span style="font-size:8px;font-weight:700;color:#1D4ED8;background:#EFF6FF;border-radius:3px;padding:1px 4px;">+'+w.he+'h</span>':
+              '<span style="color:#CBD5E1;font-size:8px;">—</span>')+
+      '</td>'+
+      '</tr>';
   });
-  html+='</div>';
+
+  html+='<tr style="background:#EFF6FF;border-top:1px solid #DBEAFE;">'+
+    '<td colspan="2" style="padding:4px 8px;font-size:7.5px;font-weight:700;color:#1E40AF;text-transform:uppercase;letter-spacing:.06em;">Total</td>'+
+    '<td style="padding:4px;text-align:center;font-size:9px;font-weight:900;color:#1D4ED8;">'+fechas.length+'d</td>'+
+    '<td style="padding:4px 6px;text-align:center;font-size:8.5px;font-weight:900;color:#1D4ED8;">'+(totalHE?'+'+totalHE+'h':'—')+'</td>'+
+    '</tr>';
+
+  html+='</tbody></table></div>';
   html+='</div>';
 
   // DETALLE POR DÍA — tabla compacta
