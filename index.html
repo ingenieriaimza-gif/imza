@@ -2764,26 +2764,68 @@ function _doShareProj(projId){
     return {wid:wid, nm:gwn(wid), dias:workerStats[wid].dias, he:workerStats[wid].he};
   }).sort(function(a,b){ return b.dias-a.dias||b.he-a.he; });
 
-  var periodoLabel=fmtD(fechas[0])+(fechas.length>1?' – '+fmtD(fechas[fechas.length-1]):'');
-  var appName=localStorage.getItem('cp4_appname')||'IMZA';
+  // ── Formato de fecha con día de semana + día + mes ────────────────────────
+  var DIAS_CORTO=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  var MESES_CORTO=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 
-  // ── SVG mini timeline ────────────────────────────────────────────────────
-  // Barras verticales muy compactas, sin etiquetas en SVG — se ven debajo
+  function fmtFechaCompleta(ds){
+    var parts=ds.split('-');
+    var dt=new Date(Number(parts[0]),Number(parts[1])-1,Number(parts[2]));
+    var dow=DIAS_CORTO[dt.getDay()];
+    var d=dt.getDate();
+    var m=MESES_CORTO[dt.getMonth()];
+    return dow+' '+d+' '+m;
+  }
+
+  function fmtFechaMini(ds){
+    // Para timeline: solo día + mes
+    var parts=ds.split('-');
+    var dt=new Date(Number(parts[0]),Number(parts[1])-1,Number(parts[2]));
+    var dow=DIAS_CORTO[dt.getDay()];
+    var d=dt.getDate();
+    var m=MESES_CORTO[dt.getMonth()];
+    return dow+'\n'+d+' '+m;
+  }
+
+  var appName=localStorage.getItem('cp4_appname')||'IMZA';
+  var periodoLabel=fmtFechaCompleta(fechas[0])+(fechas.length>1?' – '+fmtFechaCompleta(fechas[fechas.length-1]):'');
+
+  // Nombre del PDF: REPORTE-proyecto-lider-fechaInicio_a_fechaFin
+  var cleanStr=function(s){ return s.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]/g,'').trim().replace(/\s+/g,'_'); };
+  var fmtFechaCorta=function(ds){
+    var parts=ds.split('-');
+    var dt=new Date(Number(parts[0]),Number(parts[1])-1,Number(parts[2]));
+    return dt.getDate()+'_'+MESES_CORTO[dt.getMonth()]+'_'+dt.getFullYear();
+  };
+  var pdfName='REPORTE-'+cleanStr(pNom)+(pLider?'-'+cleanStr(pLider):'')+
+    '-'+fmtFechaCorta(fechas[0])+'_al_'+fmtFechaCorta(fechas[fechas.length-1]);
+
+  // ── SVG timeline: barra por día, etiqueta en 2 líneas ────────────────────
   function buildTimeline(){
     var n=fechas.length;
     if(!n) return '';
     var maxW=Math.max.apply(null,fechas.map(function(d){return diasData[d].workers.size;}));
-    // Ancho total dinámico
-    var bw=10, gap=3, W=n*(bw+gap)+2, H=40;
-    var s='<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" style="display:block;overflow:visible">';
+    var bw=14, gap=4;
+    var W=n*(bw+gap)+2;
+    var barH=38, lblH=26, H=barH+lblH;
+    var s='<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" style="display:block;overflow:visible;">';
     fechas.forEach(function(date,i){
       var dd=diasData[date];
       var wknd=isWeekend(date)||isFestivo(date);
-      var bh=maxW>0?Math.max(3,Math.round((dd.workers.size/maxW)*32)):3;
-      var bx=i*(bw+gap), by=34-bh;
+      var bh=maxW>0?Math.max(4,Math.round((dd.workers.size/maxW)*(barH-8))):4;
+      var bx=i*(bw+gap), by=barH-bh;
       var col=wknd?'#EF4444':'#3B82F6';
+      // Barra
       s+='<rect x="'+bx+'" y="'+by+'" width="'+bw+'" height="'+bh+'" rx="2" fill="'+col+'"/>';
-      s+='<text x="'+(bx+bw/2)+'" y="'+(by-1)+'" text-anchor="middle" font-size="6" fill="'+col+'" font-family="Arial" font-weight="700">'+dd.workers.size+'</text>';
+      // Número encima de la barra
+      s+='<text x="'+(bx+bw/2)+'" y="'+(by-2)+'" text-anchor="middle" font-size="7" font-weight="700" fill="'+col+'" font-family="Arial">'+dd.workers.size+'</text>';
+      // Etiqueta: día de semana + día + mes — en 2 líneas
+      var parts=date.split('-');
+      var dt=new Date(Number(parts[0]),Number(parts[1])-1,Number(parts[2]));
+      var dow=DIAS_CORTO[dt.getDay()];
+      var dm=dt.getDate()+' '+MESES_CORTO[dt.getMonth()];
+      s+='<text x="'+(bx+bw/2)+'" y="'+(barH+10)+'" text-anchor="middle" font-size="6.5" fill="'+(wknd?'#EF4444':'#64748B')+'" font-family="Arial">'+dow+'</text>';
+      s+='<text x="'+(bx+bw/2)+'" y="'+(barH+20)+'" text-anchor="middle" font-size="6" fill="'+(wknd?'#EF4444':'#94A3B8')+'" font-family="Arial">'+dm+'</text>';
     });
     s+='</svg>';
     return s;
@@ -2800,7 +2842,7 @@ function _doShareProj(projId){
     '<div class="hv">'+periodoLabel+'</div></div>'+
   '</div>';
 
-  // KPIs en 1 fila
+  // KPIs
   html+='<div class="krow krow-4">'+
     '<div class="kpi kpi-s"><div class="kl">Días activo</div><div class="kv">'+fechas.length+'</div></div>'+
     '<div class="kpi kpi-b"><div class="kl">Trabajadores</div><div class="kv">'+allWorkers.size+'</div></div>'+
@@ -2808,65 +2850,49 @@ function _doShareProj(projId){
     (totalGastos?'<div class="kpi kpi-g"><div class="kl">Gastos</div><div class="kv">'+_money(totalGastos)+'</div></div>':'')+
   '</div>';
 
-  // ── FILA: Timeline + Personal (2 cols) ────────────────────────────────────
-  html+='<div style="display:grid;grid-template-columns:1fr 220px;gap:10px;margin-bottom:10px;">';
+  // FILA: Timeline + Personal
+  html+='<div style="display:grid;grid-template-columns:1fr 230px;gap:10px;margin-bottom:10px;">';
 
-  // Col izq: Timeline compacto
-  html+='<div class="proj-card" style="padding:10px 12px;">';
-  html+='<div style="font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#64748B;margin-bottom:6px;">'+
-    'Asistencia por día — trabajadores presentes</div>';
-  // Timeline SVG scrolleable si hay muchos días
-  html+='<div style="overflow-x:auto;padding-bottom:2px;">'+buildTimeline()+'</div>';
-  // Leyenda de fechas abajo (compacta)
-  html+='<div style="display:flex;flex-wrap:wrap;gap:2px 6px;margin-top:4px;">';
-  fechas.forEach(function(date){
-    var wknd=isWeekend(date)||isFestivo(date);
-    var lbl=fmtD(date).split(' ').slice(0,2).join(' ');
-    html+='<span style="font-size:6.5px;color:'+(wknd?'#EF4444':'#94A3B8')+';">'+lbl+'</span>';
-  });
-  html+='</div>';
-  html+='<div style="display:flex;gap:10px;margin-top:6px;">'+
-    '<span style="font-size:7px;color:#94A3B8;display:flex;align-items:center;gap:3px;">'+
-    '<span style="display:inline-block;width:8px;height:8px;background:#3B82F6;border-radius:2px;"></span>Normal</span>'+
-    '<span style="font-size:7px;color:#94A3B8;display:flex;align-items:center;gap:3px;">'+
-    '<span style="display:inline-block;width:8px;height:8px;background:#EF4444;border-radius:2px;"></span>Descanso</span>'+
-    '</div>';
+  // Timeline
+  html+='<div class="proj-card" style="padding:10px 12px;overflow:hidden;">';
+  html+='<div style="font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#64748B;margin-bottom:8px;">Asistencia por día — trabajadores presentes</div>';
+  html+='<div style="overflow-x:auto;">'+buildTimeline()+'</div>';
+  html+='<div style="display:flex;gap:12px;margin-top:8px;">'+
+    '<span style="font-size:7px;color:#94A3B8;display:flex;align-items:center;gap:3px;"><span style="display:inline-block;width:8px;height:8px;background:#3B82F6;border-radius:2px;"></span>Normal</span>'+
+    '<span style="font-size:7px;color:#94A3B8;display:flex;align-items:center;gap:3px;"><span style="display:inline-block;width:8px;height:8px;background:#EF4444;border-radius:2px;"></span>Descanso</span>'+
+  '</div>';
   html+='</div>';
 
-  // Col der: Personal compacto sin avatares, solo iniciales en chip
+  // Tabla personal — nombre COMPLETO
   html+='<div style="background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;">';
   html+='<div style="background:#1E3A8A;padding:6px 10px;display:flex;justify-content:space-between;align-items:center;">'+
     '<span style="font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#fff;">Personal</span>'+
     '<span style="font-size:8px;color:#93C5FD;">'+rankingW.length+'</span>'+
   '</div>';
   html+='<table style="width:100%;border-collapse:collapse;table-layout:fixed;">'+
-    '<colgroup><col style="width:34px"><col><col style="width:22px"><col style="width:28px"></colgroup>'+
+    '<colgroup><col style="width:22px"><col><col style="width:22px"><col style="width:30px"></colgroup>'+
     '<thead><tr>'+
-    '<th style="background:#F8FAFC;color:#94A3B8;font-size:6.5px;font-weight:700;text-transform:uppercase;padding:3px 4px;border-bottom:1px solid #E2E8F0;text-align:center;"></th>'+
-    '<th style="background:#F8FAFC;color:#94A3B8;font-size:6.5px;font-weight:700;text-transform:uppercase;padding:3px 4px;border-bottom:1px solid #E2E8F0;">Nombre</th>'+
-    '<th style="background:#F8FAFC;color:#94A3B8;font-size:6.5px;font-weight:700;text-transform:uppercase;padding:3px 4px;border-bottom:1px solid #E2E8F0;text-align:center;">D</th>'+
-    '<th style="background:#F8FAFC;color:#94A3B8;font-size:6.5px;font-weight:700;text-transform:uppercase;padding:3px 4px;border-bottom:1px solid #E2E8F0;text-align:center;">HE</th>'+
+    '<th style="background:#F8FAFC;color:#94A3B8;font-size:6.5px;font-weight:700;text-transform:uppercase;padding:4px 4px;border-bottom:1px solid #E2E8F0;text-align:center;"></th>'+
+    '<th style="background:#F8FAFC;color:#94A3B8;font-size:6.5px;font-weight:700;text-transform:uppercase;padding:4px 6px;border-bottom:1px solid #E2E8F0;">Nombre completo</th>'+
+    '<th style="background:#F8FAFC;color:#94A3B8;font-size:6.5px;font-weight:700;text-transform:uppercase;padding:4px 4px;border-bottom:1px solid #E2E8F0;text-align:center;">D</th>'+
+    '<th style="background:#F8FAFC;color:#94A3B8;font-size:6.5px;font-weight:700;text-transform:uppercase;padding:4px 4px;border-bottom:1px solid #E2E8F0;text-align:center;">HE</th>'+
     '</tr></thead><tbody>';
 
   rankingW.forEach(function(w,ri){
     var pct=Math.round((w.dias/fechas.length)*100);
     var bg=ri%2?'#F9FAFB':'#fff';
-    var ini=_ini(w.nm);
-    // Nombre truncado inteligente: primer nombre + inicial apellido
-    var parts=w.nm.trim().split(' ');
-    var shortNm=parts[0]+(parts[1]?' '+parts[1].charAt(0)+'.':'');
     html+='<tr style="background:'+bg+';border-bottom:1px solid #F3F4F6;">'+
-      '<td style="padding:2px 4px;text-align:center;">'+
-        '<div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#7C3AED);color:#fff;font-size:6.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;">'+ini+'</div>'+
+      '<td style="padding:3px 4px;text-align:center;">'+
+        '<div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#7C3AED);color:#fff;font-size:6.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;">'+_ini(w.nm)+'</div>'+
       '</td>'+
-      '<td style="padding:2px 4px;">'+
-        '<div style="font-size:8px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+shortNm+'</div>'+
+      '<td style="padding:3px 6px;">'+
+        '<div style="font-size:8px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+w.nm+'</div>'+
         '<div style="height:2px;background:#E2E8F0;border-radius:1px;margin-top:2px;overflow:hidden;">'+
           '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#3B82F6,#7C3AED);border-radius:1px;"></div>'+
         '</div>'+
       '</td>'+
-      '<td style="padding:2px 4px;text-align:center;font-size:8px;font-weight:700;color:#374151;">'+w.dias+'</td>'+
-      '<td style="padding:2px 4px;text-align:center;">'+
+      '<td style="padding:3px 4px;text-align:center;font-size:8px;font-weight:700;color:#374151;">'+w.dias+'</td>'+
+      '<td style="padding:3px 4px;text-align:center;">'+
         (w.he?'<span style="font-size:7.5px;font-weight:700;color:#1D4ED8;">+'+w.he+'h</span>':
               '<span style="font-size:7px;color:#CBD5E1;">—</span>')+
       '</td>'+
@@ -2874,25 +2900,25 @@ function _doShareProj(projId){
   });
 
   html+='<tr style="background:#EFF6FF;border-top:1px solid #BFDBFE;">'+
-    '<td colspan="2" style="padding:3px 8px;font-size:7px;font-weight:700;color:#1E40AF;text-transform:uppercase;">Total</td>'+
-    '<td style="padding:3px 4px;text-align:center;font-size:8.5px;font-weight:900;color:#1D4ED8;">'+fechas.length+'</td>'+
-    '<td style="padding:3px 4px;text-align:center;font-size:8px;font-weight:900;color:#1D4ED8;">'+(totalHE?'+'+totalHE+'h':'—')+'</td>'+
+    '<td colspan="2" style="padding:4px 8px;font-size:7px;font-weight:700;color:#1E40AF;text-transform:uppercase;">Total</td>'+
+    '<td style="padding:4px;text-align:center;font-size:8.5px;font-weight:900;color:#1D4ED8;">'+fechas.length+'</td>'+
+    '<td style="padding:4px;text-align:center;font-size:8px;font-weight:900;color:#1D4ED8;">'+(totalHE?'+'+totalHE+'h':'—')+'</td>'+
   '</tr>';
   html+='</tbody></table></div>';
-  html+='</div>'; // fin grid 2 cols
+  html+='</div>'; // fin grid
 
-  // ── TABLA DETALLE POR DÍA — full width, ultra compacta ───────────────────
+  // DETALLE POR DÍA — fecha completa, nombre completo
   html+='<div style="background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:10px;">'+
-    '<div style="background:#0F172A;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;">'+
+    '<div style="background:#0F172A;padding:6px 12px;">'+
     '<span style="font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#fff;">Detalle por día</span>'+
     '</div>'+
     '<table style="width:100%;border-collapse:collapse;table-layout:fixed;">'+
     '<colgroup>'+
-    '<col style="width:72px">'+   // fecha
-    '<col style="width:26px">'+   // trab
-    '<col style="width:34px">'+   // HE
-    '<col style="width:54px">'+   // gastos
-    '<col>'+                       // personal (resto)
+    '<col style="width:82px">'+  // fecha
+    '<col style="width:24px">'+  // trab
+    '<col style="width:34px">'+  // HE
+    '<col style="width:54px">'+  // gastos
+    '<col>'+                      // personal
     '</colgroup>'+
     '<thead><tr>'+
     '<th style="background:#1E293B;color:#94A3B8;font-size:6.5px;font-weight:700;text-transform:uppercase;padding:4px 8px;border-bottom:1px solid #334155;text-align:left;">Fecha</th>'+
@@ -2909,31 +2935,30 @@ function _doShareProj(projId){
     var dayG=dd.gastos.reduce(function(s,g){return s+Number(g.monto||0);},0);
     var wids=Array.from(dd.workers);
     var bg=wknd?'#FFF5F5':(i%2?'#FAFAFA':'#fff');
-    var borderColor=wknd?'#FECACA':'#F3F4F6';
+    var borderC=wknd?'#FECACA':'#F3F4F6';
 
-    // Pills de personal: solo primer nombre + HE
+    // Pills con nombre COMPLETO del trabajador
     var pills=wids.map(function(wid){
-      var nm=gwn(wid).split(' ')[0];
+      var nm=gwn(wid); // nombre completo
       var he=dd.he[wid]||0;
       var pillBg=wknd?'#FEE2E2':'#EFF6FF';
       var pillBd=wknd?'#FECACA':'#DBEAFE';
       var nmC=wknd?'#991B1B':'#374151';
-      var heC='#1D4ED8';
-      return '<span style="display:inline-flex;align-items:center;gap:2px;background:'+pillBg+';border:1px solid '+pillBd+';border-radius:4px;padding:1px 5px;font-size:7.5px;margin:1px;white-space:nowrap;">'+
-        '<span style="color:'+nmC+';font-weight:500">'+nm+'</span>'+
-        (he?'<span style="font-weight:700;color:'+heC+'">+'+he+'h</span>':'')+
+      return '<span style="display:inline-flex;align-items:center;gap:2px;background:'+pillBg+';border:1px solid '+pillBd+';border-radius:4px;padding:1px 6px;font-size:7.5px;margin:1px;white-space:nowrap;">'+
+        '<span style="color:'+nmC+';font-weight:500;">'+nm+'</span>'+
+        (he?'<span style="font-weight:700;color:#1D4ED8;margin-left:2px;">+'+he+'h</span>':'')+
       '</span>';
     }).join('');
 
-    // Gastos inline (compactos)
+    // Sub-fila de gastos
     var gastosInline='';
     if(dd.gastos.length){
-      gastosInline='<tr style="background:'+(wknd?'#FEF9F9':'#F8FBFF')+';border-bottom:1px solid '+borderColor+';">'+
-        '<td colspan="5" style="padding:2px 8px 3px 16px;">'+
+      gastosInline='<tr style="background:'+(wknd?'#FEF9F9':'#F8FBFF')+';border-bottom:2px solid '+(wknd?'#FECACA':'#E2E8F0')+';">'+
+        '<td colspan="5" style="padding:2px 8px 3px 20px;">'+
         dd.gastos.map(function(g){
-          return '<span style="display:inline-flex;align-items:center;gap:3px;margin-right:8px;font-size:7px;">'+
+          return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:7px;">'+
             '<span style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:2px;padding:0 3px;font-size:6.5px;font-weight:600;color:#2563EB;white-space:nowrap;">'+g.tipo+'</span>'+
-            '<span style="color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;">'+g.desc+'</span>'+
+            '<span style="color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">'+g.desc+'</span>'+
             '<span style="font-weight:700;color:#059669;white-space:nowrap;">'+_money(g.monto)+'</span>'+
           '</span>';
         }).join('')+
@@ -2941,23 +2966,24 @@ function _doShareProj(projId){
     }
 
     html+=
-      '<tr style="background:'+bg+';border-bottom:1px solid '+borderColor+';">'+
-      '<td style="padding:3px 8px;font-size:8px;font-weight:'+(wknd?'700':'500')+';color:'+(wknd?'#DC2626':'#0F172A')+';white-space:nowrap;">'+
-        fmtD(date).split(' ').slice(0,2).join(' ')+(wknd?' 🔴':'')+
+      '<tr style="background:'+bg+';border-bottom:1px solid '+borderC+';">'+
+      // Fecha: día semana + día + mes
+      '<td style="padding:4px 8px;font-size:8px;font-weight:'+(wknd?'700':'500')+';color:'+(wknd?'#DC2626':'#0F172A')+';white-space:nowrap;">'+
+        fmtFechaCompleta(date)+(wknd?' 🔴':'')+
       '</td>'+
-      '<td style="padding:3px 4px;text-align:center;font-size:8.5px;font-weight:700;color:#374151;">'+wids.length+'</td>'+
-      '<td style="padding:3px 4px;text-align:center;">'+
+      '<td style="padding:4px 4px;text-align:center;font-size:8.5px;font-weight:700;color:#374151;">'+wids.length+'</td>'+
+      '<td style="padding:4px 4px;text-align:center;">'+
         (dayHE?'<span style="font-size:8px;font-weight:700;color:#1D4ED8;">+'+dayHE+'h</span>':'<span style="font-size:7px;color:#CBD5E1;">—</span>')+
       '</td>'+
-      '<td style="padding:3px 4px;text-align:right;font-size:8px;font-weight:'+(dayG?'700':'400')+';color:'+(dayG?'#059669':'#CBD5E1')+';">'+
+      '<td style="padding:4px 4px;text-align:right;font-size:8px;font-weight:'+(dayG?'700':'400')+';color:'+(dayG?'#059669':'#CBD5E1')+';">'+
         (dayG?_money(dayG):'—')+
       '</td>'+
-      '<td style="padding:3px 8px;"><div style="display:flex;flex-wrap:wrap;gap:1px;">'+pills+'</div></td>'+
+      '<td style="padding:4px 8px;"><div style="display:flex;flex-wrap:wrap;gap:1px;">'+pills+'</div></td>'+
       '</tr>'+
       gastosInline;
   });
 
-  // Fila de totales
+  // Fila totales
   html+='<tr style="background:#0F172A;">'+
     '<td style="padding:5px 8px;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94A3B8;">TOTAL</td>'+
     '<td style="padding:5px 4px;text-align:center;font-size:9px;font-weight:900;color:#60A5FA;">'+allWorkers.size+'</td>'+
@@ -2965,13 +2991,12 @@ function _doShareProj(projId){
     '<td style="padding:5px 4px;text-align:right;font-size:9px;font-weight:900;color:#34D399;">'+(totalGastos?_money(totalGastos):'—')+'</td>'+
     '<td style="padding:5px 8px;font-size:7px;color:#475569;">'+fechas.length+' días trabajados</td>'+
   '</tr>';
-
   html+='</tbody></table></div>';
 
-  // Notas si hay
+  // Notas
   var notasAll=[];
   fechas.forEach(function(date){
-    diasData[date].notas.forEach(function(n){ notasAll.push({date:fmtD(date),nota:n}); });
+    diasData[date].notas.forEach(function(n){ notasAll.push({date:fmtFechaCompleta(date),nota:n}); });
   });
   if(notasAll.length){
     html+='<div style="background:#FFFBEB;border-radius:8px;border:1px solid #FDE68A;padding:10px 12px;">'+
@@ -2985,7 +3010,56 @@ function _doShareProj(projId){
     html+='</div>';
   }
 
-  _abrirReporteHistorial('Proyecto_'+pCode, periodoLabel, html);
+  // Usar pdfName personalizado sobreescribiendo el título
+  var blob=new Blob([
+    '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+pdfName+'</title>'+
+    '<style>*{margin:0;padding:0;box-sizing:border-box;}html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
+    'body{font-family:"Segoe UI",-apple-system,Arial,sans-serif;font-size:10px;background:#F8FAFC;color:#0F172A;line-height:1.4;}'+
+    '.page{max-width:720px;margin:0 auto;padding:16px;}'+
+    '.hdr{background:#1E3A8A;border-radius:8px;padding:14px 20px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;}'+
+    '.hdr-l h1{font-size:18px;font-weight:900;color:#fff;letter-spacing:-.03em;line-height:1;}'+
+    '.hdr-l p{font-size:8.5px;color:#93C5FD;margin-top:3px;text-transform:uppercase;letter-spacing:.07em;}'+
+    '.hdr-r{text-align:right;}.hdr-r .hl{font-size:7.5px;color:#93C5FD;text-transform:uppercase;letter-spacing:.08em;}'+
+    '.hdr-r .hv{font-size:12px;font-weight:800;color:#fff;margin-top:3px;}'+
+    '.krow{display:grid;gap:8px;margin-bottom:14px;}.krow-4{grid-template-columns:repeat(4,1fr);}.krow-3{grid-template-columns:repeat(3,1fr);}'+
+    '.kpi{border-radius:7px;padding:10px 12px;border:1px solid #E2E8F0;background:#fff;}'+
+    '.kpi-b{border-left:3px solid #2563EB;}.kpi-g{border-left:3px solid #059669;}.kpi-s{border-left:3px solid #0F172A;}'+
+    '.kpi .kl{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748B;margin-bottom:3px;}'+
+    '.kpi .kv{font-size:18px;font-weight:900;line-height:1;}'+
+    '.kpi-b .kv{color:#1D4ED8;}.kpi-g .kv{color:#059669;}.kpi-s .kv{color:#0F172A;}'+
+    '.proj-card{background:#fff;border-radius:8px;border:1px solid #E2E8F0;}'+
+    '@media print{@page{size:A4 portrait;margin:7mm 9mm;}body{background:#fff!important;}'+
+    '.page{max-width:100%!important;padding:0!important;}tr{page-break-inside:avoid!important;}'+
+    'thead{display:table-header-group!important;}'+
+    '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}</style>'+
+    '</head><body><div class="page">'+html+'</div></body></html>'
+  ],{type:'text/html;charset=utf-8'});
+
+  var url=URL.createObjectURL(blob);
+  var ex=document.getElementById('_hist_iframe');
+  if(ex) ex.remove();
+  var ifr=document.createElement('iframe');
+  ifr.id='_hist_iframe';
+  ifr.style.cssText='position:fixed;left:-9999px;top:-9999px;width:860px;height:1200px;border:none;opacity:0;pointer-events:none;';
+  ifr.src=url;
+  document.body.appendChild(ifr);
+  ifr.onload=function(){
+    setTimeout(function(){
+      try{
+        var oldTitle=document.title;
+        document.title=pdfName;
+        ifr.contentWindow.focus();
+        ifr.contentWindow.print();
+        setTimeout(function(){ document.title=oldTitle; URL.revokeObjectURL(url); },60000);
+        toast('Selecciona "Guardar como PDF" en el dialogo','ok');
+      }catch(e){
+        var a=document.createElement('a');
+        a.href=url; a.download=pdfName+'.html';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        toast('Reporte descargado','ok');
+      }
+    },200);
+  };
 }
 
 function projCard(p,i){
