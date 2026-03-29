@@ -2725,76 +2725,225 @@ function _doShareProj(projId){
   var pCode=gcode(projId), pNom=gpn(projId), pLider=gpl(projId)||'';
   var appName=localStorage.getItem('cp4_appname')||'IMZA';
 
-  // Recopilar todos los días
+  // ── Recopilar datos por día ──────────────────────────────────────────────
   var diasData={};
   Object.keys(S.actividades).sort().forEach(function(date){
     (S.actividades[date]||[]).forEach(function(a){
       if(a.proyectoId!==projId) return;
-      if(!diasData[date]) diasData[date]=[];
-      diasData[date].push(a);
+      if(!diasData[date]) diasData[date]={acts:[],workers:new Set(),he:{},gastos:[],notas:[]};
+      diasData[date].acts.push(a);
+      (a.trabajadores||[]).forEach(function(wid){ diasData[date].workers.add(wid); });
+      Object.entries(a.horasExtras||{}).forEach(function(e){
+        diasData[date].he[e[0]]=(diasData[date].he[e[0]]||0)+e[1];
+      });
+      diasData[date].gastos=diasData[date].gastos.concat(a.gastos||[]);
+      if(a.notas) diasData[date].notas.push(a.notas);
     });
   });
 
   var fechas=Object.keys(diasData).sort();
   if(!fechas.length){ toast('Sin actividad registrada','err'); return; }
 
-  // Acumulados globales
-  var allWorkers=new Set(), totalGastos=0, totalHE=0, diasTrabajados=fechas.length;
+  // ── Totales globales ─────────────────────────────────────────────────────
+  var allWorkers=new Set(), totalHE=0, totalGastos=0;
   fechas.forEach(function(date){
-    diasData[date].forEach(function(a){
-      (a.trabajadores||[]).forEach(function(wid){ allWorkers.add(wid); });
-      totalGastos+=sumG(a.gastos);
-      totalHE+=Object.values(a.horasExtras||{}).reduce(function(s,v){return s+v;},0);
+    var dd=diasData[date];
+    dd.workers.forEach(function(w){ allWorkers.add(w); });
+    Object.values(dd.he).forEach(function(v){ totalHE+=v; });
+    totalGastos+=dd.gastos.reduce(function(s,g){return s+Number(g.monto||0);},0);
+  });
+
+  // ── Construir ranking de trabajadores ────────────────────────────────────
+  var workerStats={};
+  fechas.forEach(function(date){
+    var dd=diasData[date];
+    dd.workers.forEach(function(wid){
+      if(!workerStats[wid]) workerStats[wid]={dias:0,he:0};
+      workerStats[wid].dias++;
+    });
+    Object.entries(dd.he).forEach(function(e){
+      if(!workerStats[e[0]]) workerStats[e[0]]={dias:0,he:0};
+      workerStats[e[0]].he+=e[1];
     });
   });
+  var rankingW=Object.keys(workerStats).map(function(wid){
+    return {wid:wid,nm:gwn(wid),dias:workerStats[wid].dias,he:workerStats[wid].he};
+  }).sort(function(a,b){ return b.dias-a.dias||b.he-a.he; });
+
+  // ── SVG timeline de días ─────────────────────────────────────────────────
+  function buildTimeline(){
+    var n=fechas.length;
+    if(!n) return '';
+    var W=600, bw=Math.max(14,Math.min(36,Math.floor((W-40)/n)-4));
+    var maxW=Math.max.apply(null,fechas.map(function(d){return diasData[d].workers.size;}));
+    var H=80;
+    var s='<svg width="100%" viewBox="0 0 '+W+' '+H+'" style="display:block;overflow:visible">';
+    var cx=Math.floor((W - (n*bw + (n-1)*4))/2);
+    fechas.forEach(function(date,i){
+      var dd=diasData[date];
+      var wknd=isWeekend(date)||isFestivo(date);
+      var bh=maxW>0?Math.max(6,Math.round((dd.workers.size/maxW)*45)):6;
+      var bx=cx+i*(bw+4), by=50-bh;
+      var col=wknd?'#DC2626':'#2563EB';
+      var lbl=fmtD(date).split(' ').slice(0,2).join(' ');
+      s+='<rect x="'+bx+'" y="'+by+'" width="'+bw+'" height="'+bh+'" rx="3" fill="'+col+'" opacity="'+(wknd?'0.7':'0.9')+'"/>';
+      s+='<text x="'+(bx+bw/2)+'" y="62" text-anchor="middle" font-size="7.5" fill="#64748B" font-family="Arial" transform="rotate(-30,'+(bx+bw/2)+',62)">'+lbl+'</text>';
+      s+='<text x="'+(bx+bw/2)+'" y="'+(by-3)+'" text-anchor="middle" font-size="7.5" font-weight="700" fill="'+col+'" font-family="Arial">'+dd.workers.size+'</text>';
+    });
+    s+='</svg>';
+    return s;
+  }
+
+  // ── Construir HTML ───────────────────────────────────────────────────────
+  var periodoLabel=fmtD(fechas[0])+(fechas.length>1?' – '+fmtD(fechas[fechas.length-1]):'');
 
   var html='';
 
-  // Header
-  html+='<div class="hdr">';
-  html+='<div class="hdr-l"><h1>'+appName+'</h1>';
-  html+='<p>['+pCode+'] '+pNom+(pLider?' · '+pLider:'')+'</p></div>';
-  html+='<div class="hdr-r"><div class="hl">Periodo</div>';
-  html+='<div class="hv">'+fmtD(fechas[0])+(fechas.length>1?' – '+fmtD(fechas[fechas.length-1]):'')+'</div></div>';
-  html+='</div>';
+  // HEADER
+  html+='<div class="hdr"><div class="hdr-l">'+
+    '<h1>'+appName+'</h1>'+
+    '<p>['+pCode+'] '+pNom+(pLider?' · '+pLider:'')+'</p>'+
+  '</div><div class="hdr-r">'+
+    '<div class="hl">Periodo</div>'+
+    '<div class="hv">'+periodoLabel+'</div>'+
+  '</div></div>';
 
-  // KPIs resumen
-  var kpiCols=totalHE&&totalGastos?'krow-4':'krow-3';
-  html+='<div class="krow '+kpiCols+'">';
-  html+='<div class="kpi kpi-s"><div class="kl">Días trabajados</div><div class="kv">'+diasTrabajados+'</div><div class="ks">días con actividad</div></div>';
-  html+='<div class="kpi kpi-b"><div class="kl">Trabajadores</div><div class="kv">'+allWorkers.size+'</div><div class="ks">personas distintas</div></div>';
-  if(totalHE)     html+='<div class="kpi kpi-b"><div class="kl">Horas Extras</div><div class="kv">+'+totalHE+'h</div><div class="ks">total del proyecto</div></div>';
-  if(totalGastos) html+='<div class="kpi kpi-g"><div class="kl">Gastos</div><div class="kv">'+_money(totalGastos)+'</div><div class="ks">total del proyecto</div></div>';
-  html+='</div>';
+  // KPIs compactos
+  html+='<div class="krow krow-4">'+
+    '<div class="kpi kpi-s"><div class="kl">Días activo</div><div class="kv">'+fechas.length+'</div><div class="ks">con actividad</div></div>'+
+    '<div class="kpi kpi-b"><div class="kl">Trabajadores</div><div class="kv">'+allWorkers.size+'</div><div class="ks">distintos</div></div>'+
+    (totalHE?'<div class="kpi kpi-b"><div class="kl">Horas Extras</div><div class="kv">+'+totalHE+'h</div><div class="ks">acumuladas</div></div>':'')+
+    (totalGastos?'<div class="kpi kpi-g"><div class="kl">Gastos</div><div class="kv">'+_money(totalGastos)+'</div><div class="ks">acumulados</div></div>':'')+
+  '</div>';
 
-  // Días
-  fechas.forEach(function(date){
-    var wknd=isWeekend(date)||isFestivo(date);
-    var dayHE=diasData[date].reduce(function(s,a){
-      return s+Object.values(a.horasExtras||{}).reduce(function(x,v){return x+v;},0);},0);
-    var dayG=diasData[date].reduce(function(s,a){return s+sumG(a.gastos);},0);
-    var dayW=new Set(diasData[date].flatMap(function(a){return a.trabajadores||[];})).size;
+  // TIMELINE + RANKING en 2 columnas
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">';
 
-    html+='<div class="dia-sep'+(wknd?' wknd':'')+'">';
-    html+='<span>'+fmtD(date)+(wknd?' 🔴 Descanso':'')+'</span>';
-    html+='<small>'+dayW+' trab.'+(dayHE?' · +'+dayHE+'h':'')+(dayG?' · '+_money(dayG):'')+'</small>';
+  // Col 1: Timeline de asistencia
+  html+='<div class="proj-card" style="padding:10px 14px;">'+
+    '<div style="font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#64748B;margin-bottom:8px;display:flex;align-items:center;gap:4px;">'+
+    '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#2563EB;flex-shrink:0"></span>'+
+    'Asistencia por día</div>'+
+    buildTimeline()+
+    '<div style="display:flex;gap:10px;margin-top:6px;font-size:7.5px;color:#94A3B8;">'+
+    '<span><span style="display:inline-block;width:8px;height:8px;background:#2563EB;border-radius:2px;margin-right:3px;vertical-align:middle"></span>Día normal</span>'+
+    '<span><span style="display:inline-block;width:8px;height:8px;background:#DC2626;border-radius:2px;margin-right:3px;vertical-align:middle"></span>Descanso</span>'+
+    '</div>'+
+  '</div>';
+
+  // Col 2: Ranking de trabajadores
+  html+='<div class="proj-card" style="padding:10px 14px;">'+
+    '<div style="font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#64748B;margin-bottom:8px;display:flex;align-items:center;gap:4px;">'+
+    '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#7C3AED;flex-shrink:0"></span>'+
+    'Personal del proyecto</div>';
+
+  rankingW.forEach(function(w,ri){
+    var pct=Math.round((w.dias/fechas.length)*100);
+    var p=S.personal.find(function(x){return x.id===w.wid;})||{};
+    html+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">'+
+      '<div class="av" style="width:22px;height:22px;font-size:7px">'+_ini(w.nm)+'</div>'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="font-size:8.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+w.nm+'</div>'+
+        '<div style="display:flex;align-items:center;gap:4px;margin-top:2px;">'+
+          '<div style="flex:1;height:3px;background:#F1F5F9;border-radius:2px;overflow:hidden;">'+
+            '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#2563EB,#7C3AED);border-radius:2px;"></div>'+
+          '</div>'+
+          '<span style="font-size:7.5px;color:#64748B;white-space:nowrap">'+w.dias+'d</span>'+
+        '</div>'+
+      '</div>'+
+      (w.he?'<span style="font-size:8.5px;font-weight:700;color:#1D4ED8;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:4px;padding:1px 5px;white-space:nowrap">+'+w.he+'h</span>':'');
     html+='</div>';
+  });
+  html+='</div>';
+  html+='</div>';
 
-    diasData[date].forEach(function(a){
-      html+=_buildProjCard(a, date);
-    });
+  // DETALLE POR DÍA — tabla compacta
+  html+='<div class="proj-card" style="margin-bottom:12px;overflow:hidden;">'+
+    '<div style="background:#0F172A;padding:8px 14px;display:flex;justify-content:space-between;align-items:center;">'+
+    '<span style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#fff">Detalle por día</span>'+
+    '</div>'+
+    '<table style="width:100%;border-collapse:collapse;table-layout:fixed;">'+
+    '<colgroup><col style="width:95px"><col style="width:38px"><col style="width:40px"><col style="width:50px"><col></colgroup>'+
+    '<thead><tr>'+
+    '<th style="background:#F8FAFC;color:#94A3B8;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:5px 8px;text-align:left;border-bottom:2px solid #E2E8F0;">Fecha</th>'+
+    '<th style="background:#F8FAFC;color:#94A3B8;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:5px 4px;text-align:center;border-bottom:2px solid #E2E8F0;">Trab.</th>'+
+    '<th style="background:#F8FAFC;color:#94A3B8;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:5px 4px;text-align:center;border-bottom:2px solid #E2E8F0;">HE</th>'+
+    '<th style="background:#F8FAFC;color:#94A3B8;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:5px 4px;text-align:right;border-bottom:2px solid #E2E8F0;">Gastos</th>'+
+    '<th style="background:#F8FAFC;color:#94A3B8;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:5px 8px;text-align:left;border-bottom:2px solid #E2E8F0;">Personal</th>'+
+    '</tr></thead><tbody>';
+
+  fechas.forEach(function(date,i){
+    var dd=diasData[date];
+    var wknd=isWeekend(date)||isFestivo(date);
+    var dayHE=Object.values(dd.he).reduce(function(s,v){return s+v;},0);
+    var dayG=dd.gastos.reduce(function(s,g){return s+Number(g.monto||0);},0);
+    var wids=Array.from(dd.workers);
+    var bg=wknd?'#FEF9F9':(i%2?'#FAFAFA':'#fff');
+    var pills=wids.map(function(wid){
+      var nm=gwn(wid);
+      var he=dd.he[wid]||0;
+      return '<span style="display:inline-flex;align-items:center;gap:2px;background:'+(wknd?'#FEE2E2':'#EFF6FF')+';border:1px solid '+(wknd?'#FECACA':'#DBEAFE')+';border-radius:4px;padding:1px 5px;font-size:7.5px;margin:1px;white-space:nowrap;">'+
+        '<span style="color:'+(wknd?'#991B1B':'#374151')+'">'+nm.split(' ')[0]+'</span>'+
+        (he?'<span style="font-weight:700;color:#1D4ED8">+'+he+'h</span>':'')+
+      '</span>';
+    }).join('');
+
+    html+='<tr style="background:'+bg+';border-bottom:1px solid #F1F5F9;">'+
+      '<td style="padding:5px 8px;font-size:8.5px;font-weight:'+(wknd?'700':'500')+';color:'+(wknd?'#DC2626':'#0F172A')+';white-space:nowrap;">'+
+        fmtD(date).split(' ').slice(0,2).join(' ')+(wknd?' 🔴':'')+
+      '</td>'+
+      '<td style="padding:5px 4px;text-align:center;font-size:9px;font-weight:700;color:#0F172A;">'+dd.workers.size+'</td>'+
+      '<td style="padding:5px 4px;text-align:center;">'+
+        (dayHE?'<span style="font-size:8.5px;font-weight:700;color:#1D4ED8;background:#EFF6FF;border-radius:3px;padding:0 4px;">+'+dayHE+'h</span>':'<span style="color:#CBD5E1">—</span>')+
+      '</td>'+
+      '<td style="padding:5px 4px;text-align:right;font-size:8.5px;font-weight:'+(dayG?'700':'400')+';color:'+(dayG?'#059669':'#CBD5E1')+';">'+
+        (dayG?_money(dayG):'—')+
+      '</td>'+
+      '<td style="padding:5px 8px;"><div style="display:flex;flex-wrap:wrap;gap:1px;">'+pills+'</div></td>'+
+    '</tr>';
+
+    // Gastos del día si los hay
+    if(dd.gastos.length){
+      html+='<tr style="background:'+(wknd?'#FFF5F5':'#F8FBFF')+';border-bottom:2px solid #E2E8F0;">'+
+        '<td colspan="5" style="padding:3px 8px 5px 20px;">'+
+        dd.gastos.map(function(g){
+          return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:8px;font-size:7.5px;">'+
+            '<span style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:3px;padding:0 4px;font-size:7px;font-weight:600;color:#2563EB;">'+g.tipo+'</span>'+
+            '<span style="color:#374151;">'+g.desc+'</span>'+
+            '<span style="font-weight:700;color:#059669;">'+_money(g.monto)+'</span>'+
+          '</span>';
+        }).join('')+
+        '</td></tr>';
+    }
   });
 
-  // Resumen final
-  html+='<div class="resumen"><div class="resumen-title">Resumen del Proyecto</div>';
-  html+='<div class="resumen-grid">';
-  html+='<div class="ritem rb"><div class="rv">'+diasTrabajados+'</div><div class="rl">Días</div></div>';
-  html+='<div class="ritem rb"><div class="rv">'+allWorkers.size+'</div><div class="rl">Trabajadores</div></div>';
-  if(totalHE)     html+='<div class="ritem rb"><div class="rv">+'+totalHE+'h</div><div class="rl">Horas extra</div></div>';
-  if(totalGastos) html+='<div class="ritem rg"><div class="rv">'+_money(totalGastos)+'</div><div class="rl">Gastos</div></div>';
-  html+='</div></div>';
+  // Fila de totales
+  html+='<tr style="background:#0F172A;">'+
+    '<td style="padding:6px 8px;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94A3B8;">Total</td>'+
+    '<td style="padding:6px 4px;text-align:center;font-size:10px;font-weight:900;color:#60A5FA;">'+allWorkers.size+'</td>'+
+    '<td style="padding:6px 4px;text-align:center;font-size:10px;font-weight:900;color:#60A5FA;">'+(totalHE?'+'+totalHE+'h':'—')+'</td>'+
+    '<td style="padding:6px 4px;text-align:right;font-size:10px;font-weight:900;color:#34D399;">'+(totalGastos?_money(totalGastos):'—')+'</td>'+
+    '<td style="padding:6px 8px;font-size:8px;color:#475569;">'+fechas.length+' días trabajados</td>'+
+  '</tr>';
 
-  _abrirReporteHistorial('Proyecto_'+pCode, fmtD(fechas[0])+(fechas.length>1?' al '+fmtD(fechas[fechas.length-1]):''), html);
+  html+='</tbody></table></div>';
+
+  // Notas del proyecto si hay
+  var notasAll=[];
+  fechas.forEach(function(date){ diasData[date].notas.forEach(function(n){ notasAll.push({date:fmtD(date),nota:n}); }); });
+  if(notasAll.length){
+    html+='<div class="proj-card" style="padding:10px 14px;margin-bottom:12px;">'+
+      '<div style="font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#92400E;margin-bottom:6px;">📝 Notas del proyecto</div>';
+    notasAll.forEach(function(n){
+      html+='<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid #F8FAFC;">'+
+        '<span style="font-size:8px;color:#94A3B8;white-space:nowrap;flex-shrink:0;">'+n.date+'</span>'+
+        '<span style="font-size:8.5px;color:#374151;">'+n.nota+'</span>'+
+      '</div>';
+    });
+    html+='</div>';
+  }
+
+  _abrirReporteHistorial('Proyecto_'+pCode, periodoLabel, html);
 }
 
 function projCard(p,i){
