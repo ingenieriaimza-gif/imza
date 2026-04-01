@@ -904,7 +904,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0401.1000';
+const APP_VERSION='2026.0401.1010';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -2501,23 +2501,21 @@ function _printBlob(pdfName, blob){
   var isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||
             (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   if(isIOS){
-    // iOS/iPadOS Safari ignora el nombre del iframe; abrimos ventana con título correcto
+    // Abrir ventana SINCRÓNICAMENTE (dentro del gesto) para evitar el bloqueador de popups de Safari
+    var win=window.open('','_blank');
+    if(!win){ alert('Activa las ventanas emergentes para este sitio en Safari.'); return; }
     var reader=new FileReader();
     reader.onload=function(){
       var html=reader.result;
-      // Reemplazar o insertar el <title> con pdfName
       if(/<title>/i.test(html)){
         html=html.replace(/<title>[^<]*<\/title>/i,'<title>'+pdfName+'</title>');
       } else {
         html=html.replace(/<head>/i,'<head><title>'+pdfName+'</title>');
       }
-      var win=window.open('','_blank');
-      if(win){
-        win.document.write(html);
-        win.document.close();
-        win.focus();
-        setTimeout(function(){ win.print(); },400);
-      }
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(function(){ win.print(); },400);
     };
     reader.readAsText(blob);
     return;
