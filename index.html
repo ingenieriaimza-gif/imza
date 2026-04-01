@@ -3579,6 +3579,7 @@ function copyWeekHE(){
       var estSemana=p.estado||'activo';
       if(abs.faltas.length>0) estSemana='falta';
       else if(abs.vacaciones.length>0) estSemana='vacaciones';
+      var asistenciasDates=(workerData[p.id]||[]).sort(function(a,b){return a.date.localeCompare(b.date);}).map(function(d){ return fmtD(d.date); });
       return {
         nombre:p.nombre, cargo:p.cargo||'',
         estado:estSemana,
@@ -3587,7 +3588,8 @@ function copyWeekHE(){
         faltas:abs.faltas.length,
         vacaciones:abs.vacaciones.length,
         faltasDates:abs.faltas.map(function(ds){ return fmtD(ds); }),
-        vacacionesDates:abs.vacaciones.map(function(ds){ return fmtD(ds); })
+        vacacionesDates:abs.vacaciones.map(function(ds){ return fmtD(ds); }),
+        asistenciasDates:asistenciasDates
       };
     })
     .filter(function(p){
@@ -3933,15 +3935,17 @@ function _abrirReporteHTML(d){
   '<table>'+
   '<colgroup>'+
   '<col style="width:26px">'+
-  '<col style="width:140px">'+
+  '<col style="width:120px">'+
   '<col style="width:110px">'+
+  '<col style="width:90px">'+
   '<col style="width:58px">'+
-  '<col style="width:65px">'+
-  '<col style="width:100px">'+
-  '<col style="width:100px">'+
+  '<col style="width:55px">'+
+  '<col style="width:90px">'+
+  '<col style="width:90px">'+
   '</colgroup>'+
   '<thead><tr>'+
   '<th colspan="2">Trabajador</th>'+
+  '<th>Asistencia</th>'+
   '<th>Cargo</th>'+
   '<th style="text-align:center">Estado</th>'+
   '<th style="text-align:center">HE Semana</th>'+
@@ -3981,8 +3985,18 @@ function _abrirReporteHTML(d){
 
     return '<tr style="background:'+bg+';border-bottom:1px solid #F9FAFB;">'+
       '<td style="padding:4px 3px 4px 8px"><div class="av">'+ini(p.nombre)+'</div></td>'+
-      '<td style="font-weight:600;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:143px">'+p.nombre+'</td>'+
-      '<td style="color:#64748B;font-size:8.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:118px">'+(p.cargo||'—')+'</td>'+
+      '<td style="font-weight:600;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:123px">'+p.nombre+'</td>'+
+      '<td style="padding:4px 6px;vertical-align:middle">'+
+        (p.asistenciasDates&&p.asistenciasDates.length?
+          '<div style="display:flex;flex-wrap:wrap;gap:2px;">'+
+          p.asistenciasDates.map(function(ad){
+            var short=ad.split(' ').slice(0,2).join(' ');
+            return '<span style="display:inline-block;background:#DCFCE7;border:1px solid #BBF7D0;border-radius:3px;padding:1px 5px;font-size:7.5px;font-weight:600;color:#166534;white-space:nowrap">'+short+'</span>';
+          }).join('')+
+          '</div>'
+          :'<span style="color:#CBD5E1">—</span>')+
+      '</td>'+
+      '<td style="color:#64748B;font-size:8.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:93px">'+(p.cargo||'—')+'</td>'+
       '<td style="text-align:center"><span class="bd '+(bm[p.estado]||'bgr')+'">'+
         '<span class="dot '+(dm[p.estado]||'dgr')+'"></span>'+(lm[p.estado]||p.estado)+
       '</span></td>'+
