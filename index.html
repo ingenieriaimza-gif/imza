@@ -3511,6 +3511,14 @@ function copyWeekHE(){
   var weeks=getAllWeeks();
   var selWeek=weeks.find(function(w){ return w.wk===Number(_nomWk); });
   if(!selWeek){ toast('Selecciona una semana','err'); return; }
+  // Sincronizar datos frescos antes de generar el reporte
+  toast('Actualizando datos…','ok');
+  pullFromCloud().catch(function(){}).finally(function(){ _copyWeekHE_build(); });
+}
+function _copyWeekHE_build(){
+  var weeks=getAllWeeks();
+  var selWeek=weeks.find(function(w){ return w.wk===Number(_nomWk); });
+  if(!selWeek){ toast('Selecciona una semana','err'); return; }
   var thuStr=selWeek.thuDate;
   var wedDt=new Date(thuStr+'T12:00:00'); wedDt.setDate(wedDt.getDate()+6);
   var wedStr=wedDt.getFullYear()+'-'+String(wedDt.getMonth()+1).padStart(2,'0')+'-'+String(wedDt.getDate()).padStart(2,'0');
@@ -3572,20 +3580,19 @@ function copyWeekHE(){
 
   var appName=localStorage.getItem('cp4_appname')||'IMZA';
 
-  // Construir mapa de asistencia real: wid -> [dates] desde a.trabajadores
+  // Mapa de asistencia real desde a.trabajadores (deduplicado por fecha)
   var asistenciaData={};
   Object.keys(S.actividades).forEach(function(date){
     if(weekKey(date)!==Number(_nomWk)) return;
     (S.actividades[date]||[]).forEach(function(a){
       (a.trabajadores||[]).forEach(function(wid){
         if(!asistenciaData[wid]) asistenciaData[wid]={};
-        asistenciaData[wid][date]=true; // clave=fecha -> deduplicado automático
+        asistenciaData[wid][date]=true;
       });
     });
   });
 
   // resumenPersonal: solo trabajadores con actividad en la semana
-  // (HE registradas, falta o vacaciones)
   var resumenPersonal=S.personal.map(function(p){
       var abs=getWorkerAbsences(p.id,thuStr,wedStr);
       var tieneHE=!!workerData[p.id];
@@ -3610,7 +3617,6 @@ function copyWeekHE(){
       };
     })
     .filter(function(p){
-      // Solo aparece si asistió, tuvo falta o tuvo vacaciones en la semana
       return p.tieneAsistencia || p.tieneHE || p.faltas>0 || p.vacaciones>0;
     });
 
@@ -4000,19 +4006,19 @@ function _abrirReporteHTML(d){
       vacHtml+='</div>';
     }
 
+    var asistHtml='<span style="color:#CBD5E1">—</span>';
+    if(p.asistenciasDates&&p.asistenciasDates.length){
+      asistHtml='<div style="display:flex;flex-wrap:wrap;gap:2px;">';
+      p.asistenciasDates.forEach(function(ad){
+        var short=ad.split(' ').slice(0,2).join(' ');
+        asistHtml+='<span style="display:inline-block;background:#DCFCE7;border:1px solid #BBF7D0;border-radius:3px;padding:1px 5px;font-size:7.5px;font-weight:600;color:#166534;white-space:nowrap">'+short+'</span>';
+      });
+      asistHtml+='</div>';
+    }
     return '<tr style="background:'+bg+';border-bottom:1px solid #F9FAFB;">'+
       '<td style="padding:4px 3px 4px 8px"><div class="av">'+ini(p.nombre)+'</div></td>'+
       '<td style="font-weight:600;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:123px">'+p.nombre+'</td>'+
-      '<td style="padding:4px 6px;vertical-align:middle">'+
-        (p.asistenciasDates&&p.asistenciasDates.length?
-          '<div style="display:flex;flex-wrap:wrap;gap:2px;">'+
-          p.asistenciasDates.map(function(ad){
-            var short=ad.split(' ').slice(0,2).join(' ');
-            return '<span style="display:inline-block;background:#DCFCE7;border:1px solid #BBF7D0;border-radius:3px;padding:1px 5px;font-size:7.5px;font-weight:600;color:#166534;white-space:nowrap">'+short+'</span>';
-          }).join('')+
-          '</div>'
-          :'<span style="color:#CBD5E1">—</span>')+
-      '</td>'+
+      '<td style="padding:4px 6px;vertical-align:middle">'+asistHtml+'</td>'+
       '<td style="color:#64748B;font-size:8.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:93px">'+(p.cargo||'—')+'</td>'+
       '<td style="text-align:center"><span class="bd '+(bm[p.estado]||'bgr')+'">'+
         '<span class="dot '+(dm[p.estado]||'dgr')+'"></span>'+(lm[p.estado]||p.estado)+
