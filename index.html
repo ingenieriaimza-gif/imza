@@ -904,7 +904,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0401.1010';
+const APP_VERSION='2026.0401.1030';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -2504,6 +2504,22 @@ function _printBlob(pdfName, blob){
     // Abrir ventana SINCRÓNICAMENTE (dentro del gesto) para evitar el bloqueador de popups de Safari
     var win=window.open('','_blank');
     if(!win){ alert('Activa las ventanas emergentes para este sitio en Safari.'); return; }
+    var _an=localStorage.getItem('cp4_appname')||'IMZA';
+    // Pantalla de carga inmediata — evita el flash de ventana en blanco
+    win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+pdfName+'</title>'+
+      '<style>*{margin:0;padding:0;box-sizing:border-box;}'+
+      'body{background:#0a0c10;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:-apple-system,sans-serif;gap:20px;}'+
+      '.logo{font-size:13px;font-weight:900;letter-spacing:0.12em;text-transform:uppercase;background:linear-gradient(90deg,#6aaaff,#b59dff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}'+
+      '.bar-wrap{width:160px;height:3px;background:#1a1e28;border-radius:100px;overflow:hidden;}'+
+      '.bar{height:100%;width:40%;background:linear-gradient(90deg,#6aaaff,#b59dff);border-radius:100px;animation:slide 1.1s ease-in-out infinite;}'+
+      '@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}'+
+      '}p{color:#3a4a62;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;}'+
+      '</style></head><body>'+
+      '<div class="logo">'+_an+'</div>'+
+      '<div class="bar-wrap"><div class="bar"></div></div>'+
+      '<p>Preparando reporte</p>'+
+      '</body></html>');
+    win.document.close();
     var reader=new FileReader();
     reader.onload=function(){
       var html=reader.result;
@@ -2512,6 +2528,7 @@ function _printBlob(pdfName, blob){
       } else {
         html=html.replace(/<head>/i,'<head><title>'+pdfName+'</title>');
       }
+      win.document.open();
       win.document.write(html);
       win.document.close();
       win.focus();
