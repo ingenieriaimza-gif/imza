@@ -2495,7 +2495,7 @@ function _printBlob(pdfName, blob){
 // ── Reporte de Historial — diseño visual claro ────────────────────────────────
 function _abrirReporteHistorial(subtitulo, fecha, htmlBody){
   var appName=localStorage.getItem('cp4_appname')||'IMZA';
-  var pdfName=appName+'_'+subtitulo.replace(/\s+/g,'_')+'_'+fecha.split(' ')[0];
+  var pdfName=appName+'_'+subtitulo.replace(/\s+/g,'_')+'_'+fecha.split(' ').slice(1).join('_');
 
   var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'+
   '<title>'+pdfName+'</title><style>'+
