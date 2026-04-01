@@ -904,7 +904,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0401.1120';
+const APP_VERSION='2026.0401.1140';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -2500,6 +2500,34 @@ function togH(head){head.nextElementSibling.classList.toggle('open');}
 function _printBlob(pdfName, blob){
   var isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||
             (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  if(isIOS){
+    var reader=new FileReader();
+    reader.onload=function(){
+      var html=reader.result;
+      if(/<title>/i.test(html)){
+        html=html.replace(/<title>[^<]*<\/title>/i,'<title>'+pdfName+'</title>');
+      } else {
+        html=html.replace(/<head>/i,'<head><title>'+pdfName+'</title>');
+      }
+      // Inyectar barra de regreso (solo visible en pantalla, no en PDF)
+      var backBar='<style>#__iosbar__{position:fixed;top:0;left:0;right:0;z-index:9999;'+
+        'background:#0a0c10;padding:14px 16px;box-shadow:0 2px 12px rgba(0,0,0,0.5);}'+
+        '#__iosbar__ button{background:none;border:none;color:#6aaaff;font-size:15px;font-weight:700;'+
+        'font-family:-apple-system,sans-serif;cursor:pointer;display:flex;align-items:center;gap:5px;padding:0;}'+
+        '#__iosbar__+div{height:50px;}'+
+        '@media print{#__iosbar__,#__iosbar__+div{display:none!important;}}</style>'+
+        '<div id="__iosbar__"><button onclick="history.back()">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" '+
+        'style="width:18px;height:18px"><polyline points="15 18 9 12 15 6"/></svg>Regresar</button></div>'+
+        '<div></div>';
+      html=html.replace(/<body[^>]*>/i,function(m){ return m+backBar; });
+      var b=new Blob([html],{type:'text/html;charset=utf-8'});
+      window.location.href=URL.createObjectURL(b);
+    };
+    reader.readAsText(blob);
+    return;
+  }
+  // Desktop / Android — iframe oculto
   var prev=document.getElementById('__print_frame__');
   if(prev) prev.parentNode.removeChild(prev);
   var url=URL.createObjectURL(blob);
@@ -2509,18 +2537,8 @@ function _printBlob(pdfName, blob){
   fr.src=url;
   document.body.appendChild(fr);
   fr.onload=function(){
-    try{
-      fr.contentWindow.focus();
-      if(isIOS){
-        // Safari usa document.title del padre como nombre del PDF — cambiarlo antes de imprimir
-        var origTitle=document.title;
-        document.title=pdfName;
-        fr.contentWindow.print();
-        setTimeout(function(){ document.title=origTitle; },1000);
-      } else {
-        fr.contentWindow.print();
-      }
-    }catch(e){
+    try{ fr.contentWindow.focus(); fr.contentWindow.print(); }
+    catch(e){
       var a=document.createElement('a');
       a.href=url; a.download=pdfName+'.pdf';
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
