@@ -591,6 +591,27 @@ if('serviceWorker' in navigator){
         </div>
       </div>
 
+      <!-- INVITAR USUARIO -->
+      <div id="invite-wrap" style="display:none;background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:18px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div style="width:34px;height:34px;border-radius:10px;background:rgba(100,160,255,0.12);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">🔗</div>
+          <div>
+            <div style="font-size:14px;font-weight:800;color:var(--txt)">Invitar usuario</div>
+            <div style="font-size:11px;color:var(--txt3)">Comparte el link de acceso</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--txt2);margin-bottom:12px;line-height:1.5">Selecciona un usuario dado de alta y comparte el link. Al abrirlo, su correo quedará listo para recibir el magic link.</div>
+        <select id="invite-select" class="fsel" style="margin-bottom:12px">
+          <option value="">— Seleccionar usuario —</option>
+        </select>
+        <div id="invite-link-box" style="display:none;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;word-break:break-all;font-size:11px;color:var(--txt2);font-family:monospace" id="invite-link-text"></div>
+        <div style="display:flex;gap:8px">
+          <button onclick="genInviteLink()" style="flex:1;padding:11px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">Generar link</button>
+          <button id="invite-copy-btn" onclick="copyInviteLink()" style="display:none;flex:1;padding:11px;border-radius:10px;border:none;background:var(--gold);color:#000;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">📋 Copiar</button>
+          <button id="invite-share-btn" onclick="shareInviteLink()" style="display:none;flex:1;padding:11px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">↗ Compartir</button>
+        </div>
+      </div>
+
       <!-- BACKUP -->
       <div style="background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:18px;margin-bottom:12px">
         <div style="font-size:14px;font-weight:800;color:var(--txt);margin-bottom:4px">💾 Respaldo de datos</div>
@@ -2477,31 +2498,22 @@ function togH(head){head.nextElementSibling.classList.toggle('open');}
 
 // ── Helper: imprime o abre reporte según plataforma ──────────────────────────
 function _printBlob(pdfName, blob){
-  // Inyectar iframe oculto para imprimir como PDF sin abrir ventana nueva
   var prev=document.getElementById('__print_frame__');
   if(prev) prev.parentNode.removeChild(prev);
-
   var url=URL.createObjectURL(blob);
   var fr=document.createElement('iframe');
   fr.id='__print_frame__';
   fr.style.cssText='position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;';
   fr.src=url;
   document.body.appendChild(fr);
-
   fr.onload=function(){
-    try{
-      fr.contentWindow.focus();
-      fr.contentWindow.print();
-    }catch(e){
-      // Fallback si iframe bloqueado (algunos navegadores)
+    try{ fr.contentWindow.focus(); fr.contentWindow.print(); }
+    catch(e){
       var a=document.createElement('a');
       a.href=url; a.download=pdfName+'.pdf';
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
     }
-    setTimeout(function(){
-      URL.revokeObjectURL(url);
-      if(fr.parentNode) fr.parentNode.removeChild(fr);
-    },60000);
+    setTimeout(function(){ URL.revokeObjectURL(url); if(fr.parentNode) fr.parentNode.removeChild(fr); },60000);
   };
 }
 
@@ -3593,7 +3605,6 @@ function _copyWeekHE_build(){
 
   var appName=localStorage.getItem('cp4_appname')||'IMZA';
 
-  // Mapa de asistencia real desde a.trabajadores (deduplicado por fecha)
   var asistenciaData={};
   Object.keys(S.actividades).forEach(function(date){
     if(weekKey(date)!==Number(_nomWk)) return;
@@ -4743,6 +4754,7 @@ function initAuth(){
   var n=localStorage.getItem('cp4_appname')||'IMZA';
   var el=document.getElementById('login-appname');
   if(el) el.textContent=n;
+  checkInviteParam();
 
   // 1. Magic link in URL (Safari just processed it)
   if(window.location.hash&&window.location.hash.includes('access_token')){
@@ -5199,6 +5211,8 @@ function applyRoleRestrictions(){
   if(btnAdd) btnAdd.style.display=isAdmin?'':'none';
   var usersList=document.getElementById('users-list-wrap');
   if(usersList) usersList.style.display=isAdmin?'':'none';
+  var inviteWrap=document.getElementById('invite-wrap');
+  if(inviteWrap) inviteWrap.style.display=isAdmin?'':'none';
   var snapsWrap=document.getElementById('snapshots-wrap');
   if(snapsWrap) snapsWrap.style.display=isAdmin?'':'none';
 
@@ -5304,12 +5318,93 @@ function rUsersConfig(){
     if(del) del.onclick=function(){ dUser(u.id); };
   });
 
+  rInviteSelect();
+
   var bo=document.createElement('button');
   bo.className='bfull';
   bo.style.cssText='margin-top:4px;background:var(--card2);border:1px solid var(--line);color:var(--txt2);border-radius:12px;padding:12px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer';
   bo.textContent='🚪 Cerrar sesión';
   bo.addEventListener('click',logout);
   el.appendChild(bo);
+}
+
+// ── INVITAR USUARIO ──────────────────────────────────────────────────────────
+var _inviteLink='';
+
+function rInviteSelect(){
+  var sel=document.getElementById('invite-select');
+  if(!sel) return;
+  var prev=sel.value;
+  sel.innerHTML='<option value="">— Seleccionar usuario —</option>';
+  (S.users||[]).filter(function(u){ return u.email&&u.id!==(_currentUser&&_currentUser.id); }).forEach(function(u){
+    var opt=document.createElement('option');
+    opt.value=u.email;
+    opt.textContent=u.nombre+' ('+u.email+')';
+    sel.appendChild(opt);
+  });
+  if(prev) sel.value=prev;
+  // Limpiar link previo si cambió selección
+  sel.onchange=function(){
+    _inviteLink='';
+    var box=document.getElementById('invite-link-box');
+    var cb=document.getElementById('invite-copy-btn');
+    var sb=document.getElementById('invite-share-btn');
+    if(box){ box.style.display='none'; box.textContent=''; }
+    if(cb) cb.style.display='none';
+    if(sb) sb.style.display='none';
+  };
+}
+
+function genInviteLink(){
+  var sel=document.getElementById('invite-select');
+  if(!sel||!sel.value){ toast('Selecciona un usuario','err'); return; }
+  var email=sel.value;
+  var base=window.location.origin+window.location.pathname;
+  _inviteLink=base+'?invite='+encodeURIComponent(email);
+  var box=document.getElementById('invite-link-box');
+  var cb=document.getElementById('invite-copy-btn');
+  var sb=document.getElementById('invite-share-btn');
+  if(box){ box.style.display='block'; box.textContent=_inviteLink; }
+  if(cb) cb.style.display='';
+  if(sb) sb.style.display=navigator.share?'':'none';
+}
+
+function copyInviteLink(){
+  if(!_inviteLink) return;
+  navigator.clipboard.writeText(_inviteLink).then(function(){
+    toast('Link copiado ✓','ok');
+  }).catch(function(){
+    var ta=document.createElement('textarea');
+    ta.value=_inviteLink;
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    toast('Link copiado ✓','ok');
+  });
+}
+
+function shareInviteLink(){
+  if(!_inviteLink||!navigator.share) return;
+  var sel=document.getElementById('invite-select');
+  var nombre=sel&&sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text.split(' (')[0]:'usuario';
+  navigator.share({
+    title:'Acceso a '+(localStorage.getItem('cp4_appname')||'IMZA'),
+    text:'Hola '+nombre+', usa este link para acceder a la app:',
+    url:_inviteLink
+  }).catch(function(){});
+}
+
+// Detectar ?invite=email al cargar y pre-llenar el login
+function checkInviteParam(){
+  var params=new URLSearchParams(window.location.search);
+  var inv=params.get('invite');
+  if(!inv) return;
+  // Limpiar la URL sin recargar
+  var clean=window.location.pathname;
+  window.history.replaceState({},'',clean);
+  // Pre-llenar el email en el login
+  setTimeout(function(){
+    var inp=document.getElementById('login-email-input');
+    if(inp){ inp.value=decodeURIComponent(inv); inp.focus(); }
+  },300);
 }
 
 function togSnapsPanel(){
