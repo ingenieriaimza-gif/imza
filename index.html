@@ -3571,37 +3571,47 @@ function copyWeekHE(){
   });
 
   var appName=localStorage.getItem('cp4_appname')||'IMZA';
+
+  // Construir mapa de asistencia real: wid -> [dates] desde a.trabajadores
+  var asistenciaData={};
+  Object.keys(S.actividades).forEach(function(date){
+    if(weekKey(date)!==Number(_nomWk)) return;
+    (S.actividades[date]||[]).forEach(function(a){
+      (a.trabajadores||[]).forEach(function(wid){
+        if(!asistenciaData[wid]) asistenciaData[wid]={};
+        asistenciaData[wid][date]=true; // clave=fecha -> deduplicado automático
+      });
+    });
+  });
+
   // resumenPersonal: solo trabajadores con actividad en la semana
   // (HE registradas, falta o vacaciones)
   var resumenPersonal=S.personal.map(function(p){
       var abs=getWorkerAbsences(p.id,thuStr,wedStr);
       var tieneHE=!!workerData[p.id];
+      var tieneAsistencia=!!asistenciaData[p.id];
       var estSemana=p.estado||'activo';
       if(abs.faltas.length>0) estSemana='falta';
       else if(abs.vacaciones.length>0) estSemana='vacaciones';
-      // Deduplicar fechas de asistencia (puede haber varias actividades por día)
-      var asistenciasFechas=[];
-      if(workerData[p.id]){
-        var seen={};
-        workerData[p.id].slice().sort(function(a,b){return a.date.localeCompare(b.date);}).forEach(function(d){
-          if(!seen[d.date]){ seen[d.date]=true; asistenciasFechas.push(d.date); }
-        });
-      }
+      var asistenciasDates=asistenciaData[p.id]
+        ? Object.keys(asistenciaData[p.id]).sort().map(function(ds){ return fmtD(ds); })
+        : [];
       return {
         nombre:p.nombre, cargo:p.cargo||'',
         estado:estSemana,
         estadoActual:p.estado||'activo',
         tieneHE:tieneHE,
+        tieneAsistencia:tieneAsistencia,
         faltas:abs.faltas.length,
         vacaciones:abs.vacaciones.length,
         faltasDates:abs.faltas.map(function(ds){ return fmtD(ds); }),
         vacacionesDates:abs.vacaciones.map(function(ds){ return fmtD(ds); }),
-        asistenciasDates:asistenciasFechas.map(function(ds){ return fmtD(ds); })
+        asistenciasDates:asistenciasDates
       };
     })
     .filter(function(p){
-      // Solo aparece si trabajó (HE), tuvo falta o tuvo vacaciones en la semana
-      return p.tieneHE || p.faltas>0 || p.vacaciones>0;
+      // Solo aparece si asistió, tuvo falta o tuvo vacaciones en la semana
+      return p.tieneAsistencia || p.tieneHE || p.faltas>0 || p.vacaciones>0;
     });
 
   // Totales derivados de resumenPersonal — siempre consistentes con la tabla
