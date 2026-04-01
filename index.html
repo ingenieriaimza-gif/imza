@@ -2477,53 +2477,18 @@ function togH(head){head.nextElementSibling.classList.toggle('open');}
 
 // ── Helper: imprime o abre reporte según plataforma ──────────────────────────
 function _printBlob(pdfName, blob){
-  var url=URL.createObjectURL(blob);
-  var isIOS=/iPhone|iPad|iPod/i.test(navigator.userAgent)||
-             (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-  if(isIOS){
-    // En iOS Safari/PWA: abrir en nueva pestaña con el título correcto
-    var win=window.open(url,'_blank');
-    if(win){
-      win.onload=function(){
-        win.document.title=pdfName;
-        setTimeout(function(){ URL.revokeObjectURL(url); },60000);
-      };
-      toast('Reporte abierto — usa Compartir → Imprimir para guardarlo como PDF','ok');
-    } else {
-      // Bloqueó popups — fallback: link de descarga
-      var a=document.createElement('a');
-      a.href=url; a.download=pdfName+'.html';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(function(){ URL.revokeObjectURL(url); },5000);
-      toast('Reporte listo para guardar','ok');
-    }
+  var file=new File([blob], pdfName+'.html', {type:'text/html'});
+  if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+    navigator.share({files:[file], title:pdfName})
+      .catch(function(){});
     return;
   }
-  // Desktop/Android: iframe oculto + print dialog
-  var ex=document.getElementById('_rpt_iframe'); if(ex) ex.remove();
-  var ifr=document.createElement('iframe');
-  ifr.id='_rpt_iframe';
-  ifr.style.cssText='position:fixed;left:-9999px;top:-9999px;width:860px;height:1200px;border:none;opacity:0;pointer-events:none;';
-  ifr.src=url;
-  document.body.appendChild(ifr);
-  ifr.onload=function(){
-    setTimeout(function(){
-      try{
-        var oldTitle=document.title;
-        document.title=pdfName;
-        ifr.contentWindow.focus();
-        ifr.contentWindow.print();
-        setTimeout(function(){ document.title=oldTitle; URL.revokeObjectURL(url); },60000);
-        toast('Selecciona "Guardar como PDF" en el diálogo','ok');
-      }catch(e){
-        var a=document.createElement('a');
-        a.href=url; a.download=pdfName+'.html';
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        setTimeout(function(){ URL.revokeObjectURL(url); },5000);
-        toast('Reporte descargado','ok');
-      }
-    },200);
-  };
+  // Fallback: descarga directa
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url; a.download=pdfName+'.html';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); },5000);
 }
 
 // ── Función auxiliar para abrir reporte HTML desde historial ─────────────────
