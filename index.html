@@ -574,15 +574,6 @@ if('serviceWorker' in navigator){
       <div id="cot-list"></div>
     </div>
 
-    <!-- COTIZACIONES -->
-    <div id="s-cotizaciones" class="screen">
-      <div class="sec">
-        <div class="sec-lbl">Cotizaciones</div>
-        <button class="sec-btn bgold" style="color:#000" onclick="openCotM()">+ Nueva</button>
-      </div>
-      <div id="cot-list"></div>
-    </div>
-
     <!-- CONFIGURACIÓN -->
     <div id="s-config" class="screen">
       <div class="sec"><div class="sec-lbl">Configuración</div></div>
@@ -731,10 +722,6 @@ if('serviceWorker' in navigator){
       <span>Nómina</span>
     </button>
     <button class="ntab" id="tab-cotizaciones" onclick="navigate('cotizaciones')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-      <span>Cotizar</span>
-    </button>
-    <button class="ntab" id="tab-cotizaciones" onclick="navigate('cotizaciones')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
       <span>Cotizar</span>
     </button>
@@ -756,8 +743,6 @@ if('serviceWorker' in navigator){
     </div>
     <div class="shbody">
       <input type="hidden" id="cot-id">
-
-      <!-- Cliente -->
       <div class="fg">
         <label class="fl">Cliente</label>
         <input class="fi" id="cot-cliente" placeholder="Nombre del cliente" autocomplete="off">
@@ -772,8 +757,6 @@ if('serviceWorker' in navigator){
           <input class="fi" id="cot-email" type="email" placeholder="correo@ejemplo.com">
         </div>
       </div>
-
-      <!-- Proyecto -->
       <div class="fg">
         <label class="fl">Proyecto / Descripción</label>
         <input class="fi" id="cot-proyecto" placeholder="Descripción del trabajo" autocomplete="off">
@@ -782,20 +765,15 @@ if('serviceWorker' in navigator){
         <label class="fl">Notas / Condiciones</label>
         <textarea class="fta" id="cot-notas" placeholder="Condiciones de pago, vigencia, observaciones…" rows="3"></textarea>
       </div>
-
-      <!-- Partidas -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <label class="fl" style="margin:0">Partidas</label>
         <button onclick="addCotPartida()" style="background:var(--golddim);border:1px solid rgba(240,201,74,0.3);color:var(--gold);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">+ Añadir</button>
       </div>
       <div id="cot-partidas"></div>
-
-      <!-- Total -->
       <div style="background:var(--card2);border:1px solid var(--line);border-radius:var(--r2);padding:14px 16px;margin-top:4px;display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:13px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:0.5px">Total</span>
         <span id="cot-total-lbl" style="font-size:22px;font-weight:900;color:var(--green)">$0</span>
       </div>
-
       <div class="brow">
         <button class="bfull bghost" onclick="closeCotM()">Cancelar</button>
         <button class="bfull bgold" onclick="saveCot()">💾 Guardar</button>
@@ -2598,54 +2576,44 @@ function openCotM(id){
   renderCotPartidas();
   document.getElementById('sov-cot').classList.add('open');
 }
-
 function closeCotM(){
   document.getElementById('sov-cot').classList.remove('open');
 }
-
 var _cotPartidas=[];
-
 function addCotPartida(){
   _cotPartidas.push({desc:'',qty:1,precio:0});
   renderCotPartidas();
 }
-
 function delCotPartida(i){
   _cotPartidas.splice(i,1);
   if(!_cotPartidas.length) _cotPartidas.push({desc:'',qty:1,precio:0});
   renderCotPartidas();
 }
-
 function renderCotPartidas(){
   var el=document.getElementById('cot-partidas');
+  if(!el) return;
   el.innerHTML=_cotPartidas.map(function(p,i){
     return '<div class="ecard" style="margin-bottom:8px">'+
-      '<div class="fg" style="margin-bottom:8px">'+
-      '<label class="fl">Descripción</label>'+
-      '<input class="fi" style="font-size:14px" value="'+esc(p.desc)+'" oninput="_cotPartidas['+i+'].desc=this.value" placeholder="Concepto o servicio">'+
-      '</div>'+
+      '<div class="fg" style="margin-bottom:8px"><label class="fl">Descripción</label>'+
+      '<input class="fi" style="font-size:14px" value="'+_escCot(p.desc)+'" oninput="_cotPartidas['+i+'].desc=this.value" placeholder="Concepto o servicio"></div>'+
       '<div class="frow" style="margin-bottom:8px">'+
-      '<div><label class="fl">Cantidad</label>'+
-      '<input class="fi" type="number" min="1" style="font-size:14px" value="'+p.qty+'" oninput="_cotPartidas['+i+'].qty=Number(this.value)||1;updCotTotal()"></div>'+
-      '<div><label class="fl">Precio unit.</label>'+
-      '<input class="fi" type="number" min="0" style="font-size:14px" value="'+p.precio+'" oninput="_cotPartidas['+i+'].precio=Number(this.value)||0;updCotTotal()"></div>'+
+      '<div><label class="fl">Cantidad</label><input class="fi" type="number" min="1" style="font-size:14px" value="'+p.qty+'" oninput="_cotPartidas['+i+'].qty=Number(this.value)||1;updCotTotal()"></div>'+
+      '<div><label class="fl">Precio unit.</label><input class="fi" type="number" min="0" style="font-size:14px" value="'+p.precio+'" oninput="_cotPartidas['+i+'].precio=Number(this.value)||0;updCotTotal()"></div>'+
       '</div>'+
       (_cotPartidas.length>1?'<button class="edel" onclick="delCotPartida('+i+')">Eliminar partida</button>':'')+
       '</div>';
   }).join('');
   updCotTotal();
 }
-
 function updCotTotal(){
   var t=_cotPartidas.reduce(function(s,p){return s+(p.qty||1)*(p.precio||0);},0);
-  document.getElementById('cot-total-lbl').textContent='$'+t.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+  var el=document.getElementById('cot-total-lbl');
+  if(el) el.textContent='$'+t.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
-
-function esc(s){ return (s||'').replace(/"/g,'&quot;'); }
-
+function _escCot(s){ return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
 function saveCot(){
-  var cliente=document.getElementById('cot-cliente').value.trim();
-  var proyecto=document.getElementById('cot-proyecto').value.trim();
+  var cliente=(document.getElementById('cot-cliente').value||'').trim();
+  var proyecto=(document.getElementById('cot-proyecto').value||'').trim();
   if(!cliente){ toast('Ingresa el nombre del cliente','err'); return; }
   if(!proyecto){ toast('Ingresa descripción del proyecto','err'); return; }
   if(!S.cotizaciones) S.cotizaciones=[];
@@ -2656,10 +2624,10 @@ function saveCot(){
     folio:id?((S.cotizaciones.find(function(x){return x.id===id;})||{}).folio||_nextFolio()):_nextFolio(),
     fecha:now.split('T')[0],
     cliente:cliente,
-    tel:document.getElementById('cot-tel').value.trim(),
-    email:document.getElementById('cot-email').value.trim(),
+    tel:(document.getElementById('cot-tel').value||'').trim(),
+    email:(document.getElementById('cot-email').value||'').trim(),
     proyecto:proyecto,
-    notas:document.getElementById('cot-notas').value.trim(),
+    notas:(document.getElementById('cot-notas').value||'').trim(),
     partidas:JSON.parse(JSON.stringify(_cotPartidas)),
     total:_cotPartidas.reduce(function(s,p){return s+(p.qty||1)*(p.precio||0);},0),
     estado:'pendiente',
@@ -2676,12 +2644,10 @@ function saveCot(){
   rCotizaciones();
   toast('Cotización guardada ✓','ok');
 }
-
 function _nextFolio(){
   var n=(S.cotizaciones||[]).length+1;
   return 'COT-'+String(n).padStart(3,'0');
 }
-
 function delCot(id){
   confirmShow('¿Eliminar cotización?','Esta acción no se puede deshacer.',function(){
     S.cotizaciones=(S.cotizaciones||[]).filter(function(x){return x.id!==id;});
@@ -2690,15 +2656,13 @@ function delCot(id){
     toast('Cotización eliminada','ok');
   },'Eliminar','var(--red)','Cancelar');
 }
-
-function cotEstado(id, estado){
+function cotEstado(id,estado){
   var c=(S.cotizaciones||[]).find(function(x){return x.id===id;});
   if(!c) return;
   c.estado=estado;
   persistLocal();
   rCotizaciones();
 }
-
 function rCotizaciones(){
   var el=document.getElementById('cot-list');
   if(!el) return;
@@ -2711,7 +2675,6 @@ function rCotizaciones(){
   var stLabels={pendiente:'Pendiente',aceptada:'Aceptada',rechazada:'Rechazada'};
   el.innerHTML=list.slice().reverse().map(function(c){
     var col=stColors[c.estado]||'var(--txt3)';
-    var lbl=stLabels[c.estado]||c.estado;
     return '<div class="hday" style="margin-bottom:10px">'+
       '<div class="hday-h" onclick="togH(this)">'+
       '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">'+
@@ -2719,110 +2682,93 @@ function rCotizaciones(){
       '<div style="flex:1;min-width:0">'+
       '<div style="font-size:15px;font-weight:800;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+c.cliente+'</div>'+
       '<div style="font-size:11px;color:var(--txt3);margin-top:1px">'+c.folio+' · '+fmtDate(c.fecha)+'</div>'+
-      '</div>'+
-      '</div>'+
+      '</div></div>'+
       '<div class="hday-meta" style="flex-shrink:0;gap:6px;align-items:center">'+
       '<span style="font-size:13px;font-weight:800;color:var(--green)">$'+c.total.toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:0})+'</span>'+
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>'+
-      '</div>'+
-      '</div>'+
+      '</div></div>'+
       '<div class="hbody">'+
-      // Estado pills
       '<div style="display:flex;gap:6px;padding:10px 16px 4px;flex-wrap:wrap">'+
       ['pendiente','aceptada','rechazada'].map(function(s){
         var active=c.estado===s;
-        return '<button onclick="event.stopPropagation();cotEstado(''+c.id+'',''+s+'')" style="padding:5px 12px;border-radius:100px;border:1px solid '+(active?stColors[s]:'var(--line)')+';background:'+(active?'rgba(0,0,0,0.15)':'transparent')+';color:'+(active?stColors[s]:'var(--txt3)')+';font-size:11px;font-weight:700;font-family:inherit;cursor:pointer">'+stLabels[s]+'</button>';
+        return '<button onclick="event.stopPropagation();cotEstado(''+c.id+'',''+s+'')" style="padding:5px 12px;border-radius:100px;border:1px solid '+(active?stColors[s]:'var(--line)')+';background:transparent;color:'+(active?stColors[s]:'var(--txt3)')+';font-size:11px;font-weight:700;font-family:inherit;cursor:pointer">'+(active?'● ':'')+stLabels[s]+'</button>';
       }).join('')+
       '</div>'+
-      // Info
-      '<div style="padding:8px 16px">'+
-      '<div style="font-size:13px;font-weight:700;color:var(--txt);margin-bottom:4px">'+c.proyecto+'</div>'+
-      (c.tel||c.email?'<div style="font-size:11px;color:var(--txt3)">'+(c.tel||'')+(c.tel&&c.email?' · ':''+(c.email||''))+'</div>':'')+ 
+      '<div style="padding:6px 16px 8px">'+
+      '<div style="font-size:13px;font-weight:700;color:var(--txt);margin-bottom:3px">'+c.proyecto+'</div>'+
+      ((c.tel||c.email)?'<div style="font-size:11px;color:var(--txt3)">'+(c.tel||'')+((c.tel&&c.email)?' · ':'')+(c.email||'')+'</div>':'')+
       '</div>'+
-      // Partidas
       (c.partidas&&c.partidas.length?
-      '<div style="margin:0 16px 8px;background:var(--card2);border-radius:8px;overflow:hidden">'+
-      c.partidas.map(function(p,i){
-        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;'+(i?'border-top:1px solid var(--line)':'')+'">'+
-        '<div style="font-size:12px;color:var(--txt);flex:1">'+p.desc+'</div>'+
-        '<div style="font-size:11px;color:var(--txt3);margin:0 8px">×'+p.qty+'</div>'+
-        '<div style="font-size:13px;font-weight:700;color:var(--txt)">'+'$'+(p.qty*p.precio).toLocaleString('es-MX',{minimumFractionDigits:0})+'</div>'+
-        '</div>';
-      }).join('')+
-      '<div style="display:flex;justify-content:space-between;padding:8px 12px;border-top:2px solid var(--line);background:var(--card)">'+
-      '<span style="font-size:12px;font-weight:700;color:var(--txt3)">TOTAL</span>'+
-      '<span style="font-size:15px;font-weight:900;color:var(--green)">$'+c.total.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})+'</span>'+
-      '</div></div>':'')+ 
-      (c.notas?'<div style="margin:0 16px 10px;padding:10px 12px;background:rgba(240,201,74,0.06);border:1px solid rgba(240,201,74,0.15);border-radius:8px;font-size:11px;color:var(--txt2)">'+c.notas+'</div>':'')+
-      // Buttons
+        '<div style="margin:0 16px 8px;background:var(--card2);border-radius:8px;overflow:hidden">'+
+        c.partidas.map(function(p,i){
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 12px;'+(i?'border-top:1px solid var(--line)':'')+'">'+
+            '<div style="font-size:12px;color:var(--txt);flex:1;padding-right:8px">'+p.desc+'</div>'+
+            '<div style="font-size:11px;color:var(--txt3);margin-right:8px">×'+p.qty+'</div>'+
+            '<div style="font-size:12px;font-weight:700;color:var(--txt)">$'+(p.qty*p.precio).toLocaleString('es-MX',{minimumFractionDigits:0})+'</div>'+
+            '</div>';
+        }).join('')+
+        '<div style="display:flex;justify-content:space-between;padding:8px 12px;border-top:2px solid var(--line)">'+
+        '<span style="font-size:11px;font-weight:700;color:var(--txt3)">TOTAL</span>'+
+        '<span style="font-size:14px;font-weight:900;color:var(--green)">$'+c.total.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})+'</span>'+
+        '</div></div>':'')+
+      (c.notas?'<div style="margin:0 16px 10px;padding:10px 12px;background:rgba(240,201,74,0.06);border:1px solid rgba(240,201,74,0.15);border-radius:8px;font-size:11px;color:var(--txt2);line-height:1.5">'+c.notas+'</div>':'')+
       '<div style="display:flex;gap:8px;padding:0 16px 14px">'+
       '<button onclick="event.stopPropagation();pdfCot(''+c.id+'')" style="flex:1;padding:10px;border-radius:10px;border:none;background:var(--golddim);color:var(--gold);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📄 PDF</button>'+
       '<button onclick="event.stopPropagation();openCotM(''+c.id+'')" style="flex:1;padding:10px;border-radius:10px;border:none;background:var(--card2);color:var(--txt2);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">✏️ Editar</button>'+
-      '<button onclick="event.stopPropagation();delCot(''+c.id+'')" style="width:40px;padding:10px;border-radius:10px;border:none;background:rgba(240,96,96,0.08);color:var(--red);font-size:14px;font-family:inherit;cursor:pointer">🗑</button>'+
+      '<button onclick="event.stopPropagation();delCot(''+c.id+'')" style="width:42px;padding:10px;border-radius:10px;border:none;background:rgba(240,96,96,0.08);color:var(--red);font-size:14px;font-family:inherit;cursor:pointer">🗑</button>'+
       '</div>'+
-      '</div>'+
-      '</div>';
+      '</div></div>';
   }).join('');
 }
-
 function pdfCot(id){
   var c=(S.cotizaciones||[]).find(function(x){return x.id===id;});
   if(!c) return;
   var appName=localStorage.getItem('cp4_appname')||'IMZA';
-  var pdfName=c.folio+'_'+c.cliente.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
-  var partRows=c.partidas.map(function(p){
-    return '<tr>'+
-      '<td style="padding:8px 12px;font-size:10px;color:#374151;border-bottom:1px solid #F1F5F9">'+p.desc+'</td>'+
+  var pdfName=c.folio+'_'+c.cliente.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_áéíóúÁÉÍÓÚñÑ]/g,'');
+  var partRows=(c.partidas||[]).map(function(p){
+    return '<tr><td style="padding:8px 12px;font-size:10px;color:#374151;border-bottom:1px solid #F1F5F9">'+p.desc+'</td>'+
       '<td style="padding:8px 12px;font-size:10px;color:#374151;text-align:center;border-bottom:1px solid #F1F5F9">'+p.qty+'</td>'+
       '<td style="padding:8px 12px;font-size:10px;color:#374151;text-align:right;border-bottom:1px solid #F1F5F9">$'+p.precio.toLocaleString('es-MX',{minimumFractionDigits:2})+'</td>'+
-      '<td style="padding:8px 12px;font-size:10px;font-weight:700;color:#1D4ED8;text-align:right;border-bottom:1px solid #F1F5F9">$'+(p.qty*p.precio).toLocaleString('es-MX',{minimumFractionDigits:2})+'</td>'+
-      '</tr>';
+      '<td style="padding:8px 12px;font-size:10px;font-weight:700;color:#1D4ED8;text-align:right;border-bottom:1px solid #F1F5F9">$'+(p.qty*p.precio).toLocaleString('es-MX',{minimumFractionDigits:2})+'</td></tr>';
   }).join('');
   var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+pdfName+'</title>'+
-  '<style>*{margin:0;padding:0;box-sizing:border-box;}html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
-  'body{font-family:"Segoe UI",-apple-system,Arial,sans-serif;font-size:10px;background:#F8FAFC;color:#0F172A;}'+
-  '.page{max-width:680px;margin:0 auto;padding:20px;}'+
-  '.hdr{background:#1E3A8A;border-radius:8px;padding:18px 24px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-start;}'+
-  '.hdr-l h1{font-size:22px;font-weight:900;color:#fff;letter-spacing:-.03em;}'+
-  '.hdr-l p{font-size:9px;color:#93C5FD;margin-top:3px;text-transform:uppercase;letter-spacing:.07em;}'+
-  '.hdr-r{text-align:right;}'+
-  '.hdr-r .folio{font-size:18px;font-weight:900;color:#fff;}'+
-  '.hdr-r .fecha{font-size:9px;color:#93C5FD;margin-top:4px;}'+
-  '.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}'+
-  '.info-box{background:#fff;border:1px solid #E2E8F0;border-radius:8px;padding:12px 14px;}'+
-  '.info-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748B;margin-bottom:5px;}'+
-  '.info-val{font-size:13px;font-weight:800;color:#0F172A;}'+
-  '.info-sub{font-size:9px;color:#94A3B8;margin-top:2px;}'+
-  'table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #E2E8F0;margin-bottom:12px;}'+
-  'thead{background:#1E3A8A;}'+
-  'th{padding:9px 12px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#fff;text-align:left;}'+
-  'th:nth-child(2){text-align:center;}th:nth-child(3),th:nth-child(4){text-align:right;}'+
-  '.total-row{background:#F0FDF4;border-top:2px solid #059669 !important;}'+
-  '.total-row td{padding:10px 12px;font-size:13px;font-weight:900;color:#059669;}'+
-  '.notas{background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:12px 14px;margin-bottom:12px;}'+
-  '.notas-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#92400E;margin-bottom:4px;}'+
-  '.notas-txt{font-size:9.5px;color:#78350F;line-height:1.6;}'+
-  '.footer{text-align:center;padding-top:10px;border-top:1px solid #E2E8F0;color:#CBD5E1;font-size:8px;}'+
-  '@media print{@page{size:A4 portrait;margin:10mm 12mm;}body{background:#fff!important;}.page{max-width:100%!important;padding:0!important;}tr{page-break-inside:avoid!important;}-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}'+
-  '</style></head><body><div class="page">'+
-  '<div class="hdr">'+
-  '<div class="hdr-l"><h1>'+appName+'</h1><p>Cotización</p></div>'+
-  '<div class="hdr-r"><div class="folio">'+c.folio+'</div><div class="fecha">Fecha: '+fmtDate(c.fecha)+'</div></div>'+
-  '</div>'+
-  '<div class="info-grid">'+
-  '<div class="info-box"><div class="info-lbl">Cliente</div><div class="info-val">'+c.cliente+'</div>'+
-  (c.tel||c.email?'<div class="info-sub">'+(c.tel||'')+(c.tel&&c.email?' · ':''+(c.email||''))+'</div>':'')+
-  '</div>'+
-  '<div class="info-box"><div class="info-lbl">Proyecto</div><div class="info-val">'+c.proyecto+'</div></div>'+
-  '</div>'+
-  '<table><thead><tr><th>Descripción</th><th style="text-align:center">Cant.</th><th style="text-align:right">P. Unit.</th><th style="text-align:right">Importe</th></tr></thead>'+
-  '<tbody>'+partRows+
-  '<tr class="total-row"><td colspan="3" style="padding:10px 12px;font-size:11px;font-weight:700;text-align:right;color:#059669">TOTAL</td>'+
-  '<td style="padding:10px 12px;font-size:14px;font-weight:900;text-align:right;color:#059669">$'+c.total.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})+'</td></tr>'+
-  '</tbody></table>'+
-  (c.notas?'<div class="notas"><div class="notas-lbl">Notas y condiciones</div><div class="notas-txt">'+c.notas+'</div></div>':'')+
-  '<div class="footer">'+appName+' · '+c.folio+' · Generado el '+fmtDate(new Date().toISOString().split('T')[0])+'</div>'+
-  '</div></body></html>';
+    '<style>*{margin:0;padding:0;box-sizing:border-box;}html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
+    'body{font-family:"Segoe UI",-apple-system,Arial,sans-serif;font-size:10px;background:#F8FAFC;color:#0F172A;}'+
+    '.page{max-width:680px;margin:0 auto;padding:20px;}'+
+    '.hdr{background:#1E3A8A;border-radius:8px;padding:18px 24px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-start;}'+
+    '.hdr h1{font-size:22px;font-weight:900;color:#fff;letter-spacing:-.03em;}'+
+    '.hdr p{font-size:9px;color:#93C5FD;margin-top:3px;text-transform:uppercase;letter-spacing:.07em;}'+
+    '.hdr-r{text-align:right;}.hdr-r .folio{font-size:18px;font-weight:900;color:#fff;}.hdr-r .fecha{font-size:9px;color:#93C5FD;margin-top:4px;}'+
+    '.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}'+
+    '.info-box{background:#fff;border:1px solid #E2E8F0;border-radius:8px;padding:12px 14px;}'+
+    '.info-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748B;margin-bottom:5px;}'+
+    '.info-val{font-size:13px;font-weight:800;color:#0F172A;}.info-sub{font-size:9px;color:#94A3B8;margin-top:2px;}'+
+    'table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #E2E8F0;margin-bottom:12px;}'+
+    'thead{background:#1E3A8A;}th{padding:9px 12px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#fff;text-align:left;}'+
+    'th:nth-child(n+2){text-align:right;}th:nth-child(2){text-align:center;}'+
+    '.tot td{padding:10px 12px;font-size:13px;font-weight:900;color:#059669;border-top:2px solid #059669;background:#F0FDF4;}'+
+    '.notas{background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:12px 14px;margin-bottom:12px;}'+
+    '.notas-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#92400E;margin-bottom:4px;}'+
+    '.notas-txt{font-size:9.5px;color:#78350F;line-height:1.6;}'+
+    '.footer{text-align:center;padding-top:10px;border-top:1px solid #E2E8F0;color:#CBD5E1;font-size:8px;}'+
+    '@media print{@page{size:A4 portrait;margin:10mm 12mm;}body{background:#fff!important;}.page{max-width:100%!important;padding:0!important;}tr{page-break-inside:avoid!important;}-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}'+
+    '</style></head><body><div class="page">'+
+    '<div class="hdr"><div><h1>'+appName+'</h1><p>Cotización</p></div>'+
+    '<div class="hdr-r"><div class="folio">'+c.folio+'</div><div class="fecha">'+fmtDate(c.fecha)+'</div></div></div>'+
+    '<div class="info-grid">'+
+    '<div class="info-box"><div class="info-lbl">Cliente</div><div class="info-val">'+c.cliente+'</div>'+
+    ((c.tel||c.email)?'<div class="info-sub">'+(c.tel||'')+((c.tel&&c.email)?' · ':'')+(c.email||'')+'</div>':'')+
+    '</div>'+
+    '<div class="info-box"><div class="info-lbl">Proyecto</div><div class="info-val">'+c.proyecto+'</div></div>'+
+    '</div>'+
+    '<table><thead><tr><th>Descripción</th><th style="text-align:center">Cant.</th><th style="text-align:right">P. Unit.</th><th style="text-align:right">Importe</th></tr></thead>'+
+    '<tbody>'+partRows+
+    '<tr class="tot"><td colspan="3" style="text-align:right;padding:10px 12px;font-size:11px">TOTAL</td>'+
+    '<td style="text-align:right;padding:10px 12px;font-size:14px">$'+c.total.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})+'</td></tr>'+
+    '</tbody></table>'+
+    (c.notas?'<div class="notas"><div class="notas-lbl">Notas y condiciones</div><div class="notas-txt">'+c.notas+'</div></div>':'')+
+    '<div class="footer">'+appName+' · '+c.folio+' · Generado el '+fmtDate(new Date().toISOString().split('T')[0])+'</div>'+
+    '</div></body></html>';
   _printBlob(pdfName, new Blob([html],{type:'text/html;charset=utf-8'}));
 }
 
