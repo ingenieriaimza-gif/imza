@@ -904,7 +904,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0330.1200';
+const APP_VERSION='2026.0401.1300';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -2498,6 +2498,8 @@ function togH(head){head.nextElementSibling.classList.toggle('open');}
 
 // ── Helper: imprime o abre reporte según plataforma ──────────────────────────
 function _printBlob(pdfName, blob){
+  var isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||
+            (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   var prev=document.getElementById('__print_frame__');
   if(prev) prev.parentNode.removeChild(prev);
   var url=URL.createObjectURL(blob);
@@ -2507,8 +2509,23 @@ function _printBlob(pdfName, blob){
   fr.src=url;
   document.body.appendChild(fr);
   fr.onload=function(){
-    try{ fr.contentWindow.focus(); fr.contentWindow.print(); }
-    catch(e){
+    try{
+      fr.contentWindow.focus();
+      if(isIOS){
+        // Safari iOS usa el <title> del documento padre para nombrar el PDF.
+        // Cambiamos document.title antes de imprimir y lo restauramos al recuperar foco.
+        var orig=document.title;
+        document.title=pdfName;
+        setTimeout(function(){
+          fr.contentWindow.print();
+          var restore=function(){ document.title=orig; };
+          window.addEventListener('focus',restore,{once:true});
+          setTimeout(restore,8000);
+        },100);
+      } else {
+        fr.contentWindow.print();
+      }
+    }catch(e){
       var a=document.createElement('a');
       a.href=url; a.download=pdfName+'.pdf';
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
