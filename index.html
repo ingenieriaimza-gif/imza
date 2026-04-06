@@ -1088,8 +1088,8 @@ function sbFetch(path,opts){
           return res2.text().then(function(t){ return t?JSON.parse(t):null; });
         });
       }).catch(function(){
-        // Token no renovable — forzar re-login
-        forceRelogin();
+        // Token no renovable — solo marcar sin conexión, NO cerrar la app
+        updateSyncUI(false);
         throw new Error('Session expired');
       });
     }
@@ -5310,11 +5310,13 @@ function _doSendMagicLink(email,errEl,btn){
   function resetBtn(){ if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; } }
 
   // Supabase usa /auth/v1/otp para magic links (magiclink fue deprecado)
+  // redirect_to apunta a la misma app para que el link abra en el contexto correcto
+  var redirectTo=window.location.origin+window.location.pathname;
   fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/otp',{
     method:'POST',
     credentials:'omit',
     headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Content-Type':'application/json'},
-    body:JSON.stringify({email:email, create_user:false})
+    body:JSON.stringify({email:email, create_user:false, options:{emailRedirectTo:redirectTo}})
   }).then(function(res){
     resetBtn();
     if(res.ok||res.status===200||res.status===204){
@@ -6248,6 +6250,9 @@ load();updDates();rAll();
 
   <!-- STEP 1: Enter email -->
   <div id="login-step-email" style="width:100%;max-width:300px;margin-top:20px">
+    <div id="login-pwa-hint" style="display:none;background:rgba(100,170,255,0.1);border:1px solid rgba(100,170,255,0.25);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--blue);line-height:1.5;text-align:center">
+      📱 <b>iPhone:</b> Al tocar el link del correo se abrirá Safari. Después regresa a esta app desde tu pantalla de inicio.
+    </div>
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--txt3);margin-bottom:8px;text-align:center">Ingresa tu correo</div>
     <input id="login-email-input" type="email" inputmode="email" autocomplete="email" autocapitalize="off" autocorrect="off" placeholder="tu@correo.com" style="width:100%;box-sizing:border-box;padding:14px 16px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt);font-size:15px;font-family:inherit;outline:none;margin-bottom:12px">
     <div id="login-error" style="font-size:13px;color:var(--red);margin-bottom:10px;min-height:18px;text-align:center"></div>
@@ -6258,7 +6263,13 @@ load();updDates();rAll();
   <div id="login-step-sent" style="display:none;width:100%;max-width:300px;margin-top:20px;text-align:center">
     <div style="font-size:48px;margin-bottom:16px">📬</div>
     <div style="font-size:16px;font-weight:800;color:var(--txt);margin-bottom:8px">Revisa tu correo</div>
-    <div id="login-sent-msg" style="font-size:13px;color:var(--txt2);line-height:1.6;margin-bottom:20px"></div>
+    <div id="login-sent-msg" style="font-size:13px;color:var(--txt2);line-height:1.6;margin-bottom:16px"></div>
+    <div id="login-pwa-step2" style="display:none;background:rgba(245,207,85,0.1);border:1px solid rgba(245,207,85,0.25);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--gold);line-height:1.6;text-align:left">
+      <b>Pasos en iPhone:</b><br>
+      1. Toca el link en tu correo<br>
+      2. Se abrirá Safari — espera que cargue<br>
+      3. Regresa a esta app desde tu pantalla de inicio ↩
+    </div>
     <button onclick="loginBack()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt2);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">← Usar otro correo</button>
   </div>
 </div>
@@ -6266,6 +6277,18 @@ load();updDates();rAll();
 document.addEventListener('touchstart',function(){ window._lastInteraction=Date.now(); },true);
 document.addEventListener('mousedown',function(){ window._lastInteraction=Date.now(); },true);
 document.addEventListener('keydown',function(){ window._lastInteraction=Date.now(); },true);
+
+// Detectar si corre como PWA en iPhone y mostrar hints de login
+(function(){
+  var isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent);
+  var isPWA=window.navigator.standalone===true;
+  if(isIOS&&isPWA){
+    var h1=document.getElementById('login-pwa-hint');
+    var h2=document.getElementById('login-pwa-step2');
+    if(h1) h1.style.display='block';
+    if(h2) h2.style.display='block';
+  }
+})();
 </script>
 </body>
 </html>
