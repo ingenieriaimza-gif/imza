@@ -1291,28 +1291,15 @@ function pullFromCloud(){
     try{
       var del=remote.deleted||{};
       S.proyectos=(remote.proyectos||[]).filter(function(p){ return !del['proj_'+p.id]; });
-      // Asignar completadoEn a proyectos completados que no lo tengan (migración única)
-      // También corregir fechas futuras causadas por bug UTC anterior
+      // Asignar completadoEn a proyectos completados que no lo tengan
       var needsPush=false;
       var hoy=td();
       S.proyectos.forEach(function(p){
         if(p.estado==='completado'){
-          // Corregir si completadoEn está en el futuro (bug UTC) o falta
           if(!p.completadoEn||p.completadoEn>hoy){
-            var fechaRef=hoy;
-            if(p._upd){
-              // Usar fecha LOCAL (no UTC) para evitar desfase de zona horaria
-              var dt=new Date(p._upd);
-              var y=dt.getFullYear();
-              var mo=String(dt.getMonth()+1).padStart(2,'0');
-              var d=String(dt.getDate()).padStart(2,'0');
-              var localDate=y+'-'+mo+'-'+d;
-              // Solo usar _upd si no es futuro
-              fechaRef=localDate<=hoy?localDate:hoy;
-            } else if(p.inicio&&p.inicio<=hoy){
-              fechaRef=p.inicio;
-            }
-            p.completadoEn=fechaRef;
+            // Si no tiene fecha o tiene fecha futura (bug UTC): asignar hoy
+            // No usar _upd porque es la fecha de última actividad, no de cuando se completó
+            p.completadoEn=hoy;
             needsPush=true;
           }
         }
@@ -1827,8 +1814,12 @@ function saveProj(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
     inicio:document.getElementById('pi').value,
     diasEstimados:diasVal||null,
     estado:nuevoEstado,
+    // Si se marca como completado: siempre usar hoy (momento real de la decisión)
+    // Si ya estaba completado y se re-guarda sin cambiar estado: conservar fecha original
     completadoEn: nuevoEstado==='completado'
-      ? (proyExistente&&proyExistente.completadoEn) || td()
+      ? (proyExistente&&proyExistente.estado==='completado'&&proyExistente.completadoEn
+         ? proyExistente.completadoEn  // ya estaba completado — conservar fecha original
+         : td())                        // se acaba de marcar como completado — poner hoy
       : null
   };
   if(id){const i=S.proyectos.findIndex(p=>p.id===id);if(i!==-1)S.proyectos[i]={...S.proyectos[i],...d,_upd:Date.now()};}
@@ -2958,13 +2949,17 @@ function _doShareProj(projId){
   Object.keys(S.actividades).sort().forEach(function(date){
     (S.actividades[date]||[]).forEach(function(a){
       if(a.proyectoId!==projId) return;
-      if(!diasData[date]) diasData[date]={workers:new Set(),he:{},gastos:[],notas:[]};
+      if(!diasData[date]) diasData[date]={workers:new Set(),he:{},gastos:[],notas:[],maquinaria:[]};
       (a.trabajadores||[]).forEach(function(wid){ diasData[date].workers.add(wid); });
       Object.entries(a.horasExtras||{}).forEach(function(e){
         diasData[date].he[e[0]]=(diasData[date].he[e[0]]||0)+e[1];
       });
       diasData[date].gastos=diasData[date].gastos.concat(a.gastos||[]);
       if(a.notas) diasData[date].notas.push(a.notas);
+      // Acumular maquinaria sin duplicados
+      (a.maquinaria||[]).forEach(function(m){
+        if(m&&diasData[date].maquinaria.indexOf(m)===-1) diasData[date].maquinaria.push(m);
+      });
     });
   });
 
@@ -2973,6 +2968,7 @@ function _doShareProj(projId){
 
   // Totales globales
   var allWorkers=new Set(), totalHE=0, totalGastos=0;
+  var allMaquinaria=new Set();
   var workerStats={};
   fechas.forEach(function(date){
     var dd=diasData[date];
@@ -2987,6 +2983,7 @@ function _doShareProj(projId){
       totalHE+=e[1];
     });
     totalGastos+=dd.gastos.reduce(function(s,g){return s+Number(g.monto||0);},0);
+    (dd.maquinaria||[]).forEach(function(m){ if(m) allMaquinaria.add(m); });
   });
 
   var rankingW=Object.keys(workerStats).map(function(wid){
@@ -3107,6 +3104,7 @@ function _doShareProj(projId){
     '<div class="kpi kpi-b"><div class="kl">Trabajadores</div><div class="kv">'+allWorkers.size+'</div></div>'+
     (totalHE?'<div class="kpi kpi-b"><div class="kl">Horas Extras</div><div class="kv">+'+totalHE+'h</div></div>':'')+
     (totalGastos?'<div class="kpi kpi-g"><div class="kl">Gastos</div><div class="kv">'+_money(totalGastos)+'</div></div>':'')+
+    (allMaquinaria.size?'<div class="kpi" style="border-left:3px solid #7C3AED"><div class="kl">Maquinaria</div><div class="kv" style="color:#7C3AED">'+allMaquinaria.size+'</div></div>':'')+
   '</div>';
 
   // FILA: Timeline + Personal
@@ -3209,6 +3207,18 @@ function _doShareProj(projId){
       '</span>';
     }).join('');
 
+    // Sub-fila de maquinaria
+    var maqInline='';
+    if(dd.maquinaria&&dd.maquinaria.length){
+      maqInline='<tr style="background:'+(wknd?'#FEF5FF':'#F5F3FF')+';border-bottom:1px solid '+(wknd?'#FECACA':'#DDD6FE')+';">'+
+        '<td colspan="5" style="padding:2px 8px 3px 20px;">'+
+        '<span style="font-size:6.5px;font-weight:700;text-transform:uppercase;color:#7C3AED;margin-right:6px;">⚙️ Maq:</span>'+
+        dd.maquinaria.map(function(m){
+          return '<span style="display:inline-flex;align-items:center;background:#EDE9FE;border:1px solid #DDD6FE;border-radius:3px;padding:0 5px;font-size:7px;font-weight:500;color:#5B21B6;margin-right:4px;white-space:nowrap;">'+m+'</span>';
+        }).join('')+
+        '</td></tr>';
+    }
+
     // Sub-fila de gastos
     var gastosInline='';
     if(dd.gastos.length){
@@ -3239,6 +3249,7 @@ function _doShareProj(projId){
       '</td>'+
       '<td style="padding:4px 8px;"><div style="display:flex;flex-wrap:wrap;gap:1px;">'+pills+'</div></td>'+
       '</tr>'+
+      maqInline+
       gastosInline;
   });
 
@@ -3251,6 +3262,17 @@ function _doShareProj(projId){
     '<td style="padding:5px 8px;font-size:7px;color:#475569;">'+fechas.length+' días trabajados</td>'+
   '</tr>';
   html+='</tbody></table></div>';
+
+  // Maquinaria utilizada en el proyecto
+  if(allMaquinaria.size){
+    html+='<div style="background:#F5F3FF;border-radius:8px;border:1px solid #DDD6FE;padding:10px 12px;margin-bottom:10px;">'+
+      '<div style="font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#5B21B6;margin-bottom:6px;">⚙️ Maquinaria utilizada en el proyecto</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:4px;">'+
+      Array.from(allMaquinaria).map(function(m){
+        return '<span style="background:#EDE9FE;border:1px solid #DDD6FE;border-radius:4px;padding:2px 8px;font-size:8px;font-weight:500;color:#5B21B6;">'+m+'</span>';
+      }).join('')+
+      '</div></div>';
+  }
 
   // Notas
   var notasAll=[];
