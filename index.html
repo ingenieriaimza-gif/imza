@@ -1412,6 +1412,12 @@ function startLiveSync(){
       if(!rows||!rows.length){ return; } // sin rows no significa sin red
       var t=rows[0].updated_at||'';
       updateSyncUI(true);
+      // Mostrar hora del chequeo (ahora mismo), no la del último cambio en la BD
+      var mini=document.getElementById('sync-mini');
+      if(mini){
+        var now=new Date();
+        mini.textContent=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+      }
       if(t&&t!==_remoteUpdatedAt){
         _remoteUpdatedAt=t;
         pullFromCloud().then(function(updated){ if(updated) rAll(true); });
@@ -1424,6 +1430,11 @@ function startLiveSync(){
           sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
             if(!rows||!rows.length) return;
             updateSyncUI(true);
+            var mini=document.getElementById('sync-mini');
+            if(mini){
+              var now=new Date();
+              mini.textContent=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+            }
             var t=rows[0].updated_at||'';
             if(t&&t!==_remoteUpdatedAt){
               _remoteUpdatedAt=t;
@@ -5907,14 +5918,34 @@ function checkInviteParam(){
   var inv=params.get('invite');
   if(!inv) return;
   _inviteEmail=decodeURIComponent(inv).toLowerCase();
-  // Borrar sesión anterior para forzar login con el email de la invitación
-  // Sin esto, un dispositivo con sesión de otro usuario entraría como ese usuario
+
+  // Cerrar sesión activa completamente — timers, WebSocket y Supabase Auth
+  if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
+  if(_liveTimer){ clearInterval(_liveTimer); _liveTimer=null; }
+  if(_presenceTimer){ clearInterval(_presenceTimer); _presenceTimer=null; }
+  if(_onlineRefreshTimer){ clearInterval(_onlineRefreshTimer); _onlineRefreshTimer=null; }
+  if(_realtimeWs){ _realtimeWs.onclose=null; _realtimeWs.onerror=null; _realtimeWs.close(); _realtimeWs=null; }
+  if(_realtimeHb){ clearInterval(_realtimeHb); _realtimeHb=null; }
+  _currentUser=null;
+
+  // Cerrar sesión en Supabase Auth (no bloqueante)
+  var oldToken=localStorage.getItem('cp4_auth_token')||'';
+  if(oldToken){
+    fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/logout',{
+      method:'POST', credentials:'omit',
+      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',
+               'Authorization':'Bearer '+oldToken}
+    }).catch(function(){});
+  }
+
+  // Borrar todos los datos de sesión local
   ['cp4_session','cp4_auth_token','cp4_refresh_token','cp4_token_exp','cp4_last_email'].forEach(function(k){
     localStorage.removeItem(k);
   });
+
   // Limpiar la URL sin recargar
-  var clean=window.location.pathname;
-  window.history.replaceState({},'',clean);
+  window.history.replaceState({},'',window.location.pathname);
+
   // Pre-llenar el email en el login
   setTimeout(function(){
     var inp=document.getElementById('login-email-input');
