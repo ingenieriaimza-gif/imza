@@ -2611,19 +2611,24 @@ function _printBlob(pdfName, blob){
   fr.onload=function(){
     try{
       fr.contentWindow.focus();
+      // Cambiar document.title en todos los navegadores — es lo que usan para nombrar el PDF
+      var orig=document.title;
+      document.title=pdfName;
+      var restore=function(){ document.title=orig; };
       if(isIOS){
-        // Safari iOS usa el <title> del documento padre para nombrar el PDF.
-        // Cambiamos document.title antes de imprimir y lo restauramos al recuperar foco.
-        var orig=document.title;
-        document.title=pdfName;
         setTimeout(function(){
           fr.contentWindow.print();
-          var restore=function(){ document.title=orig; };
           window.addEventListener('focus',restore,{once:true});
           setTimeout(restore,8000);
         },100);
       } else {
-        fr.contentWindow.print();
+        // PC: pequeño delay para que el título se aplique antes del diálogo de impresión
+        setTimeout(function(){
+          fr.contentWindow.print();
+          // Restaurar título después de que cierre el diálogo
+          window.addEventListener('focus',restore,{once:true});
+          setTimeout(restore,30000);
+        },80);
       }
     }catch(e){
       var a=document.createElement('a');
