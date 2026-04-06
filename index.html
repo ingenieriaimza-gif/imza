@@ -2951,19 +2951,21 @@ function _doShareProj(projId){
   if(!proj) return;
   var pCode=gcode(projId), pNom=gpn(projId), pLider=gpl(projId)||'';
 
-  // ── Recopilar datos ───────────────────────────────────────────────────────
+  // ── Recopilar datos — guardar actividades individuales ───────────────────────
   var diasData={};
+  var diasActs={}; // actividades individuales por día
   Object.keys(S.actividades).sort().forEach(function(date){
     (S.actividades[date]||[]).forEach(function(a){
       if(a.proyectoId!==projId) return;
       if(!diasData[date]) diasData[date]={workers:new Set(),he:{},gastos:[],notas:[],maquinaria:[]};
+      if(!diasActs[date]) diasActs[date]=[];
+      diasActs[date].push(a);
       (a.trabajadores||[]).forEach(function(wid){ diasData[date].workers.add(wid); });
       Object.entries(a.horasExtras||{}).forEach(function(e){
         diasData[date].he[e[0]]=(diasData[date].he[e[0]]||0)+e[1];
       });
       diasData[date].gastos=diasData[date].gastos.concat(a.gastos||[]);
       if(a.notas) diasData[date].notas.push(a.notas);
-      // Acumular maquinaria sin duplicados
       (a.maquinaria||[]).forEach(function(m){
         if(m&&diasData[date].maquinaria.indexOf(m)===-1) diasData[date].maquinaria.push(m);
       });
@@ -3193,71 +3195,90 @@ function _doShareProj(projId){
     '</tr></thead><tbody>';
 
   fechas.forEach(function(date,i){
-    var dd=diasData[date];
+    var acts=diasActs[date]||[];
     var wknd=isWeekend(date)||isFestivo(date);
-    var dayHE=Object.values(dd.he).reduce(function(s,v){return s+v;},0);
-    var dayG=dd.gastos.reduce(function(s,g){return s+Number(g.monto||0);},0);
-    var wids=Array.from(dd.workers);
     var bg=wknd?'#FFF5F5':(i%2?'#FAFAFA':'#fff');
     var borderC=wknd?'#FECACA':'#F3F4F6';
+    var multiAct=acts.length>1;
 
-    // Pills con nombre COMPLETO del trabajador
-    var pills=wids.map(function(wid){
-      var nm=gwn(wid); // nombre completo
-      var he=dd.he[wid]||0;
-      var pillBg=wknd?'#FEE2E2':'#EFF6FF';
-      var pillBd=wknd?'#FECACA':'#DBEAFE';
-      var nmC=wknd?'#991B1B':'#374151';
-      return '<span style="display:inline-flex;align-items:center;gap:2px;background:'+pillBg+';border:1px solid '+pillBd+';border-radius:4px;padding:1px 6px;font-size:7.5px;margin:1px;white-space:nowrap;">'+
-        '<span style="color:'+nmC+';font-weight:500;">'+nm+'</span>'+
-        (he?'<span style="font-weight:700;color:#1D4ED8;margin-left:2px;">+'+he+'h</span>':'')+
-      '</span>';
-    }).join('');
+    acts.forEach(function(a, ai){
+      var actWids=a.trabajadores||[];
+      var actHE=Object.values(a.horasExtras||{}).reduce(function(s,v){return s+v;},0);
+      var actG=(a.gastos||[]).reduce(function(s,g){return s+Number(g.monto||0);},0);
 
-    // Sub-fila de maquinaria
-    var maqInline='';
-    if(dd.maquinaria&&dd.maquinaria.length){
-      maqInline='<tr style="background:'+(wknd?'#FEF5FF':'#F5F3FF')+';border-bottom:1px solid '+(wknd?'#FECACA':'#DDD6FE')+';">'+
-        '<td colspan="5" style="padding:2px 8px 3px 20px;">'+
-        '<span style="font-size:6.5px;font-weight:700;text-transform:uppercase;color:#7C3AED;margin-right:6px;">⚙️ Maq:</span>'+
-        dd.maquinaria.map(function(m){
-          return '<span style="display:inline-flex;align-items:center;background:#EDE9FE;border:1px solid #DDD6FE;border-radius:3px;padding:0 5px;font-size:7px;font-weight:500;color:#5B21B6;margin-right:4px;white-space:nowrap;">'+m+'</span>';
-        }).join('')+
-        '</td></tr>';
-    }
+      var pills=actWids.map(function(wid){
+        var nm=gwn(wid);
+        var he=(a.horasExtras||{})[wid]||0;
+        var pillBg=wknd?'#FEE2E2':'#EFF6FF';
+        var pillBd=wknd?'#FECACA':'#DBEAFE';
+        var nmC=wknd?'#991B1B':'#374151';
+        return '<span style="display:inline-flex;align-items:center;gap:2px;background:'+pillBg+';border:1px solid '+pillBd+';border-radius:4px;padding:1px 6px;font-size:7.5px;margin:1px;white-space:nowrap;">'+
+          '<span style="color:'+nmC+';font-weight:500;">'+nm+'</span>'+
+          (he?'<span style="font-weight:700;color:#1D4ED8;margin-left:2px;">+'+he+'h</span>':'')+
+        '</span>';
+      }).join('');
 
-    // Sub-fila de gastos
-    var gastosInline='';
-    if(dd.gastos.length){
-      gastosInline='<tr style="background:'+(wknd?'#FEF9F9':'#F8FBFF')+';border-bottom:2px solid '+(wknd?'#FECACA':'#E2E8F0')+';">'+
-        '<td colspan="5" style="padding:2px 8px 3px 20px;">'+
-        dd.gastos.map(function(g){
-          return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:7px;">'+
-            '<span style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:2px;padding:0 3px;font-size:6.5px;font-weight:600;color:#2563EB;white-space:nowrap;">'+g.tipo+'</span>'+
-            '<span style="color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">'+g.desc+'</span>'+
-            '<span style="font-weight:700;color:#059669;white-space:nowrap;">'+_money(g.monto)+'</span>'+
-          '</span>';
-        }).join('')+
-        '</td></tr>';
-    }
+      // Nota de la actividad
+      var notaInline='';
+      if(a.notas){
+        notaInline='<tr style="background:'+(wknd?'#FFF8F8':'#FAFEFF')+';border-bottom:1px solid '+borderC+';">'+
+          '<td colspan="5" style="padding:1px 8px 2px 20px;font-size:7px;color:#64748B;font-style:italic;">📝 '+a.notas+'</td></tr>';
+      }
 
-    html+=
-      '<tr style="background:'+bg+';border-bottom:1px solid '+borderC+';">'+
-      // Fecha: día semana + día + mes
-      '<td style="padding:4px 8px;font-size:8px;font-weight:'+(wknd?'700':'500')+';color:'+(wknd?'#DC2626':'#0F172A')+';white-space:nowrap;">'+
-        fmtFechaCompleta(date)+(wknd?' 🔴':'')+
-      '</td>'+
-      '<td style="padding:4px 4px;text-align:center;font-size:8.5px;font-weight:700;color:#374151;">'+wids.length+'</td>'+
-      '<td style="padding:4px 4px;text-align:center;">'+
-        (dayHE?'<span style="font-size:8px;font-weight:700;color:#1D4ED8;">+'+dayHE+'h</span>':'<span style="font-size:7px;color:#CBD5E1;">—</span>')+
-      '</td>'+
-      '<td style="padding:4px 4px;text-align:right;font-size:8px;font-weight:'+(dayG?'700':'400')+';color:'+(dayG?'#059669':'#CBD5E1')+';">'+
-        (dayG?_money(dayG):'—')+
-      '</td>'+
-      '<td style="padding:4px 8px;"><div style="display:flex;flex-wrap:wrap;gap:1px;">'+pills+'</div></td>'+
-      '</tr>'+
-      maqInline+
-      gastosInline;
+      // Maquinaria de esta actividad
+      var maqInline='';
+      if(a.maquinaria&&a.maquinaria.length){
+        maqInline='<tr style="background:'+(wknd?'#FEF5FF':'#F5F3FF')+';border-bottom:1px solid '+(wknd?'#FECACA':'#DDD6FE')+';">'+
+          '<td colspan="5" style="padding:2px 8px 3px 20px;">'+
+          '<span style="font-size:6.5px;font-weight:700;text-transform:uppercase;color:#7C3AED;margin-right:6px;">⚙️ Maq:</span>'+
+          a.maquinaria.map(function(m){
+            return '<span style="display:inline-flex;align-items:center;background:#EDE9FE;border:1px solid #DDD6FE;border-radius:3px;padding:0 5px;font-size:7px;font-weight:500;color:#5B21B6;margin-right:4px;white-space:nowrap;">'+m+'</span>';
+          }).join('')+
+          '</td></tr>';
+      }
+
+      // Gastos de esta actividad
+      var gastosInline='';
+      if(a.gastos&&a.gastos.length){
+        gastosInline='<tr style="background:'+(wknd?'#FEF9F9':'#F8FBFF')+';border-bottom:1px solid '+(wknd?'#FECACA':'#E2E8F0')+';">'+
+          '<td colspan="5" style="padding:2px 8px 3px 20px;">'+
+          a.gastos.map(function(g){
+            return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:7px;">'+
+              '<span style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:2px;padding:0 3px;font-size:6.5px;font-weight:600;color:#2563EB;white-space:nowrap;">'+g.tipo+'</span>'+
+              '<span style="color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">'+g.desc+'</span>'+
+              '<span style="font-weight:700;color:#059669;white-space:nowrap;">'+_money(g.monto)+'</span>'+
+            '</span>';
+          }).join('')+
+          '</td></tr>';
+      }
+
+      // Celda de fecha: solo en la primera actividad del día
+      var fechaCell=ai===0
+        ?'<td rowspan="'+acts.length+'" style="padding:4px 8px;font-size:8px;font-weight:'+(wknd?'700':'500')+';color:'+(wknd?'#DC2626':'#0F172A')+';white-space:nowrap;vertical-align:top;">'+
+            fmtFechaCompleta(date)+(wknd?' 🔴':'')+
+            (multiAct?'<div style="font-size:6px;color:#94A3B8;margin-top:1px;">Act. '+(ai+1)+'/'+acts.length+'</div>':'')+
+          '</td>'
+        :'';
+
+      // Indicador de actividad múltiple
+      var actLabel=multiAct?'<div style="font-size:6px;color:#94A3B8;margin-bottom:1px;">Actividad '+(ai+1)+'</div>':'';
+
+      html+=
+        '<tr style="background:'+bg+';border-bottom:1px solid '+borderC+(ai<acts.length-1?';border-bottom:1px dashed #E2E8F0':'')+'">'+ 
+        (ai===0?fechaCell:'')+
+        '<td style="padding:4px 4px;text-align:center;font-size:8.5px;font-weight:700;color:#374151;">'+actWids.length+'</td>'+
+        '<td style="padding:4px 4px;text-align:center;">'+
+          (actHE?'<span style="font-size:8px;font-weight:700;color:#1D4ED8;">+'+actHE+'h</span>':'<span style="font-size:7px;color:#CBD5E1;">—</span>')+
+        '</td>'+
+        '<td style="padding:4px 4px;text-align:right;font-size:8px;font-weight:'+(actG?'700':'400')+';color:'+(actG?'#059669':'#CBD5E1')+';">'+
+          (actG?_money(actG):'—')+
+        '</td>'+
+        '<td style="padding:4px 8px;"><div style="display:flex;flex-wrap:wrap;gap:1px;">'+actLabel+pills+'</div></td>'+
+        '</tr>'+
+        notaInline+
+        maqInline+
+        gastosInline;
+    });
   });
 
   // Fila totales
