@@ -77,6 +77,10 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
   50%  { background-position:0% 0; }
   100% { background-position:100% 0; }
 }
+@keyframes pulse {
+  0%,100% { opacity:1; }
+  50%      { opacity:0.65; }
+}
 .cal-btn { width:38px; height:38px; border-radius:12px; background:var(--golddim); border:1px solid rgba(240,201,74,0.2); display:flex; align-items:center; justify-content:center; cursor:pointer; position:relative; overflow:hidden; }
 .cal-btn svg { width:18px; height:18px; color:var(--gold); pointer-events:none; }
 .cal-btn input[type=date] { position:absolute; inset:0; opacity:0; cursor:pointer; font-size:16px; }
@@ -1457,7 +1461,17 @@ function openActM(eid=null,edate=null){
   document.getElementById('sact-title').textContent=eid?'Editar actividad':'Nueva actividad';
   const sel=document.getElementById('a-p');
   sel.innerHTML='<option value="">— Selecciona proyecto —</option>';
-  S.proyectos.forEach((p,i)=>{sel.innerHTML+=`<option value="${p.id}">A${i+1} — ${p.nombre}</option>`;});
+  S.proyectos.forEach((p,i)=>{
+    // Al editar, mostrar siempre el proyecto actual aunque esté completado
+    // Al crear, excluir proyectos completados
+    if(p.estado==='completado' && eid){
+      const existingAct=(S.actividades[edate||S.date]||[]).find(a=>a.id===eid);
+      if(!existingAct||existingAct.proyectoId!==p.id) return;
+    } else if(p.estado==='completado') {
+      return;
+    }
+    sel.innerHTML+=`<option value="${p.id}">A${i+1} — ${p.nombre}${p.estado==='pausado'?' (Pausado)':''}</option>`;
+  });
   // Actualizar título del sheet al instante cuando cambia el proyecto
   sel.onchange=function(){
     const nombre=this.value?gpn(this.value):'';
@@ -1669,13 +1683,18 @@ function saveProj(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
   const dup=S.proyectos.find(p=>p.folio===folio&&p.id!==id);
   if(dup){toast('El número "'+folio+'" ya está en uso','err');return;}
   const diasVal=parseInt(document.getElementById('pdias').value)||0;
+  const nuevoEstado=document.getElementById('pe').value;
+  const proyExistente=id?S.proyectos.find(p=>p.id===id):null;
   const d={
     folio,
     nombre:n,
     lider:document.getElementById('pd').value.trim(),
     inicio:document.getElementById('pi').value,
     diasEstimados:diasVal||null,
-    estado:document.getElementById('pe').value
+    estado:nuevoEstado,
+    completadoEn: nuevoEstado==='completado'
+      ? (proyExistente&&proyExistente.completadoEn) || td()
+      : null
   };
   if(id){const i=S.proyectos.findIndex(p=>p.id===id);if(i!==-1)S.proyectos[i]={...S.proyectos[i],...d,_upd:Date.now()};}
   else S.proyectos.push({id:'p'+Date.now(),...d,_upd:Date.now()});
@@ -2390,42 +2409,54 @@ function rHistProj(){
   }
 
   const bm={activo:'bgr',pausado:'bg',completado:'bb'};
+  const todayStr=td();
 
   function buildProjCard(proj){
     const i=S.proyectos.indexOf(proj);
     const projColor=PC[i%PC.length];
-    const pCode='A'+(i+1);
+    const pCode=proj.folio||('A'+(i+1));
     const entries=(projMap[proj.id]||[]).sort((a,b)=>b.date.localeCompare(a.date));
     const totalDias=new Set(entries.map(e=>e.date)).size;
     const totalGastos=entries.reduce((s,e)=>s+sumG(e.a.gastos),0);
     const allWorkers=new Set(entries.flatMap(e=>e.a.trabajadores||[]));
+    const esCompletado=proj.estado==='completado';
+    const terminadoHoy=esCompletado&&proj.completadoEn===todayStr;
+    const cardBorder=terminadoHoy?'border:2px solid var(--gold);box-shadow:0 0 0 3px rgba(245,207,85,0.12)':'';
+    const badgeHtml=terminadoHoy
+      ?`<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,207,85,0.18);color:var(--gold);border:1px solid rgba(245,207,85,0.4);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:800;white-space:nowrap">✅ Terminado hoy</span>`
+      :esCompletado
+        ?`<span style="background:rgba(91,156,246,0.12);color:var(--blue);border:1px solid rgba(91,156,246,0.25);border-radius:100px;padding:3px 10px;font-size:10px;font-weight:700;white-space:nowrap">${proj.completadoEn?'✓ '+fmtDate(proj.completadoEn):'✓ Completado'}</span>`
+        :'';
 
     if(!entries.length){
-      return`<div class="hday" style="opacity:0.55;margin-bottom:6px">
-        <div class="hday-h" style="cursor:default;padding:12px 14px">
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:34px;height:34px;border-radius:9px;background:${projColor}22;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${projColor};flex-shrink:0">${pCode}</div>
-            <div><div class="hday-date" style="font-size:14px">${proj.nombre}</div><div style="font-size:11px;color:var(--txt3);margin-top:1px">Sin actividades · inicio ${fmtDate(proj.inicio)}</div></div>
+      return`<div class="hday" style="opacity:${terminadoHoy?1:0.55};margin-bottom:6px;${cardBorder}${terminadoHoy?'background:rgba(245,207,85,0.03)':''}">
+        <div class="hday-h" style="cursor:default;padding:12px 14px${terminadoHoy?';background:rgba(245,207,85,0.05)':''}">
+          <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+            <div style="width:34px;height:34px;border-radius:9px;background:${terminadoHoy?'rgba(245,207,85,0.2)':projColor+'22'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${terminadoHoy?'var(--gold)':projColor};flex-shrink:0">${pCode}</div>
+            <div style="min-width:0"><div class="hday-date" style="font-size:14px;color:${terminadoHoy?'var(--gold)':''}">${proj.nombre}</div><div style="font-size:11px;color:var(--txt3);margin-top:1px">Sin actividades · inicio ${fmtDate(proj.inicio)}</div></div>
           </div>
-          <span class="b ${bm[proj.estado]||'bb'}" style="font-size:10px">${proj.estado}</span>
+          ${badgeHtml||`<span class="b ${bm[proj.estado]||'bb'}" style="font-size:10px">${proj.estado}</span>`}
         </div>
       </div>`;
     }
 
-    return`<div class="hday" data-hkey="proj-${proj.id}" style="margin-bottom:6px">
-      <div class="hday-h" onclick="togH(this)" style="padding:12px 14px">
+    return`<div class="hday" data-hkey="proj-${proj.id}" style="margin-bottom:6px;${cardBorder}${terminadoHoy?'background:rgba(245,207,85,0.03)':''}">
+      <div class="hday-h" onclick="togH(this)" style="padding:12px 14px${terminadoHoy?';background:rgba(245,207,85,0.05)':''}">
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
-          <div style="width:34px;height:34px;border-radius:9px;background:${projColor}22;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${projColor};flex-shrink:0">${pCode}</div>
+          <div style="width:34px;height:34px;border-radius:9px;background:${terminadoHoy?'rgba(245,207,85,0.2)':projColor+'22'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${terminadoHoy?'var(--gold)':projColor};flex-shrink:0">${pCode}</div>
           <div style="min-width:0">
-            <div class="hday-date" style="color:${projColor};font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${proj.nombre}</div>
+            <div class="hday-date" style="color:${terminadoHoy?'var(--gold)':projColor};font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${proj.nombre}</div>
             <div style="font-size:11px;color:var(--txt3);margin-top:1px">${totalDias}d trabajados · ${allWorkers.size} pers.${totalGastos?' · $'+totalGastos.toLocaleString():''}${entries.length?' · último: '+fmtDate(entries[0].date):''}</div>
           </div>
         </div>
-        <div class="hday-meta" style="flex-shrink:0;margin-left:8px;gap:4px">
-          <button style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(37,211,102,0.15);color:#25d166;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0" onclick="event.stopPropagation();shareProj('${proj.id}')" title="Copiar para WhatsApp">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-          </button>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>
+        <div class="hday-meta" style="flex-shrink:0;margin-left:8px;display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+          ${badgeHtml}
+          <div style="display:flex;gap:4px;align-items:center">
+            <button style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(37,211,102,0.15);color:#25d166;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0" onclick="event.stopPropagation();shareProj('${proj.id}')" title="Copiar para WhatsApp">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            </button>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
         </div>
       </div>
       <div class="hbody">
@@ -2441,7 +2472,6 @@ function rHistProj(){
   function buildGroup(icon,label,color,badgeCls,projects,subtitle,groupKey){
     const count=projects.length;
     const cards=projects.map(p=>buildProjCard(p)).join('');
-    // Si hay estado previo, respetarlo; si es primera vez, abrir por defecto
     const isOpen=prevOpen.size===0 ? true : prevOpen.has('group-'+groupKey);
     return`<div class="hday" data-hkey="group-${groupKey}" style="margin-bottom:12px;border-color:${color}40;overflow:visible">
       <div class="hday-h" onclick="togH(this)" style="background:${color}0a;border-radius:var(--r) var(--r) 0 0">
@@ -2465,14 +2495,21 @@ function rHistProj(){
 
   const actPaus = sortByActivity(S.proyectos.filter(p=>p.estado==='activo'||p.estado==='pausado'));
   const completados = S.proyectos.filter(p=>p.estado==='completado')
-    .sort((a,b)=>(b.inicio||'').localeCompare(a.inicio||''));
+    .sort((a,b)=>{
+      const aHoy=a.completadoEn===todayStr?1:0;
+      const bHoy=b.completadoEn===todayStr?1:0;
+      if(bHoy!==aHoy) return bHoy-aHoy;
+      return (b.completadoEn||b.inicio||'').localeCompare(a.completadoEn||a.inicio||'');
+    });
 
+  const terminadosHoy=completados.filter(p=>p.completadoEn===todayStr).length;
   const apSubtitle = actPaus.filter(p=>p.estado==='activo').length+' activos · '+actPaus.filter(p=>p.estado==='pausado').length+' pausados';
-  const compSubtitle = completados.length+' proyecto'+(completados.length!==1?'s':'')+' terminados';
+  const compSubtitle = completados.length+' proyecto'+(completados.length!==1?'s':'')+' terminados'+(terminadosHoy?' · '+terminadosHoy+' hoy 🟡':'');
 
   c.innerHTML =
     buildGroup('🏗️','Activos y Pausados','var(--green)','bgr', actPaus, apSubtitle,'activos') +
     buildGroup('✅','Completados','var(--blue)','bb', completados, compSubtitle,'completados');
+
   // Restaurar acordeones que estaban abiertos antes del re-render
   restoreAccordionState(c, prevOpen);
 }
