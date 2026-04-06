@@ -1217,9 +1217,14 @@ function updateSyncUI(ok){
   var mini=document.getElementById('sync-mini');
   if(mini){
     var nombre=_currentUser?_currentUser.nombre:'';
-    var estado=ok?'En línea':'Sin conexión';
-    mini.textContent=nombre?(nombre+' · '+estado):estado;
-    mini.style.color=ok?'var(--green)':'var(--red)';
+    if(ok){
+      mini.textContent=nombre?(nombre+' · En línea'):('En línea');
+      mini.style.color='var(--green)';
+    } else {
+      // Offline: solo mostrar nombre, el badge ya indica Sin conexión
+      mini.textContent=nombre||'';
+      mini.style.color='var(--txt2)';
+    }
   }
   // sync-mini (hora junto al punto) lo actualiza SOLO el polling con la hora del chequeo
   // Aquí solo actualizamos el panel expandido con info del último cambio
@@ -1396,12 +1401,15 @@ function save(){
     renderChangeLog();
   }
   _lastAction=''; // limpiar DESPUÉS de loguear
-  if(!_isOnline){
-    showNoConnection();
-    return; // saved locally, will push when back online
-  }
+  // Siempre intentar push aunque _isOnline sea false:
+  // en iPhone el token puede estar expirado y sbFetch ya maneja el refresh automático
+  // Si el push funciona, actualiza a En línea; si falla de verdad, muestra error
   pushToCloud().then(function(ok){
-    if(!ok) showNoConnection();
+    if(ok){
+      updateSyncUI(true);
+    } else {
+      showNoConnection();
+    }
   });
 }
 
@@ -5145,7 +5153,12 @@ function enterApp(found, sessionData){
   pullFromCloud().then(function(updated){
     updateSyncUI(true);
     if(updated) rAll(true);
-  }).catch(function(){ updateSyncUI(false); });
+  }).catch(function(){
+    refreshAuthToken().then(function(t){
+      if(t) pullFromCloud().then(function(u){ updateSyncUI(true); if(u) rAll(true); }).catch(function(){ updateSyncUI(false); });
+      else updateSyncUI(false);
+    }).catch(function(){ updateSyncUI(false); });
+  });
 }
 
 function initAuth(){
@@ -6426,7 +6439,12 @@ document.addEventListener('visibilitychange',function(){
     setTimeout(function(){
       if(!_isPushing){
         pullFromCloud().then(function(u){ if(u) rAll(true); updateSyncUI(true); })
-        .catch(function(){ updateSyncUI(false); });
+        .catch(function(){
+          refreshAuthToken().then(function(t){
+            if(t) pullFromCloud().then(function(u){ if(u) rAll(true); updateSyncUI(true); }).catch(function(){ updateSyncUI(false); });
+            else updateSyncUI(false);
+          }).catch(function(){ updateSyncUI(false); });
+        });
       }
     }, 300);
   }
