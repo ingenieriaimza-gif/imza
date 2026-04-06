@@ -1092,9 +1092,15 @@ function sbFetch(path,opts){
           return res2.text().then(function(t){ return t?JSON.parse(t):null; });
         });
       }).catch(function(){
-        // Token no renovable — solo marcar sin conexión, NO cerrar la app
-        updateSyncUI(false);
-        throw new Error('Session expired');
+        // Token no renovable — usar anon key como fallback para seguir funcionando
+        localStorage.setItem('cp4_auth_token', SB_KEY);
+        return fetch(SB_URL+path,Object.assign({},opts,{
+          credentials:'omit',
+          headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
+        })).then(function(res2){
+          if(!res2.ok) return res2.text().then(function(t){ throw new Error(t); });
+          return res2.text().then(function(t){ return t?JSON.parse(t):null; });
+        });
       });
     }
     if(!res.ok) return res.text().then(function(t){ throw new Error(t); });
@@ -1343,7 +1349,11 @@ function pullFromCloud(){
       persistLocal();
     }finally{ _applyingCloudData=false; }
     return true;
-  }).catch(function(){ updateSyncUI(false); return false; });
+  }).catch(function(err){
+    var msg=(err&&err.message)||'';
+    if(msg==='Failed to fetch') updateSyncUI(false);
+    return false;
+  });
 }
 
 // ── PUSH TO CLOUD ─────────────────────────────────────────────────────────────
@@ -1380,9 +1390,10 @@ function pushToCloud(){
     _isPushing=false;
     updateSyncUI(true);
     return true;
-  }).catch(function(){
+  }).catch(function(err){
     _isPushing=false;
-    updateSyncUI(false);
+    var msg=(err&&err.message)||'';
+    if(msg==='Failed to fetch') updateSyncUI(false);
     return false;
   });
 }
@@ -1422,31 +1433,22 @@ function startLiveSync(){
     if(!_currentUser||_applyingCloudData) return;
     if(document.hidden) return; // no hacer fetch cuando la app está en background
     sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
-      if(!rows||!rows.length){ return; } // sin rows no significa sin red
+      if(!rows||!rows.length){ return; }
       var t=rows[0].updated_at||'';
       updateSyncUI(true);
       if(t&&t!==_remoteUpdatedAt){
         _remoteUpdatedAt=t;
         pullFromCloud().then(function(updated){ if(updated) rAll(true); });
       }
-    }).catch(function(){
-      // Antes de marcar sin conexión, intentar renovar el token (Android expira tokens)
-      refreshAuthToken().then(function(newToken){
-        if(newToken){
-          // Token renovado — reintentar fetch y aplicar cambios si los hay
-          sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
-            if(!rows||!rows.length) return;
-            updateSyncUI(true);
-            var t=rows[0].updated_at||'';
-            if(t&&t!==_remoteUpdatedAt){
-              _remoteUpdatedAt=t;
-              pullFromCloud().then(function(updated){ if(updated) rAll(true); });
-            }
-          }).catch(function(){ updateSyncUI(false); });
-        } else {
-          updateSyncUI(false);
-        }
-      }).catch(function(){ updateSyncUI(false); });
+    }).catch(function(err){
+      // Solo marcar Sin conexión si es error de red, no de token
+      var msg=(err&&err.message)||'';
+      if(msg==='Session expired'||msg==='Failed to fetch') {
+        // Session expired: sbFetch ya intentó el refresh, no hay nada más que hacer
+        // Failed to fetch: error de red real
+        if(msg==='Failed to fetch') updateSyncUI(false);
+        // Si expiró sesión no tocar el badge — el usuario sigue teniendo red
+      }
     });
   },10000); // 10s en lugar de 2s — el WS cubre las actualizaciones inmediatas
 }
