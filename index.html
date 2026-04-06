@@ -1071,9 +1071,11 @@ function detectDevice(){
 // ── API ───────────────────────────────────────────────────────────────────────
 function sbFetch(path,opts){
   opts=opts||{};
+  // Usar el token JWT del usuario autenticado si existe, si no usar anon key
+  var userToken=localStorage.getItem('cp4_auth_token')||SB_KEY;
   return fetch(SB_URL+path,Object.assign({},opts,{
     credentials:'omit',
-    headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
+    headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+userToken,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
   })).then(function(res){
     if(!res.ok) return res.text().then(function(t){ throw new Error(t); });
     return res.text().then(function(t){ return t?JSON.parse(t):null; });
