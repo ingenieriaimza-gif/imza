@@ -5131,23 +5131,38 @@ function initAuth(){
         if(match){
           var age=Date.now()-new Date(rows[i].updated_at).getTime();
           if(age>7*24*60*60*1000) continue;
-          // Restaurar refresh_token y renovar access_token antes de entrar
           var rt=sd.refresh_token||'';
           if(rt){
+            // Guardar refresh_token y renovar ANTES de entrar a la app
             localStorage.setItem('cp4_refresh_token',rt);
-            // Renovar token primero, luego entrar con token válido
+            // Intentar renovar — si falla, esperar 2s y reintentar una vez más
             refreshAuthToken().then(function(newToken){
               if(newToken){
                 localStorage.setItem('cp4_auth_token',newToken);
+                enterApp(match, sd);
+              } else {
+                // Primer intento falló — esperar y reintentar con refresh más reciente de Supabase
+                setTimeout(function(){
+                  // Re-leer imza_sessions para obtener refresh_token más reciente
+                  fetch(SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(sd.email)+'&select=session_data',{
+                    credentials:'omit',
+                    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
+                  }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows2){
+                    var sd2=rows2&&rows2[0]?JSON.parse(rows2[0].session_data||'{}'):{};
+                    var rt2=sd2.refresh_token||rt;
+                    if(rt2!==rt) localStorage.setItem('cp4_refresh_token',rt2);
+                    return refreshAuthToken();
+                  }).then(function(newToken2){
+                    if(newToken2) localStorage.setItem('cp4_auth_token',newToken2);
+                    enterApp(match, sd);
+                  }).catch(function(){ enterApp(match, sd); });
+                }, 2000);
               }
-              enterApp(match, sd);
             }).catch(function(){
-              // Si no se puede renovar, entrar igual con datos locales
               enterApp(match, sd);
             });
           } else {
-            // Sin refresh_token, entrar con lo que hay (datos locales)
-            if(sd.auth_token) localStorage.setItem('cp4_auth_token',sd.auth_token);
+            // Sin refresh_token — entrar en modo offline
             enterApp(match, sd);
           }
           return;
