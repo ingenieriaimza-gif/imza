@@ -5321,126 +5321,102 @@ function handleAuthSession(session){
 // ── MAGIC LINK AUTH ──────────────────────────────────────────────────────────
 
 function handleMagicLinkCallback(){
-  // Check URL for magic link token from Supabase
   var hash=window.location.hash;
   var params=new URLSearchParams(hash.replace('#',''));
   var accessToken=params.get('access_token');
-  var type=params.get('type');
   if(!accessToken) return false;
-  // Exchange token for user info
-  fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/user',{
-    credentials:'omit',
-    headers:{
-      'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',
-      'Authorization':'Bearer '+accessToken
-    }
-  }).then(function(res){ return res.json(); }).then(function(user){
-    if(!user||!user.email) return;
-    var email=user.email.toLowerCase();
-    // Always fetch fresh users from Supabase before matching
-    fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
-      credentials:'omit',
-      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer '+accessToken}
-    }).then(function(r){ return r.json(); }).then(function(rows){
-      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users) S.users=rows[0].data.users;
-      var found=(S.users||[]).find(function(u){
-        return (u.email||'').toLowerCase()===email;
-      });
-      if(found){
-        _currentUser=found;
-        var sessionData={id:found.id,nombre:found.nombre,email:(found.email||email).toLowerCase(),rol:found.rol};
-        localStorage.setItem('cp4_session',JSON.stringify(sessionData));
-        localStorage.setItem('cp4_auth_token',accessToken);
-        localStorage.setItem('cp4_last_email',(found.email||email).toLowerCase());
-        var refreshToken=params.get('refresh_token');
-        if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
-        var expiresIn=params.get('expires_in')||3600;
-        localStorage.setItem('cp4_token_exp',Date.now()+Number(expiresIn)*1000);
 
-        // Renovar token inmediatamente para obtener un refresh_token fresco
-        // que la PWA pueda usar (el original del magic link es de un solo uso)
-        function saveSessionToSupabase(freshAccessToken, freshRefreshToken){
-          var sessionDataWithTokens=Object.assign({},sessionData,{
-            auth_token:freshAccessToken||accessToken,
-            refresh_token:freshRefreshToken||refreshToken||''
-          });
-          sbFetch('/rest/v1/imza_sessions',{
-            method:'POST',
-            headers:{'Prefer':'resolution=merge-duplicates'},
-            body:JSON.stringify({
-              device_id:(found.email||email).toLowerCase(),
-              session_data:JSON.stringify(sessionDataWithTokens),
-              updated_at:new Date().toISOString()
-            })
-          }).catch(function(){});
-        }
+  var refreshToken=params.get('refresh_token')||'';
+  var expiresIn=Number(params.get('expires_in')||3600);
 
-        if(refreshToken){
-          // Renovar para obtener tokens frescos antes de guardar en Supabase
-          refreshAuthToken().then(function(newToken){
-            var newRefresh=localStorage.getItem('cp4_refresh_token');
-            saveSessionToSupabase(newToken||accessToken, newRefresh||refreshToken);
-          }).catch(function(){
-            saveSessionToSupabase(accessToken, refreshToken);
-          });
-        } else {
-          saveSessionToSupabase(accessToken, '');
-        }
-
-        window.history.replaceState(null,'',window.location.pathname);
-        document.getElementById('login-screen').style.display='none';
-        document.getElementById('app').style.display='flex';
-        applyRoleRestrictions();
-        rAll();
-        toast('Bienvenido, '+found.nombre+' 👋','ok');
-      } else {
-        document.getElementById('login-error').textContent='Correo no registrado. Contacta al administrador.';
-        document.getElementById('login-step-email').style.display='block';
-        document.getElementById('login-step-sent').style.display='none';
-        document.getElementById('login-screen').style.display='flex';
-      }
-    }).catch(function(){
-      // Fallback: intentar cargar usuarios con el accessToken antes de buscar
-      fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
-        credentials:'omit',
-        headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer '+accessToken}
-      }).then(function(r){ return r.json(); }).then(function(rows){
-        if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
-          S.users=rows[0].data.users;
-          localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-        }
-      }).catch(function(){}).finally(function(){
-        var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
-        if(found){
-          _currentUser=found;
-          var sd={id:found.id,nombre:found.nombre,email:(found.email||email).toLowerCase(),rol:found.rol};
-          localStorage.setItem('cp4_session',JSON.stringify(sd));
-          localStorage.setItem('cp4_auth_token',accessToken);
-          var rt=params.get('refresh_token');
-          if(rt) localStorage.setItem('cp4_refresh_token',rt);
-          window.history.replaceState(null,'',window.location.pathname);
-          var splash=document.getElementById('splash-screen');
-          if(splash) splash.style.display='none';
-          document.getElementById('login-screen').style.display='none';
-          document.getElementById('app').style.display='flex';
-          applyRoleRestrictions();
-          rAll();
-          toast('Bienvenido, '+found.nombre+' 👋','ok');
-        } else {
-          document.getElementById('login-error').textContent='Correo no registrado. Contacta al administrador.';
-          document.getElementById('login-step-email').style.display='block';
-          document.getElementById('login-step-sent').style.display='none';
-          var splash2=document.getElementById('splash-screen');
-          if(splash2) splash2.style.display='none';
-          document.getElementById('login-screen').style.display='flex';
-        }
-      });
-    });
-  }).catch(function(){
-    document.getElementById('login-error').textContent='Error al verificar. Intenta de nuevo.';
+  // Siempre ocultar splash y mostrar login si algo falla
+  function showErr(msg){
     var splash=document.getElementById('splash-screen');
     if(splash) splash.style.display='none';
+    var errEl=document.getElementById('login-error');
+    if(errEl) errEl.textContent=msg||'Error al verificar. Intenta de nuevo.';
+    document.getElementById('login-step-email').style.display='block';
+    document.getElementById('login-step-sent').style.display='none';
     document.getElementById('login-screen').style.display='flex';
+  }
+
+  function finishLogin(found){
+    var email=(found.email||'').toLowerCase();
+    var sessionData={id:found.id,nombre:found.nombre,email:email,rol:found.rol};
+    localStorage.setItem('cp4_session',JSON.stringify(sessionData));
+    localStorage.setItem('cp4_auth_token',accessToken);
+    localStorage.setItem('cp4_last_email',email);
+    if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
+    localStorage.setItem('cp4_token_exp',String(Date.now()+expiresIn*1000));
+
+    // Guardar sesión en Supabase para el puente PWA (no bloqueante)
+    function saveSession(at, rt){
+      sbFetch('/rest/v1/imza_sessions',{
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates'},
+        body:JSON.stringify({
+          device_id:email,
+          session_data:JSON.stringify(Object.assign({},sessionData,{auth_token:at,refresh_token:rt})),
+          updated_at:new Date().toISOString()
+        })
+      }).catch(function(){});
+    }
+    if(refreshToken){
+      refreshAuthToken().then(function(newToken){
+        saveSession(newToken||accessToken, localStorage.getItem('cp4_refresh_token')||refreshToken);
+      }).catch(function(){ saveSession(accessToken, refreshToken); });
+    } else {
+      saveSession(accessToken,'');
+    }
+
+    window.history.replaceState(null,'',window.location.pathname);
+    var splash=document.getElementById('splash-screen');
+    if(splash) splash.style.display='none';
+    document.getElementById('login-screen').style.display='none';
+    _currentUser=found;
+    document.getElementById('app').style.display='flex';
+    applyRoleRestrictions();
+    rAll();
+    toast('Bienvenido, '+found.nombre+' 👋','ok');
+  }
+
+  // Paso 1: obtener email del token
+  fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/user',{
+    credentials:'omit',
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+accessToken}
+  }).then(function(res){
+    if(!res.ok) throw new Error('auth_fail');
+    return res.json();
+  }).then(function(user){
+    if(!user||!user.email) throw new Error('no_email');
+    var email=user.email.toLowerCase();
+
+    // Paso 2: cargar usuarios frescos de Supabase
+    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+      credentials:'omit',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+accessToken,'Content-Type':'application/json'}
+    }).then(function(r){ return r.ok?r.json():Promise.reject('data_fail'); })
+    .then(function(rows){
+      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
+        S.users=rows[0].data.users;
+        localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+      }
+    }).catch(function(){
+      // Si falla usar caché local
+      if(!S.users||!S.users.length){
+        var bk=localStorage.getItem('cp4_users_backup');
+        if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
+      }
+    }).finally(function(){
+      var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
+      if(found){
+        finishLogin(found);
+      } else {
+        showErr('Correo no registrado. Contacta al administrador.');
+      }
+    });
+  }).catch(function(){
+    showErr('Error al verificar. Intenta de nuevo.');
   });
   return true;
 }
