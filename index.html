@@ -5269,24 +5269,23 @@ function sendMagicLink(){
   if(btn){ btn.disabled=true; btn.textContent='Verificando...'; }
   errEl.textContent='';
 
-  // Verificar el correo contra usuarios cacheados localmente
-  // (no podemos hacer fetch a Supabase sin token antes del login)
+  // Verificar contra caché local si existe
   var cachedUsers=S.users||[];
   if(!cachedUsers.length){
     var bk=localStorage.getItem('cp4_users_backup');
     if(bk) try{ cachedUsers=JSON.parse(bk); }catch(e){}
   }
-  var found=cachedUsers.find(function(u){ return (u.email||'').toLowerCase()===email; });
-  if(!found){
-    // Si no hay caché, intentar igual — Supabase enviará el magic link si el correo existe
-    // El error real se detectará cuando el usuario intente entrar
-    resetBtn();
-    // Solo bloquear si tenemos usuarios en caché y el correo no está
-    if(cachedUsers.length>0){
+
+  // Si hay caché y el correo no está — bloquear
+  if(cachedUsers.length>0){
+    var found=cachedUsers.find(function(u){ return (u.email||'').toLowerCase()===email; });
+    if(!found){
+      resetBtn();
       errEl.textContent='Este correo no está registrado. Contacta al administrador.';
       return;
     }
   }
+  // Sin caché o correo encontrado — enviar directamente
   resetBtn();
   _doSendMagicLink(email,errEl,btn);
 }
