@@ -1436,8 +1436,9 @@ function save(){
   pushToCloud().then(function(ok){
     if(ok){
       updateSyncUI(true);
+      toast('✅ Guardado','ok');
     } else {
-      showNoConnection();
+      toast('❌ No se pudo guardar — revisa conexión','err');
     }
   });
 }
