@@ -1429,7 +1429,8 @@ function save(){
     addToChangeLog(new Date().toISOString(),_currentUser.nombre,logAction);
     renderChangeLog();
   }
-  _lastAction=''; // limpiar DESPUÉS de loguear
+  // NO limpiar _lastAction aquí — pushToCloud() la necesita para enviar la acción al servidor
+  // pushToCloud() la limpia después de un push exitoso
   // Siempre intentar push aunque _isOnline sea false:
   // en iPhone el token puede estar expirado y sbFetch ya maneja el refresh automático
   // Si el push funciona, actualiza a En línea; si falla de verdad, muestra error
@@ -1455,18 +1456,17 @@ function startLiveSync(){
       if(!rows||!rows.length){ return; }
       var t=rows[0].updated_at||'';
       updateSyncUI(true);
-      if(t&&t!==_remoteUpdatedAt){
+      // Hacer pull si: el timestamp cambió O si hay una actualización pendiente y ya no hay sheet abierta
+      if(t&&(t!==_remoteUpdatedAt||(_pendingRemoteUpdate&&!isSheetOpen()))){
         _remoteUpdatedAt=t;
+        _pendingRemoteUpdate=false;
         pullFromCloud().then(function(updated){ if(updated) rAll(true); });
       }
     }).catch(function(err){
       // Solo marcar Sin conexión si es error de red, no de token
       var msg=(err&&err.message)||'';
       if(msg==='Session expired'||msg==='Failed to fetch') {
-        // Session expired: sbFetch ya intentó el refresh, no hay nada más que hacer
-        // Failed to fetch: error de red real
         if(msg==='Failed to fetch') updateSyncUI(false);
-        // Si expiró sesión no tocar el badge — el usuario sigue teniendo red
       }
     });
   },10000); // 10s en lugar de 2s — el WS cubre las actualizaciones inmediatas
@@ -1476,6 +1476,8 @@ function startPing(){ startLiveSync(); }
 function syncNow(){ pullFromCloud().then(function(u){ if(u) rAll(true); }); }
 
 // ── WEBSOCKET ─────────────────────────────────────────────────────────────────
+var _pendingRemoteUpdate=false; // true cuando llega evento WS con sheet abierta
+
 function startRealtime(){
   if(_realtimeWs&&(_realtimeWs.readyState===0||_realtimeWs.readyState===1)) return;
   try{
@@ -1493,8 +1495,10 @@ function startRealtime(){
         if(!isChange||_applyingCloudData) return;
         var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device)||'';
         if(dev&&dev===detectDevice()) return;
-        // No actualizar estado S si el usuario tiene una sheet abierta (podría estar editando)
-        if(isSheetOpen()) return;
+        // Si hay sheet abierta: marcar actualización pendiente pero NO tocar los datos
+        // La sheet cierra → closeS() llama pull automáticamente
+        if(isSheetOpen()){ _pendingRemoteUpdate=true; return; }
+        _pendingRemoteUpdate=false;
         pullFromCloud().then(function(u){ if(u){ rAll(true); updateSyncUI(true); } });
       }catch(e){}
     };
@@ -1613,7 +1617,9 @@ function openS(id){
 function closeS(id){
   document.getElementById(id).classList.remove('open');
   // Push cambios locales primero, luego pull para capturar lo que llegó mientras estaba abierta
+  // Siempre hacer pull al cerrar, especialmente si llegó un update remoto mientras estaba abierta
   clearTimeout(_syncTimer);
+  _pendingRemoteUpdate=false; // vamos a hacer pull de todas formas
   pushToCloud().then(function(){
     pullFromCloud().then(function(u){ if(u) rAll(true); });
   }).catch(function(){
@@ -2081,6 +2087,7 @@ function isPast11pm(){
 
 var _syncRendering=false;
 var _lastInteraction=0;
+var _rAllRetries=0; // contador para evitar loop infinito
 
 // Track user interactions to pause sync
 ['touchstart','touchend','mousedown','click','keydown'].forEach(function(evt){
@@ -2106,13 +2113,16 @@ function rAll(fromSync){
 
   if(fromSync){
     if(_rAllTimer) clearTimeout(_rAllTimer);
-    _rAllTimer=setTimeout(function(){
+    _rAllRetries=0;
+    _rAllTimer=setTimeout(function tryRender(){
       // Si hay una sheet/modal abierta o el usuario interactuó en los últimos 4s,
-      // posponer el render hasta que termine — verificar cada 500ms
-      if(isUserInteracting()){
-        _rAllTimer=setTimeout(function(){ rAll(true); }, 500);
+      // posponer el render hasta que termine — máx 20 reintentos (10 segundos)
+      if(isUserInteracting()&&_rAllRetries<20){
+        _rAllRetries++;
+        _rAllTimer=setTimeout(tryRender, 500);
         return;
       }
+      _rAllRetries=0;
       _syncRendering=true;
       if(scroll) scroll.style.overflow='hidden';
       requestAnimationFrame(function(){
