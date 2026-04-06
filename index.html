@@ -5267,26 +5267,16 @@ function initAuth(){
                 localStorage.setItem('cp4_auth_token',newToken);
                 enterApp(match, matchSession);
               } else {
-                setTimeout(function(){
-                  fetch(SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(sd.email)+'&select=session_data',{
-                    credentials:'omit',
-                    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
-                  }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows2){
-                    var sd2=rows2&&rows2[0]?JSON.parse(rows2[0].session_data||'{}'):{};
-                    var rt2=sd2.refresh_token||rt;
-                    if(rt2!==rt) localStorage.setItem('cp4_refresh_token',rt2);
-                    return refreshAuthToken();
-                  }).then(function(newToken2){
-                    if(newToken2) localStorage.setItem('cp4_auth_token',newToken2);
-                    enterApp(match, matchSession);
-                  }).catch(function(){ enterApp(match, matchSession); });
-                }, 2000);
+                // Token no renovable — pedir login, no entrar sin autenticación
+                showLoginScreen();
               }
             }).catch(function(){
-              enterApp(match, matchSession);
+              // Error renovando token — pedir login
+              showLoginScreen();
             });
           } else {
-            enterApp(match, matchSession);
+            // Sin refresh_token — pedir login
+            showLoginScreen();
           }
           return;
         }
