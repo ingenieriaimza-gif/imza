@@ -5469,7 +5469,16 @@ function showLogin(){
   var errEl=document.getElementById('login-error');
   if(errEl) errEl.textContent='';
   var inp=document.getElementById('login-email-input');
-  if(inp){ inp.value=''; setTimeout(function(){ inp.focus(); },300); }
+  // Si hay email de invitación, pre-llenarlo y no borrarlo
+  if(inp){
+    if(_inviteEmail){
+      inp.value=_inviteEmail;
+      setTimeout(function(){ inp.focus(); },300);
+    } else {
+      inp.value='';
+      setTimeout(function(){ inp.focus(); },300);
+    }
+  }
 }
 
 function loginBack(){
@@ -5944,12 +5953,7 @@ function checkInviteParam(){
 
   // Limpiar la URL sin recargar
   window.history.replaceState({},'',window.location.pathname);
-
-  // Pre-llenar el email en el login
-  setTimeout(function(){
-    var inp=document.getElementById('login-email-input');
-    if(inp){ inp.value=_inviteEmail; inp.focus(); }
-  },300);
+  // El email se pre-llena en showLogin() que respeta _inviteEmail
 }
 
 function togSnapsPanel(){
