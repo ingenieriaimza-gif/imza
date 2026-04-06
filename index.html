@@ -3261,7 +3261,11 @@ function rProj(){
 function persCard(p,i,estOverride){
   const est=estOverride||p.estado||'activo';
   const bm={activo:'bgr',inactivo:'bb',vacaciones:'bg',falta:'br'};
-  return`<div class="li">
+  const isVisor=_currentUser&&_currentUser.rol==='visor';
+  return`<div class="li pers-sortable" data-pid="${p.id}" style="user-select:none">
+    ${!isVisor?`<div class="pers-drag-handle" style="width:28px;height:36px;display:flex;align-items:center;justify-content:center;cursor:grab;flex-shrink:0;opacity:0.3;touch-action:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px;color:var(--txt3)"><line x1="5" y1="6" x2="19" y2="6"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="5" y1="18" x2="19" y2="18"/></svg>
+    </div>`:''}
     <div class="liav" style="background:${WC[i%WC.length]}22;color:${WC[i%WC.length]}">${inits(p.nombre)}</div>
     <div class="lib">
       <div class="liname">${p.nombre}</div>
@@ -3275,6 +3279,102 @@ function persCard(p,i,estOverride){
       </div>
     </div>
   </div>`;
+}
+
+// ── DRAG & DROP REORDER PERSONAL ─────────────────────────────────────────────
+var _dragEl=null,_dragClone=null,_dragStartY=0,_dragCloneTop=0,_dragPlaceholder=null;
+
+function initPersDrag(container){
+  if(_currentUser&&_currentUser.rol==='visor') return;
+  var rows=Array.from(container.querySelectorAll('.pers-sortable'));
+  if(!rows.length) return;
+
+  rows.forEach(function(row){
+    var handle=row.querySelector('.pers-drag-handle');
+    if(!handle) return;
+
+    function onStart(e){
+      e.preventDefault();
+      var clientY=e.touches?e.touches[0].clientY:e.clientY;
+      _dragEl=row;
+      _dragStartY=clientY;
+
+      var rect=row.getBoundingClientRect();
+      _dragCloneTop=rect.top;
+
+      _dragClone=row.cloneNode(true);
+      _dragClone.style.cssText='position:fixed;left:'+rect.left+'px;top:'+rect.top+'px;width:'+rect.width+'px;z-index:9999;opacity:0.95;box-shadow:0 8px 32px rgba(0,0,0,0.6);border-radius:12px;pointer-events:none;background:var(--card2);border:1.5px solid var(--gold);transition:none';
+      document.body.appendChild(_dragClone);
+
+      _dragPlaceholder=document.createElement('div');
+      _dragPlaceholder.style.cssText='height:'+rect.height+'px;border-radius:12px;background:rgba(245,207,85,0.07);border:1.5px dashed rgba(245,207,85,0.3);margin-bottom:8px';
+      row.parentNode.insertBefore(_dragPlaceholder,row);
+      row.style.visibility='hidden';
+
+      document.addEventListener('mousemove',onMove);
+      document.addEventListener('touchmove',onMove,{passive:false});
+      document.addEventListener('mouseup',onEnd);
+      document.addEventListener('touchend',onEnd);
+    }
+
+    function onMove(e){
+      if(!_dragClone) return;
+      e.preventDefault();
+      var clientY=e.touches?e.touches[0].clientY:e.clientY;
+      var dy=clientY-_dragStartY;
+      _dragStartY=clientY;
+      _dragCloneTop+=dy;
+      _dragClone.style.top=_dragCloneTop+'px';
+
+      var cloneH=_dragClone.getBoundingClientRect().height;
+      var cloneMid=_dragCloneTop+cloneH/2;
+
+      var allRows=Array.from(container.querySelectorAll('.pers-sortable'));
+      var target=null, insertBefore=true;
+      allRows.forEach(function(r){
+        if(r===_dragEl) return;
+        var rr=r.getBoundingClientRect();
+        if(cloneMid>rr.top&&cloneMid<rr.bottom){
+          target=r;
+          insertBefore=cloneMid<rr.top+rr.height/2;
+        }
+      });
+      if(target){
+        if(insertBefore) target.parentNode.insertBefore(_dragPlaceholder,target);
+        else target.parentNode.insertBefore(_dragPlaceholder,target.nextSibling);
+      }
+    }
+
+    function onEnd(){
+      if(!_dragClone) return;
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('touchmove',onMove);
+      document.removeEventListener('mouseup',onEnd);
+      document.removeEventListener('touchend',onEnd);
+
+      _dragEl.style.visibility='';
+      _dragPlaceholder.parentNode.insertBefore(_dragEl,_dragPlaceholder);
+      _dragPlaceholder.remove();
+      _dragClone.remove();
+      _dragClone=null; _dragPlaceholder=null; _dragEl=null;
+
+      // Reconstruir S.personal según nuevo orden DOM
+      var newOrder=Array.from(container.querySelectorAll('.pers-sortable')).map(function(r){return r.dataset.pid;});
+      var map={};
+      S.personal.forEach(function(p){map[p.id]=p;});
+      var sorted=newOrder.filter(function(id){return map[id];}).map(function(id){return map[id];});
+      S.personal.forEach(function(p){if(!sorted.find(function(x){return x.id===p.id;}))sorted.push(p);});
+      S.personal=sorted;
+      markChanged('personal');
+      setAction('Reordenó personal');
+      save();
+      toast('Orden guardado ✓','ok');
+      rPers();
+    }
+
+    handle.addEventListener('mousedown',onStart);
+    handle.addEventListener('touchstart',onStart,{passive:false});
+  });
 }
 
 function persGroup(label, emoji, color, badgeCls, workers, openByDefault, estMap){
@@ -3338,6 +3438,8 @@ function rPers(){
   html += persGroup('Falta',      '❌', 'var(--red)',   'br',  faltas,     true,  estMap);
   html += persGroup('Inactivos',  '⏸️', 'var(--txt2)',  'bb',  inactivos,  true,  estMap);
   c.innerHTML=html||'<div class="empty"><p>Sin trabajadores</p></div>';
+  // Activar drag & drop para reordenar
+  requestAnimationFrame(function(){ initPersDrag(c); });
 }
 
 let _nomTab='personal';
