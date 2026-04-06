@@ -2420,10 +2420,14 @@ function rHistProj(){
     const totalGastos=entries.reduce((s,e)=>s+sumG(e.a.gastos),0);
     const allWorkers=new Set(entries.flatMap(e=>e.a.trabajadores||[]));
     const esCompletado=proj.estado==='completado';
-    const terminadoHoy=esCompletado&&proj.completadoEn===todayStr;
+    // Detectar "terminado hoy": usar completadoEn si existe, si no usar _upd como fallback
+    const updToday=proj._upd?new Date(proj._upd).toISOString().split('T')[0]===todayStr:false;
+    const terminadoHoy=esCompletado&&(proj.completadoEn===todayStr||(updToday&&!proj.completadoEn));
+    // Si se detecta via _upd, guardar completadoEn retroactivamente para la próxima vez
+    if(terminadoHoy&&!proj.completadoEn){ proj.completadoEn=todayStr; }
     const cardBorder=terminadoHoy?'border:2px solid var(--gold);box-shadow:0 0 0 3px rgba(245,207,85,0.12)':'';
     const badgeHtml=terminadoHoy
-      ?`<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,207,85,0.18);color:var(--gold);border:1px solid rgba(245,207,85,0.4);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:800;white-space:nowrap">✅ Terminado hoy</span>`
+      ?`<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,207,85,0.18);color:var(--gold);border:1px solid rgba(245,207,85,0.4);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:800;white-space:nowrap;animation:pulse 2s ease infinite">✅ Terminado hoy</span>`
       :esCompletado
         ?`<span style="background:rgba(91,156,246,0.12);color:var(--blue);border:1px solid rgba(91,156,246,0.25);border-radius:100px;padding:3px 10px;font-size:10px;font-weight:700;white-space:nowrap">${proj.completadoEn?'✓ '+fmtDate(proj.completadoEn):'✓ Completado'}</span>`
         :'';
@@ -2496,13 +2500,18 @@ function rHistProj(){
   const actPaus = sortByActivity(S.proyectos.filter(p=>p.estado==='activo'||p.estado==='pausado'));
   const completados = S.proyectos.filter(p=>p.estado==='completado')
     .sort((a,b)=>{
-      const aHoy=a.completadoEn===todayStr?1:0;
-      const bHoy=b.completadoEn===todayStr?1:0;
+      const aUpdToday=a._upd?new Date(a._upd).toISOString().split('T')[0]===todayStr:false;
+      const bUpdToday=b._upd?new Date(b._upd).toISOString().split('T')[0]===todayStr:false;
+      const aHoy=(a.completadoEn===todayStr||(aUpdToday&&!a.completadoEn))?1:0;
+      const bHoy=(b.completadoEn===todayStr||(bUpdToday&&!b.completadoEn))?1:0;
       if(bHoy!==aHoy) return bHoy-aHoy;
       return (b.completadoEn||b.inicio||'').localeCompare(a.completadoEn||a.inicio||'');
     });
 
-  const terminadosHoy=completados.filter(p=>p.completadoEn===todayStr).length;
+  const terminadosHoy=completados.filter(p=>{
+    const updToday2=p._upd?new Date(p._upd).toISOString().split('T')[0]===todayStr:false;
+    return p.completadoEn===todayStr||(updToday2&&!p.completadoEn);
+  }).length;
   const apSubtitle = actPaus.filter(p=>p.estado==='activo').length+' activos · '+actPaus.filter(p=>p.estado==='pausado').length+' pausados';
   const compSubtitle = completados.length+' proyecto'+(completados.length!==1?'s':'')+' terminados'+(terminadosHoy?' · '+terminadosHoy+' hoy 🟡':'');
 
