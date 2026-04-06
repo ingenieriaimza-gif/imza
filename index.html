@@ -5158,7 +5158,6 @@ function initAuth(){
   var n=localStorage.getItem('cp4_appname')||'IMZA';
   var el=document.getElementById('login-appname');
   if(el) el.textContent=n;
-  checkInviteParam();
 
   // 1. Magic link in URL (Safari just processed it)
   if(window.location.hash&&window.location.hash.includes('access_token')){
@@ -6477,6 +6476,9 @@ window.addEventListener('pagehide',function(){
 
 // ── LOAD ─────────────────────────────────────────────────────────────────────
 
+// Detectar invitación ANTES de cargar sesión — así se limpia la sesión anterior
+// antes de que load() e initAuth() la encuentren y entren como el usuario equivocado
+checkInviteParam();
 load();updDates();rAll();
 // Load custom app name
 (function(){
