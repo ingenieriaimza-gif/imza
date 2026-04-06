@@ -1209,19 +1209,29 @@ function pullFromCloud(){
       var del=remote.deleted||{};
       S.proyectos=(remote.proyectos||[]).filter(function(p){ return !del['proj_'+p.id]; });
       // Asignar completadoEn a proyectos completados que no lo tengan (migración única)
+      // También corregir fechas futuras causadas por bug UTC anterior
       var needsPush=false;
+      var hoy=td();
       S.proyectos.forEach(function(p){
-        if(p.estado==='completado'&&!p.completadoEn){
-          // Usar _upd si existe y es una fecha razonable (antes de hoy), si no usar inicio o hoy
-          var fechaRef=td();
-          if(p._upd){
-            var d=new Date(p._upd).toISOString().split('T')[0];
-            fechaRef=d;
-          } else if(p.inicio){
-            fechaRef=p.inicio;
+        if(p.estado==='completado'){
+          // Corregir si completadoEn está en el futuro (bug UTC) o falta
+          if(!p.completadoEn||p.completadoEn>hoy){
+            var fechaRef=hoy;
+            if(p._upd){
+              // Usar fecha LOCAL (no UTC) para evitar desfase de zona horaria
+              var dt=new Date(p._upd);
+              var y=dt.getFullYear();
+              var mo=String(dt.getMonth()+1).padStart(2,'0');
+              var d=String(dt.getDate()).padStart(2,'0');
+              var localDate=y+'-'+mo+'-'+d;
+              // Solo usar _upd si no es futuro
+              fechaRef=localDate<=hoy?localDate:hoy;
+            } else if(p.inicio&&p.inicio<=hoy){
+              fechaRef=p.inicio;
+            }
+            p.completadoEn=fechaRef;
+            needsPush=true;
           }
-          p.completadoEn=fechaRef;
-          needsPush=true;
         }
       });
       if(needsPush) setTimeout(function(){ if(!_isPushing) pushToCloud(); },1000);
