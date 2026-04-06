@@ -1668,7 +1668,9 @@ function saveAct(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permi
     var actDate=S.eADate||S.date;
     var savedAct=S.eAId?(S.actividades[actDate]||[]).find(function(a){ return a.id===S.eAId; }):(S.actividades[actDate]||[]).slice(-1)[0];
     _lastSaveType='act'; _lastSaveItem=savedAct; _lastSaveExtra={date:actDate};
-    setAction(S.eAId?'Editó actividad':'Nueva actividad');
+    var _pNom=gpn(pId);var _nW=selW.length;var _nG=gastos.length;var _gT=gastos.reduce(function(s,g){return s+(g.monto||0);},0);
+    var _desc=(S.eAId?'Editó':'Nueva')+' actividad · '+_pNom+' · '+fmtDate(date)+' · '+_nW+' trabajador'+(_nW!==1?'es':'')+(_nG?' · $'+_gT.toLocaleString()+' gastos':'')+((document.getElementById('a-n').value.trim())?' · "'+document.getElementById('a-n').value.trim().slice(0,40)+'"':'');
+    setAction(_desc);
     save();
   }catch(e){}
   document.getElementById('sov-act').classList.remove('open');
@@ -1752,7 +1754,9 @@ function saveProj(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
     var pid2=document.getElementById('pid').value;
     var savedProj=pid2?(S.proyectos.find(function(p){ return p.id===pid2; })):S.proyectos[S.proyectos.length-1];
     _lastSaveType='proj'; _lastSaveItem=savedProj;
-    setAction(pid2?('Editó proyecto '+(savedProj?savedProj.nombre||savedProj.folio:'')):'Nuevo proyecto');
+    var _pAcc=pid2?'Editó':'Nuevo';var _pSN=savedProj?(savedProj.folio?'['+savedProj.folio+'] ':'')+savedProj.nombre:'';
+    var _pEst=savedProj?savedProj.estado:'';var _pLid=savedProj&&savedProj.lider?' · 👷 '+savedProj.lider:'';
+    setAction(_pAcc+' proyecto · '+_pSN+_pLid+' · '+_pEst);
     save();
   }catch(e){}
   document.getElementById('sov-proj').classList.remove('open');
@@ -1782,7 +1786,7 @@ function confirmCancel(){
 function dProj(id){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permisos para eliminar','err');return;}markChanged('proyectos');const p=S.proyectos.find(x=>x.id===id);confirmShow('¿Eliminar proyecto?',p?'"'+p.nombre+'" será eliminado permanentemente.':'Esta acción no se puede deshacer.',()=>{var dP=S.proyectos.find(x=>x.id===id);
     S.proyectos=S.proyectos.filter(x=>x.id!==id);
     recordDeleted('proj',id);
-    setAction('Eliminó proyecto '+(dP?dP.nombre||dP.folio:''));
+    setAction('Eliminó proyecto · '+(dP?(dP.folio?'['+dP.folio+'] ':'')+dP.nombre:'')+(dP&&dP.lider?' · 👷 '+dP.lider:''));
     save();rAll();toast('Proyecto eliminado','ok');});}
 
 // PERSONAL
@@ -1839,7 +1843,8 @@ function savePers(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
     if(!S.estadoHistorial[hDateP]) S.estadoHistorial[hDateP]={};
     if(savedPers) S.estadoHistorial[hDateP][savedPers.id]=savedPers.estado||'activo';
     _lastSaveType='pers'; _lastSaveItem=savedPers;
-    setAction(wid2?('Editó trabajador '+(savedPers?savedPers.nombre:'')):'Nuevo trabajador');
+    var _wAcc=wid2?'Editó':'Nuevo';var _wNom=savedPers?savedPers.nombre:'';var _wCar=savedPers&&savedPers.cargo?' · '+savedPers.cargo:'';var _wEst=savedPers?' · '+savedPers.estado:'';
+    setAction(_wAcc+' trabajador · '+_wNom+_wCar+_wEst);
     save();
   }catch(e){}
   document.getElementById('sov-pers').classList.remove('open');
@@ -1860,7 +1865,7 @@ function dPers(id){
     var dW=S.personal.find(x=>x.id===id);
     S.personal=S.personal.filter(x=>x.id!==id);
     recordDeleted('pers',id);
-    setAction('Eliminó trabajador '+(dW?dW.nombre:''));
+    setAction('Eliminó trabajador · '+(dW?dW.nombre+( dW.cargo?' · '+dW.cargo:''):''));
     save();rAll();toast('Trabajador eliminado','ok');
   });
 }
@@ -1899,7 +1904,8 @@ function dAct(id,date){
     S.actividades[date]=(S.actividades[date]||[]).filter(a=>a.id!==id);
     recordDeleted('act',id);
     _lastSaveType='act_delete'; _lastSaveItem=dAct2; _lastSaveExtra={date:date};
-    setAction('Eliminó actividad');
+    var _dPNom=dAct2?gpn(dAct2.proyectoId):'';var _dDate=date||'';
+    setAction('Eliminó actividad · '+_dPNom+(_dDate?' · '+fmtDate(_dDate):''));
     save();rAll();toast('Actividad eliminada','ok');
   });
 }
@@ -2206,8 +2212,9 @@ function togVac(id){
     markChanged('personal');
   }
   markChanged('estadoHistorial');
-  var estadoLabels={activo:'Activo',vacaciones:'Vacaciones',falta:'Falta',inactivo:'Inactivo'};
-  setAction((p.nombre||'Trabajador')+' → '+(estadoLabels[next]||next)+' ('+hDate+')');
+  var estadoLabels={activo:'✅ Activo',vacaciones:'🏖️ Vacaciones',falta:'❌ Falta',inactivo:'⏸️ Inactivo'};
+  var _cargoLbl=p.cargo?' · '+p.cargo:'';
+  setAction('Estado · '+(p.nombre||'Trabajador')+_cargoLbl+' → '+(estadoLabels[next]||next)+' · '+fmtDate(hDate));
   save();
   // Update immediately without debounce
   try{ renderVacList(); }catch(e){}
