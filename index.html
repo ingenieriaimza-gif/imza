@@ -2558,7 +2558,20 @@ function restoreAccordionState(container, state){
   });
 }
 
-function togH(head){head.nextElementSibling.classList.toggle('open');}
+function togH(head){
+  var scroll=document.getElementById('scroll');
+  var headTop=head.getBoundingClientRect().top;
+  var body=head.nextElementSibling;
+  var wasOpen=body.classList.contains('open');
+  body.classList.toggle('open');
+  if(wasOpen&&scroll){
+    requestAnimationFrame(function(){
+      var headTopAfter=head.getBoundingClientRect().top;
+      var diff=headTopAfter-headTop;
+      if(Math.abs(diff)>2) scroll.scrollTop=scroll.scrollTop-diff;
+    });
+  }
+}
 
 // ── Helper: imprime o abre reporte según plataforma ──────────────────────────
 function _printBlob(pdfName, blob){
