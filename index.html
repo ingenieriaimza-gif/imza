@@ -1092,33 +1092,9 @@ function sbFetch(path,opts){
           return res2.text().then(function(t){ return t?JSON.parse(t):null; });
         });
       }).catch(function(){
-        // refresh_token local falló — intentar obtenerlo fresco de imza_sessions
-        if(!_currentUser||!_currentUser.email) throw new Error('Session expired');
-        var email=_currentUser.email.toLowerCase();
-        return fetch(SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(email)+'&select=session_data&order=updated_at.desc&limit=1',{
-          credentials:'omit',
-          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
-        }).then(function(r){ return r.ok?r.json():Promise.reject(); })
-        .then(function(rows){
-          if(!rows||!rows.length) throw new Error('Session expired');
-          var sd=JSON.parse(rows[0].session_data||'{}');
-          var rt=sd.refresh_token||'';
-          if(!rt) throw new Error('Session expired');
-          localStorage.setItem('cp4_refresh_token',rt);
-          return refreshAuthToken();
-        }).then(function(newToken){
-          if(!newToken) throw new Error('Session expired');
-          localStorage.setItem('cp4_auth_token',newToken);
-          return fetch(SB_URL+path,Object.assign({},opts,{
-            credentials:'omit',
-            headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+newToken,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
-          })).then(function(res2){
-            if(!res2.ok) return res2.text().then(function(t){ throw new Error(t); });
-            return res2.text().then(function(t){ return t?JSON.parse(t):null; });
-          });
-        }).catch(function(){
-          throw new Error('Session expired');
-        });
+        // Token no renovable — solo marcar sin conexión, NO cerrar la app
+        updateSyncUI(false);
+        throw new Error('Session expired');
       });
     }
     if(!res.ok) return res.text().then(function(t){ throw new Error(t); });
@@ -1238,27 +1214,16 @@ function updateSyncUI(ok){
     badge.style.color=ok?'var(--green)':'var(--red)';
     badge.style.background=ok?'rgba(61,214,140,0.12)':'rgba(240,96,96,0.12)';
   }
-  var mini=document.getElementById('sync-mini');
-  if(mini){
-    var nombre=_currentUser?_currentUser.nombre:'';
-    if(ok){
-      mini.textContent=nombre?(nombre+' · En línea'):('En línea');
-      mini.style.color='var(--green)';
-    } else {
-      // Offline: solo mostrar nombre, el badge ya indica Sin conexión
-      mini.textContent=nombre||'';
-      mini.style.color='var(--txt2)';
-    }
-  }
-  // sync-mini (hora junto al punto) lo actualiza SOLO el polling con la hora del chequeo
-  // Aquí solo actualizamos el panel expandido con info del último cambio
+  // Always update time from latest _lastSyncInfo
   if(_lastSyncInfo&&_lastSyncInfo.time){
     var t=fmtSyncTime(_lastSyncInfo.time);
     var user=_lastSyncInfo.user?(' · '+_lastSyncInfo.user):'';
     var action=_lastSyncInfo.action?(' — '+_lastSyncInfo.action):'';
+    var mini=document.getElementById('sync-mini');
     var last=document.getElementById('sync-last');
     var cfgLast=document.getElementById('cfg-sync-last');
     var devEl=document.getElementById('sync-device');
+    if(mini) mini.textContent=t.mini+user;
     if(last) last.textContent=t.full+user+action;
     if(cfgLast) cfgLast.textContent=t.full+user+action;
     if(devEl) devEl.textContent=(_lastSyncInfo.device||'')+user+action;
@@ -1275,10 +1240,11 @@ function refreshSyncTime(){
     var t=fmtSyncTime(_lastSyncInfo.time);
     var user=_lastSyncInfo.user?(' · '+_lastSyncInfo.user):'';
     var action=_lastSyncInfo.action?(' — '+_lastSyncInfo.action):'';
-    // sync-mini lo maneja exclusivamente el polling — no tocarlo aquí
+    var mini=document.getElementById('sync-mini');
     var last=document.getElementById('sync-last');
     var cfgLast=document.getElementById('cfg-sync-last');
     var devEl=document.getElementById('sync-device');
+    if(mini) mini.textContent=t.mini+user;
     if(last) last.textContent=t.full+user+action;
     if(cfgLast) cfgLast.textContent=t.full+user+action;
     if(devEl) devEl.textContent=(_lastSyncInfo.device||'')+user+action;
@@ -1367,11 +1333,7 @@ function pullFromCloud(){
       persistLocal();
     }finally{ _applyingCloudData=false; }
     return true;
-  }).catch(function(err){
-    var msg=(err&&err.message)||'';
-    if(msg==='Failed to fetch') updateSyncUI(false);
-    return false;
-  });
+  }).catch(function(){ updateSyncUI(false); return false; });
 }
 
 // ── PUSH TO CLOUD ─────────────────────────────────────────────────────────────
@@ -1408,10 +1370,9 @@ function pushToCloud(){
     _isPushing=false;
     updateSyncUI(true);
     return true;
-  }).catch(function(err){
+  }).catch(function(){
     _isPushing=false;
-    var msg=(err&&err.message)||'';
-    if(msg==='Failed to fetch') updateSyncUI(false);
+    updateSyncUI(false);
     return false;
   });
 }
@@ -1429,18 +1390,13 @@ function save(){
     addToChangeLog(new Date().toISOString(),_currentUser.nombre,logAction);
     renderChangeLog();
   }
-  // NO limpiar _lastAction aquí — pushToCloud() la necesita para enviar la acción al servidor
-  // pushToCloud() la limpia después de un push exitoso
-  // Siempre intentar push aunque _isOnline sea false:
-  // en iPhone el token puede estar expirado y sbFetch ya maneja el refresh automático
-  // Si el push funciona, actualiza a En línea; si falla de verdad, muestra error
+  _lastAction=''; // limpiar DESPUÉS de loguear
+  if(!_isOnline){
+    showNoConnection();
+    return; // saved locally, will push when back online
+  }
   pushToCloud().then(function(ok){
-    if(ok){
-      updateSyncUI(true);
-      toast('✅ Guardado','ok');
-    } else {
-      toast('❌ No se pudo guardar — revisa conexión','err');
-    }
+    if(!ok) showNoConnection();
   });
 }
 
@@ -1453,22 +1409,14 @@ function startLiveSync(){
     if(!_currentUser||_applyingCloudData) return;
     if(document.hidden) return; // no hacer fetch cuando la app está en background
     sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
-      if(!rows||!rows.length){ return; }
+      if(!rows||!rows.length){ updateSyncUI(false); return; }
       var t=rows[0].updated_at||'';
       updateSyncUI(true);
-      // Hacer pull si: el timestamp cambió O si hay una actualización pendiente y ya no hay sheet abierta
-      if(t&&(t!==_remoteUpdatedAt||(_pendingRemoteUpdate&&!isSheetOpen()))){
+      if(t&&t!==_remoteUpdatedAt){
         _remoteUpdatedAt=t;
-        _pendingRemoteUpdate=false;
         pullFromCloud().then(function(updated){ if(updated) rAll(true); });
       }
-    }).catch(function(err){
-      // Solo marcar Sin conexión si es error de red, no de token
-      var msg=(err&&err.message)||'';
-      if(msg==='Session expired'||msg==='Failed to fetch') {
-        if(msg==='Failed to fetch') updateSyncUI(false);
-      }
-    });
+    }).catch(function(){ updateSyncUI(false); });
   },10000); // 10s en lugar de 2s — el WS cubre las actualizaciones inmediatas
 }
 
@@ -1476,8 +1424,6 @@ function startPing(){ startLiveSync(); }
 function syncNow(){ pullFromCloud().then(function(u){ if(u) rAll(true); }); }
 
 // ── WEBSOCKET ─────────────────────────────────────────────────────────────────
-var _pendingRemoteUpdate=false; // true cuando llega evento WS con sheet abierta
-
 function startRealtime(){
   if(_realtimeWs&&(_realtimeWs.readyState===0||_realtimeWs.readyState===1)) return;
   try{
@@ -1495,17 +1441,14 @@ function startRealtime(){
         if(!isChange||_applyingCloudData) return;
         var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device)||'';
         if(dev&&dev===detectDevice()) return;
-        // Si hay sheet abierta: marcar actualización pendiente pero NO tocar los datos
-        // La sheet cierra → closeS() llama pull automáticamente
-        if(isSheetOpen()){ _pendingRemoteUpdate=true; return; }
-        _pendingRemoteUpdate=false;
+        // No actualizar estado S si el usuario tiene una sheet abierta (podría estar editando)
+        if(isSheetOpen()) return;
         pullFromCloud().then(function(u){ if(u){ rAll(true); updateSyncUI(true); } });
       }catch(e){}
     };
     _realtimeWs.onclose=function(){
       if(_realtimeHb){ clearInterval(_realtimeHb); _realtimeHb=null; }
-      // No marcar Sin conexión aquí — el WS se cierra frecuentemente en Android
-      // El polling HTTP es quien determina el estado de conexión real
+      updateSyncUI(false);
       setTimeout(startRealtime,3000);
     };
     _realtimeWs.onerror=function(){ _realtimeWs.close(); };
@@ -1531,8 +1474,7 @@ function load(){
   });
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
-  // No marcar "Sin conexión" en el arranque — se resuelve tras el auth
-  // (En Android, pullFromCloud falla antes de tener token y pintaba el badge en rojo)
+  updateSyncUI(false);
   pullFromCloud().then(function(updated){
     if(updated) rAll();
     initAuth();
@@ -1617,9 +1559,7 @@ function openS(id){
 function closeS(id){
   document.getElementById(id).classList.remove('open');
   // Push cambios locales primero, luego pull para capturar lo que llegó mientras estaba abierta
-  // Siempre hacer pull al cerrar, especialmente si llegó un update remoto mientras estaba abierta
   clearTimeout(_syncTimer);
-  _pendingRemoteUpdate=false; // vamos a hacer pull de todas formas
   pushToCloud().then(function(){
     pullFromCloud().then(function(u){ if(u) rAll(true); });
   }).catch(function(){
@@ -2087,7 +2027,6 @@ function isPast11pm(){
 
 var _syncRendering=false;
 var _lastInteraction=0;
-var _rAllRetries=0; // contador para evitar loop infinito
 
 // Track user interactions to pause sync
 ['touchstart','touchend','mousedown','click','keydown'].forEach(function(evt){
@@ -2113,16 +2052,13 @@ function rAll(fromSync){
 
   if(fromSync){
     if(_rAllTimer) clearTimeout(_rAllTimer);
-    _rAllRetries=0;
-    _rAllTimer=setTimeout(function tryRender(){
+    _rAllTimer=setTimeout(function(){
       // Si hay una sheet/modal abierta o el usuario interactuó en los últimos 4s,
-      // posponer el render hasta que termine — máx 20 reintentos (10 segundos)
-      if(isUserInteracting()&&_rAllRetries<20){
-        _rAllRetries++;
-        _rAllTimer=setTimeout(tryRender, 500);
+      // posponer el render hasta que termine — verificar cada 500ms
+      if(isUserInteracting()){
+        _rAllTimer=setTimeout(function(){ rAll(true); }, 500);
         return;
       }
-      _rAllRetries=0;
       _syncRendering=true;
       if(scroll) scroll.style.overflow='hidden';
       requestAnimationFrame(function(){
@@ -2696,7 +2632,6 @@ function rHistProj(){
   }
 
   const actPaus = sortByActivity(S.proyectos.filter(p=>p.estado==='activo'||p.estado==='pausado'));
-  // Completados: primero los terminados hoy, luego del más reciente al más viejo
   const completados = S.proyectos.filter(p=>p.estado==='completado')
     .sort((a,b)=>{
       const aHoy=a.completadoEn===todayStr?1:0;
@@ -5172,30 +5107,18 @@ function getSbClient(){
 function enterApp(found, sessionData){
   _currentUser=found;
   localStorage.setItem('cp4_session',JSON.stringify(sessionData));
-  // Guardar email para que futuros arranques sin sesión local sepan qué usuario buscar
-  if(found&&found.email) localStorage.setItem('cp4_last_email',found.email.toLowerCase());
   var splash=document.getElementById('splash-screen');
   if(splash) splash.style.display='none';
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
   applyRoleRestrictions();
-  // En Android la PWA llega aquí sin haber hecho un pull exitoso aún
-  // Forzar pull fresco y marcar conexión correctamente
-  pullFromCloud().then(function(updated){
-    updateSyncUI(true);
-    if(updated) rAll(true);
-  }).catch(function(){
-    refreshAuthToken().then(function(t){
-      if(t) pullFromCloud().then(function(u){ updateSyncUI(true); if(u) rAll(true); }).catch(function(){ updateSyncUI(false); });
-      else updateSyncUI(false);
-    }).catch(function(){ updateSyncUI(false); });
-  });
 }
 
 function initAuth(){
   var n=localStorage.getItem('cp4_appname')||'IMZA';
   var el=document.getElementById('login-appname');
   if(el) el.textContent=n;
+  checkInviteParam();
 
   // 1. Magic link in URL (Safari just processed it)
   if(window.location.hash&&window.location.hash.includes('access_token')){
@@ -5256,31 +5179,20 @@ function initAuth(){
   var emails=users.map(function(u){ return (u.email||'').toLowerCase(); }).filter(Boolean);
 
   if(!emails.length){
-    // Sin usuarios en caché — cargar de Supabase y luego reintentar checar sesión
-    // (Esto es lo que pasa en Android PWA la primera vez: no hay backup local)
-    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
-      credentials:'omit',
-      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
-    }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows){
+    // Try fetching users from Supabase first, then retry
+    sbFetch('/rest/v1/imza_data?id=eq.main&select=data').then(function(rows){
       if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
         S.users=rows[0].data.users;
         localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-        // Reintentar el flujo completo con los usuarios ya cargados
-        initAuth();
-      } else {
-        showLoginScreen();
       }
+      showLoginScreen();
     }).catch(function(){ showLoginScreen(); });
     return;
   }
 
-  // Check Supabase sessions — buscar SOLO la sesión del email invitado o del dispositivo actual
-  // NUNCA entrar como otro usuario por tener una sesión más reciente en la misma BD
-  var _filterEmail=_inviteEmail||localStorage.getItem('cp4_last_email')||'';
-  var sessionUrl=_filterEmail
-    ? SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(_filterEmail)+'&select=session_data,updated_at&order=updated_at.desc&limit=5'
-    : SB_URL+'/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20';
-  fetch(sessionUrl,{
+  // Check Supabase sessions for any of our registered emails
+  // Usar anon key aquí porque aún no tenemos token — solo leemos sesiones propias
+  fetch(SB_URL+'/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20',{
     credentials:'omit',
     headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
   }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows){
@@ -5289,8 +5201,6 @@ function initAuth(){
       try{
         var sd=JSON.parse(rows[i].session_data||'{}');
         if(!sd.email) continue;
-        // Si hay email filtrado, solo aceptar esa sesión exacta
-        if(_filterEmail&&sd.email.toLowerCase()!==_filterEmail.toLowerCase()) continue;
         var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
         if(match){
           var age=Date.now()-new Date(rows[i].updated_at).getTime();
@@ -5305,16 +5215,26 @@ function initAuth(){
                 localStorage.setItem('cp4_auth_token',newToken);
                 enterApp(match, matchSession);
               } else {
-                // Token no renovable — pedir login, no entrar sin autenticación
-                showLoginScreen();
+                setTimeout(function(){
+                  fetch(SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(sd.email)+'&select=session_data',{
+                    credentials:'omit',
+                    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
+                  }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows2){
+                    var sd2=rows2&&rows2[0]?JSON.parse(rows2[0].session_data||'{}'):{};
+                    var rt2=sd2.refresh_token||rt;
+                    if(rt2!==rt) localStorage.setItem('cp4_refresh_token',rt2);
+                    return refreshAuthToken();
+                  }).then(function(newToken2){
+                    if(newToken2) localStorage.setItem('cp4_auth_token',newToken2);
+                    enterApp(match, matchSession);
+                  }).catch(function(){ enterApp(match, matchSession); });
+                }, 2000);
               }
             }).catch(function(){
-              // Error renovando token — pedir login
-              showLoginScreen();
+              enterApp(match, matchSession);
             });
           } else {
-            // Sin refresh_token — pedir login
-            showLoginScreen();
+            enterApp(match, matchSession);
           }
           return;
         }
@@ -5359,102 +5279,125 @@ function handleAuthSession(session){
 // ── MAGIC LINK AUTH ──────────────────────────────────────────────────────────
 
 function handleMagicLinkCallback(){
+  // Check URL for magic link token from Supabase
   var hash=window.location.hash;
   var params=new URLSearchParams(hash.replace('#',''));
   var accessToken=params.get('access_token');
+  var type=params.get('type');
   if(!accessToken) return false;
-
-  var refreshToken=params.get('refresh_token')||'';
-  var expiresIn=Number(params.get('expires_in')||3600);
-
-  // Siempre ocultar splash y mostrar login si algo falla
-  function showErr(msg){
-    var splash=document.getElementById('splash-screen');
-    if(splash) splash.style.display='none';
-    var errEl=document.getElementById('login-error');
-    if(errEl) errEl.textContent=msg||'Error al verificar. Intenta de nuevo.';
-    document.getElementById('login-step-email').style.display='block';
-    document.getElementById('login-step-sent').style.display='none';
-    document.getElementById('login-screen').style.display='flex';
-  }
-
-  function finishLogin(found){
-    var email=(found.email||'').toLowerCase();
-    var sessionData={id:found.id,nombre:found.nombre,email:email,rol:found.rol};
-    localStorage.setItem('cp4_session',JSON.stringify(sessionData));
-    localStorage.setItem('cp4_auth_token',accessToken);
-    localStorage.setItem('cp4_last_email',email);
-    if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
-    localStorage.setItem('cp4_token_exp',String(Date.now()+expiresIn*1000));
-
-    // Guardar sesión en Supabase para el puente PWA (no bloqueante)
-    function saveSession(at, rt){
-      sbFetch('/rest/v1/imza_sessions',{
-        method:'POST',
-        headers:{'Prefer':'resolution=merge-duplicates'},
-        body:JSON.stringify({
-          device_id:email,
-          session_data:JSON.stringify(Object.assign({},sessionData,{auth_token:at,refresh_token:rt})),
-          updated_at:new Date().toISOString()
-        })
-      }).catch(function(){});
-    }
-    if(refreshToken){
-      refreshAuthToken().then(function(newToken){
-        saveSession(newToken||accessToken, localStorage.getItem('cp4_refresh_token')||refreshToken);
-      }).catch(function(){ saveSession(accessToken, refreshToken); });
-    } else {
-      saveSession(accessToken,'');
-    }
-
-    window.history.replaceState(null,'',window.location.pathname);
-    var splash=document.getElementById('splash-screen');
-    if(splash) splash.style.display='none';
-    document.getElementById('login-screen').style.display='none';
-    _currentUser=found;
-    document.getElementById('app').style.display='flex';
-    applyRoleRestrictions();
-    rAll();
-    toast('Bienvenido, '+found.nombre+' 👋','ok');
-  }
-
-  // Paso 1: obtener email del token
+  // Exchange token for user info
   fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/user',{
     credentials:'omit',
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+accessToken}
-  }).then(function(res){
-    if(!res.ok) throw new Error('auth_fail');
-    return res.json();
-  }).then(function(user){
-    if(!user||!user.email) throw new Error('no_email');
+    headers:{
+      'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',
+      'Authorization':'Bearer '+accessToken
+    }
+  }).then(function(res){ return res.json(); }).then(function(user){
+    if(!user||!user.email) return;
     var email=user.email.toLowerCase();
-
-    // Paso 2: cargar usuarios frescos de Supabase
-    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+    // Always fetch fresh users from Supabase before matching
+    fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
       credentials:'omit',
-      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+accessToken,'Content-Type':'application/json'}
-    }).then(function(r){ return r.ok?r.json():Promise.reject('data_fail'); })
-    .then(function(rows){
-      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
-        S.users=rows[0].data.users;
-        localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer '+accessToken}
+    }).then(function(r){ return r.json(); }).then(function(rows){
+      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users) S.users=rows[0].data.users;
+      var found=(S.users||[]).find(function(u){
+        return (u.email||'').toLowerCase()===email;
+      });
+      if(found){
+        _currentUser=found;
+        var sessionData={id:found.id,nombre:found.nombre,email:(found.email||email).toLowerCase(),rol:found.rol};
+        localStorage.setItem('cp4_session',JSON.stringify(sessionData));
+        localStorage.setItem('cp4_auth_token',accessToken);
+        var refreshToken=params.get('refresh_token');
+        if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
+        var expiresIn=params.get('expires_in')||3600;
+        localStorage.setItem('cp4_token_exp',Date.now()+Number(expiresIn)*1000);
+
+        // Renovar token inmediatamente para obtener un refresh_token fresco
+        // que la PWA pueda usar (el original del magic link es de un solo uso)
+        function saveSessionToSupabase(freshAccessToken, freshRefreshToken){
+          var sessionDataWithTokens=Object.assign({},sessionData,{
+            auth_token:freshAccessToken||accessToken,
+            refresh_token:freshRefreshToken||refreshToken||''
+          });
+          sbFetch('/rest/v1/imza_sessions',{
+            method:'POST',
+            headers:{'Prefer':'resolution=merge-duplicates'},
+            body:JSON.stringify({
+              device_id:(found.email||email).toLowerCase(),
+              session_data:JSON.stringify(sessionDataWithTokens),
+              updated_at:new Date().toISOString()
+            })
+          }).catch(function(){});
+        }
+
+        if(refreshToken){
+          // Renovar para obtener tokens frescos antes de guardar en Supabase
+          refreshAuthToken().then(function(newToken){
+            var newRefresh=localStorage.getItem('cp4_refresh_token');
+            saveSessionToSupabase(newToken||accessToken, newRefresh||refreshToken);
+          }).catch(function(){
+            saveSessionToSupabase(accessToken, refreshToken);
+          });
+        } else {
+          saveSessionToSupabase(accessToken, '');
+        }
+
+        window.history.replaceState(null,'',window.location.pathname);
+        document.getElementById('login-screen').style.display='none';
+        document.getElementById('app').style.display='flex';
+        applyRoleRestrictions();
+        rAll();
+        toast('Bienvenido, '+found.nombre+' 👋','ok');
+      } else {
+        document.getElementById('login-error').textContent='Correo no registrado. Contacta al administrador.';
+        document.getElementById('login-step-email').style.display='block';
+        document.getElementById('login-step-sent').style.display='none';
+        document.getElementById('login-screen').style.display='flex';
       }
     }).catch(function(){
-      // Si falla usar caché local
-      if(!S.users||!S.users.length){
-        var bk=localStorage.getItem('cp4_users_backup');
-        if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
-      }
-    }).finally(function(){
-      var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
-      if(found){
-        finishLogin(found);
-      } else {
-        showErr('Correo no registrado. Contacta al administrador.');
-      }
+      // Fallback: intentar cargar usuarios con el accessToken antes de buscar
+      fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
+        credentials:'omit',
+        headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer '+accessToken}
+      }).then(function(r){ return r.json(); }).then(function(rows){
+        if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
+          S.users=rows[0].data.users;
+          localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+        }
+      }).catch(function(){}).finally(function(){
+        var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
+        if(found){
+          _currentUser=found;
+          var sd={id:found.id,nombre:found.nombre,email:(found.email||email).toLowerCase(),rol:found.rol};
+          localStorage.setItem('cp4_session',JSON.stringify(sd));
+          localStorage.setItem('cp4_auth_token',accessToken);
+          var rt=params.get('refresh_token');
+          if(rt) localStorage.setItem('cp4_refresh_token',rt);
+          window.history.replaceState(null,'',window.location.pathname);
+          var splash=document.getElementById('splash-screen');
+          if(splash) splash.style.display='none';
+          document.getElementById('login-screen').style.display='none';
+          document.getElementById('app').style.display='flex';
+          applyRoleRestrictions();
+          rAll();
+          toast('Bienvenido, '+found.nombre+' 👋','ok');
+        } else {
+          document.getElementById('login-error').textContent='Correo no registrado. Contacta al administrador.';
+          document.getElementById('login-step-email').style.display='block';
+          document.getElementById('login-step-sent').style.display='none';
+          var splash2=document.getElementById('splash-screen');
+          if(splash2) splash2.style.display='none';
+          document.getElementById('login-screen').style.display='flex';
+        }
+      });
     });
   }).catch(function(){
-    showErr('Error al verificar. Intenta de nuevo.');
+    document.getElementById('login-error').textContent='Error al verificar. Intenta de nuevo.';
+    var splash=document.getElementById('splash-screen');
+    if(splash) splash.style.display='none';
+    document.getElementById('login-screen').style.display='flex';
   });
   return true;
 }
@@ -5473,16 +5416,7 @@ function showLogin(){
   var errEl=document.getElementById('login-error');
   if(errEl) errEl.textContent='';
   var inp=document.getElementById('login-email-input');
-  // Si hay email de invitación, pre-llenarlo y no borrarlo
-  if(inp){
-    if(_inviteEmail){
-      inp.value=_inviteEmail;
-      setTimeout(function(){ inp.focus(); },300);
-    } else {
-      inp.value='';
-      setTimeout(function(){ inp.focus(); },300);
-    }
-  }
+  if(inp){ inp.value=''; setTimeout(function(){ inp.focus(); },300); }
 }
 
 function loginBack(){
@@ -5930,34 +5864,14 @@ function checkInviteParam(){
   var inv=params.get('invite');
   if(!inv) return;
   _inviteEmail=decodeURIComponent(inv).toLowerCase();
-
-  // Cerrar sesión activa completamente — timers, WebSocket y Supabase Auth
-  if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
-  if(_liveTimer){ clearInterval(_liveTimer); _liveTimer=null; }
-  if(_presenceTimer){ clearInterval(_presenceTimer); _presenceTimer=null; }
-  if(_onlineRefreshTimer){ clearInterval(_onlineRefreshTimer); _onlineRefreshTimer=null; }
-  if(_realtimeWs){ _realtimeWs.onclose=null; _realtimeWs.onerror=null; _realtimeWs.close(); _realtimeWs=null; }
-  if(_realtimeHb){ clearInterval(_realtimeHb); _realtimeHb=null; }
-  _currentUser=null;
-
-  // Cerrar sesión en Supabase Auth (no bloqueante)
-  var oldToken=localStorage.getItem('cp4_auth_token')||'';
-  if(oldToken){
-    fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/logout',{
-      method:'POST', credentials:'omit',
-      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',
-               'Authorization':'Bearer '+oldToken}
-    }).catch(function(){});
-  }
-
-  // Borrar todos los datos de sesión local
-  ['cp4_session','cp4_auth_token','cp4_refresh_token','cp4_token_exp','cp4_last_email'].forEach(function(k){
-    localStorage.removeItem(k);
-  });
-
   // Limpiar la URL sin recargar
-  window.history.replaceState({},'',window.location.pathname);
-  // El email se pre-llena en showLogin() que respeta _inviteEmail
+  var clean=window.location.pathname;
+  window.history.replaceState({},'',clean);
+  // Pre-llenar el email en el login
+  setTimeout(function(){
+    var inp=document.getElementById('login-email-input');
+    if(inp){ inp.value=_inviteEmail; inp.focus(); }
+  },300);
 }
 
 function togSnapsPanel(){
@@ -6470,12 +6384,7 @@ document.addEventListener('visibilitychange',function(){
     setTimeout(function(){
       if(!_isPushing){
         pullFromCloud().then(function(u){ if(u) rAll(true); updateSyncUI(true); })
-        .catch(function(){
-          refreshAuthToken().then(function(t){
-            if(t) pullFromCloud().then(function(u){ if(u) rAll(true); updateSyncUI(true); }).catch(function(){ updateSyncUI(false); });
-            else updateSyncUI(false);
-          }).catch(function(){ updateSyncUI(false); });
-        });
+        .catch(function(){ updateSyncUI(false); });
       }
     }, 300);
   }
@@ -6489,9 +6398,6 @@ window.addEventListener('pagehide',function(){
 
 // ── LOAD ─────────────────────────────────────────────────────────────────────
 
-// Detectar invitación ANTES de cargar sesión — así se limpia la sesión anterior
-// antes de que load() e initAuth() la encuentren y entren como el usuario equivocado
-checkInviteParam();
 load();updDates();rAll();
 // Load custom app name
 (function(){
