@@ -2632,6 +2632,7 @@ function rHistProj(){
   }
 
   const actPaus = sortByActivity(S.proyectos.filter(p=>p.estado==='activo'||p.estado==='pausado'));
+  // Completados: primero los terminados hoy, luego del más reciente al más viejo
   const completados = S.proyectos.filter(p=>p.estado==='completado')
     .sort((a,b)=>{
       const aHoy=a.completadoEn===todayStr?1:0;
