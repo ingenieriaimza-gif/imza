@@ -5265,40 +5265,30 @@ function sendMagicLink(){
   var errEl=document.getElementById('login-error');
   if(!email||!email.includes('@')){ errEl.textContent='Ingresa un correo válido'; return; }
   var btn=document.querySelector('#login-step-email button');
-
   function resetBtn(){ if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; } }
-
   if(btn){ btn.disabled=true; btn.textContent='Verificando...'; }
   errEl.textContent='';
 
-  // Primero verificar en usuarios cacheados localmente para respuesta inmediata
+  // Verificar el correo contra usuarios cacheados localmente
+  // (no podemos hacer fetch a Supabase sin token antes del login)
   var cachedUsers=S.users||[];
-  var cachedFound=cachedUsers.find(function(u){ return (u.email||'').toLowerCase()===email; });
-
-  fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
-    credentials:'omit',
-    headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY'}
-  }).then(function(r){ return r.json(); }).then(function(rows){
+  if(!cachedUsers.length){
+    var bk=localStorage.getItem('cp4_users_backup');
+    if(bk) try{ cachedUsers=JSON.parse(bk); }catch(e){}
+  }
+  var found=cachedUsers.find(function(u){ return (u.email||'').toLowerCase()===email; });
+  if(!found){
+    // Si no hay caché, intentar igual — Supabase enviará el magic link si el correo existe
+    // El error real se detectará cuando el usuario intente entrar
     resetBtn();
-    var users=(rows&&rows[0]&&rows[0].data&&rows[0].data.users)||[];
-    if(users.length) S.users=users;
-    var found=users.find(function(u){ return (u.email||'').toLowerCase()===email; });
-    if(!found){
+    // Solo bloquear si tenemos usuarios en caché y el correo no está
+    if(cachedUsers.length>0){
       errEl.textContent='Este correo no está registrado. Contacta al administrador.';
       return;
     }
-    _doSendMagicLink(email,errEl,btn);
-  }).catch(function(){
-    resetBtn();
-    // Fallback a usuarios cacheados si Supabase no responde
-    if(cachedFound){
-      _doSendMagicLink(email,errEl,btn);
-    } else if(!navigator.onLine){
-      errEl.textContent='Sin internet. Conéctate para iniciar sesión.';
-    } else {
-      errEl.textContent='Error de conexión. Intenta de nuevo.';
-    }
-  });
+  }
+  resetBtn();
+  _doSendMagicLink(email,errEl,btn);
 }
 
 function _doSendMagicLink(email,errEl,btn){
