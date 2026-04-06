@@ -1474,9 +1474,11 @@ function load(){
   });
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
-  updateSyncUI(false);
+  // No marcar "Sin conexión" en el arranque — se resuelve tras el auth
+  // (En Android, pullFromCloud falla antes de tener token y pintaba el badge en rojo)
   pullFromCloud().then(function(updated){
     if(updated) rAll();
+    updateSyncUI(true);
     initAuth();
   }).catch(function(){ initAuth(); });
 }
@@ -5113,6 +5115,12 @@ function enterApp(found, sessionData){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
   applyRoleRestrictions();
+  // En Android la PWA llega aquí sin haber hecho un pull exitoso aún
+  // Forzar pull fresco y marcar conexión correctamente
+  pullFromCloud().then(function(updated){
+    updateSyncUI(true);
+    if(updated) rAll(true);
+  }).catch(function(){ updateSyncUI(false); });
 }
 
 function initAuth(){
@@ -5180,13 +5188,20 @@ function initAuth(){
   var emails=users.map(function(u){ return (u.email||'').toLowerCase(); }).filter(Boolean);
 
   if(!emails.length){
-    // Try fetching users from Supabase first, then retry
-    sbFetch('/rest/v1/imza_data?id=eq.main&select=data').then(function(rows){
+    // Sin usuarios en caché — cargar de Supabase y luego reintentar checar sesión
+    // (Esto es lo que pasa en Android PWA la primera vez: no hay backup local)
+    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+      credentials:'omit',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
+    }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows){
       if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
         S.users=rows[0].data.users;
         localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+        // Reintentar el flujo completo con los usuarios ya cargados
+        initAuth();
+      } else {
+        showLoginScreen();
       }
-      showLoginScreen();
     }).catch(function(){ showLoginScreen(); });
     return;
   }
