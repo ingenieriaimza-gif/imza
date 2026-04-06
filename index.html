@@ -1071,16 +1071,74 @@ function detectDevice(){
 // ── API ───────────────────────────────────────────────────────────────────────
 function sbFetch(path,opts){
   opts=opts||{};
-  // Usar el token JWT del usuario autenticado si existe, si no usar anon key
   var userToken=localStorage.getItem('cp4_auth_token')||SB_KEY;
   return fetch(SB_URL+path,Object.assign({},opts,{
     credentials:'omit',
     headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+userToken,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
   })).then(function(res){
+    // Si el token expiró, intentar renovarlo automáticamente
+    if(res.status===401){
+      return refreshAuthToken().then(function(newToken){
+        if(!newToken) throw new Error('Session expired');
+        return fetch(SB_URL+path,Object.assign({},opts,{
+          credentials:'omit',
+          headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+newToken,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
+        })).then(function(res2){
+          if(!res2.ok) return res2.text().then(function(t){ throw new Error(t); });
+          return res2.text().then(function(t){ return t?JSON.parse(t):null; });
+        });
+      }).catch(function(){
+        // Token no renovable — forzar re-login
+        forceRelogin();
+        throw new Error('Session expired');
+      });
+    }
     if(!res.ok) return res.text().then(function(t){ throw new Error(t); });
     return res.text().then(function(t){ return t?JSON.parse(t):null; });
   });
 }
+
+// Renovar token usando el refresh_token guardado
+function refreshAuthToken(){
+  var refreshToken=localStorage.getItem('cp4_refresh_token');
+  if(!refreshToken) return Promise.resolve(null);
+  return fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/token?grant_type=refresh_token',{
+    method:'POST',
+    credentials:'omit',
+    headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({refresh_token:refreshToken})
+  }).then(function(res){ return res.json(); }).then(function(data){
+    if(data&&data.access_token){
+      localStorage.setItem('cp4_auth_token',data.access_token);
+      if(data.refresh_token) localStorage.setItem('cp4_refresh_token',data.refresh_token);
+      return data.access_token;
+    }
+    return null;
+  }).catch(function(){ return null; });
+}
+
+// Forzar re-login cuando el token no se puede renovar
+function forceRelogin(){
+  if(document.getElementById('login-screen')&&document.getElementById('login-screen').style.display!=='flex'){
+    localStorage.removeItem('cp4_auth_token');
+    localStorage.removeItem('cp4_refresh_token');
+    localStorage.removeItem('cp4_session');
+    document.getElementById('app').style.display='none';
+    document.getElementById('login-screen').style.display='flex';
+    toast('Sesión expirada — inicia sesión de nuevo','err');
+  }
+}
+
+// Renovar token proactivamente cada 45 minutos (expira en 1 hora)
+(function startTokenRefreshTimer(){
+  setInterval(function(){
+    var token=localStorage.getItem('cp4_auth_token');
+    var refresh=localStorage.getItem('cp4_refresh_token');
+    if(token&&refresh){
+      refreshAuthToken().catch(function(){});
+    }
+  }, 45*60*1000);
+})();
 
 // ── UI ────────────────────────────────────────────────────────────────────────
 function fmtSyncTime(iso){
@@ -5006,6 +5064,12 @@ function initAuth(){
         }
         var found=users.find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
         if(!found) found={id:u.id||'u1',nombre:u.nombre||'Usuario',rol:u.rol||'editor',email:u.email};
+        // Renovar token si está próximo a expirar o ya expiró
+        var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
+        var needsRefresh=!localStorage.getItem('cp4_auth_token')||(tokenExp&&Date.now()>tokenExp-5*60*1000);
+        if(needsRefresh&&localStorage.getItem('cp4_refresh_token')){
+          refreshAuthToken().catch(function(){});
+        }
         enterApp(found, u);
         return;
       }
@@ -5112,7 +5176,7 @@ function handleMagicLinkCallback(){
     // Always fetch fresh users from Supabase before matching
     fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
       credentials:'omit',
-      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY'}
+      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer '+accessToken}
     }).then(function(r){ return r.json(); }).then(function(rows){
       if(rows&&rows[0]&&rows[0].data&&rows[0].data.users) S.users=rows[0].data.users;
       var found=(S.users||[]).find(function(u){
@@ -5125,6 +5189,8 @@ function handleMagicLinkCallback(){
         localStorage.setItem('cp4_auth_token',accessToken);
         var refreshToken=params.get('refresh_token');
         if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
+        var expiresIn=params.get('expires_in')||3600;
+        localStorage.setItem('cp4_token_exp',Date.now()+Number(expiresIn)*1000);
         // Save session to Supabase by email so PWA can restore it
         sbFetch('/rest/v1/imza_sessions',{
           method:'POST',
