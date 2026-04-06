@@ -1409,14 +1409,32 @@ function startLiveSync(){
     if(!_currentUser||_applyingCloudData) return;
     if(document.hidden) return; // no hacer fetch cuando la app está en background
     sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
-      if(!rows||!rows.length){ updateSyncUI(false); return; }
+      if(!rows||!rows.length){ return; } // sin rows no significa sin red
       var t=rows[0].updated_at||'';
       updateSyncUI(true);
       if(t&&t!==_remoteUpdatedAt){
         _remoteUpdatedAt=t;
         pullFromCloud().then(function(updated){ if(updated) rAll(true); });
       }
-    }).catch(function(){ updateSyncUI(false); });
+    }).catch(function(){
+      // Antes de marcar sin conexión, intentar renovar el token (Android expira tokens)
+      refreshAuthToken().then(function(newToken){
+        if(newToken){
+          // Token renovado — reintentar fetch y aplicar cambios si los hay
+          sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
+            if(!rows||!rows.length) return;
+            updateSyncUI(true);
+            var t=rows[0].updated_at||'';
+            if(t&&t!==_remoteUpdatedAt){
+              _remoteUpdatedAt=t;
+              pullFromCloud().then(function(updated){ if(updated) rAll(true); });
+            }
+          }).catch(function(){ updateSyncUI(false); });
+        } else {
+          updateSyncUI(false);
+        }
+      }).catch(function(){ updateSyncUI(false); });
+    });
   },10000); // 10s en lugar de 2s — el WS cubre las actualizaciones inmediatas
 }
 
@@ -1448,7 +1466,8 @@ function startRealtime(){
     };
     _realtimeWs.onclose=function(){
       if(_realtimeHb){ clearInterval(_realtimeHb); _realtimeHb=null; }
-      updateSyncUI(false);
+      // No marcar Sin conexión aquí — el WS se cierra frecuentemente en Android
+      // El polling HTTP es quien determina el estado de conexión real
       setTimeout(startRealtime,3000);
     };
     _realtimeWs.onerror=function(){ _realtimeWs.close(); };
@@ -1478,7 +1497,6 @@ function load(){
   // (En Android, pullFromCloud falla antes de tener token y pintaba el badge en rojo)
   pullFromCloud().then(function(updated){
     if(updated) rAll();
-    updateSyncUI(true);
     initAuth();
   }).catch(function(){ initAuth(); });
 }
