@@ -1111,6 +1111,25 @@ function refreshAuthToken(){
     if(data&&data.access_token){
       localStorage.setItem('cp4_auth_token',data.access_token);
       if(data.refresh_token) localStorage.setItem('cp4_refresh_token',data.refresh_token);
+      // Actualizar sesión en Supabase con tokens frescos para el puente PWA
+      if(_currentUser&&_currentUser.email){
+        var ss=localStorage.getItem('cp4_session');
+        var sessionData=ss?JSON.parse(ss):{};
+        var sessionDataWithTokens=Object.assign({},sessionData,{
+          auth_token:data.access_token,
+          refresh_token:data.refresh_token||''
+        });
+        fetch(SB_URL+'/rest/v1/imza_sessions',{
+          method:'POST',
+          credentials:'omit',
+          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+data.access_token,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},
+          body:JSON.stringify({
+            device_id:_currentUser.email.toLowerCase(),
+            session_data:JSON.stringify(sessionDataWithTokens),
+            updated_at:new Date().toISOString()
+          })
+        }).catch(function(){});
+      }
       return data.access_token;
     }
     return null;
@@ -5112,14 +5131,25 @@ function initAuth(){
         if(match){
           var age=Date.now()-new Date(rows[i].updated_at).getTime();
           if(age>7*24*60*60*1000) continue;
-          // Restaurar token si viene incluido en session_data
-          if(sd.auth_token) localStorage.setItem('cp4_auth_token',sd.auth_token);
-          if(sd.refresh_token) localStorage.setItem('cp4_refresh_token',sd.refresh_token);
-          // Intentar renovar el token en segundo plano
-          if(sd.refresh_token||localStorage.getItem('cp4_refresh_token')){
-            refreshAuthToken().catch(function(){});
+          // Restaurar refresh_token y renovar access_token antes de entrar
+          var rt=sd.refresh_token||'';
+          if(rt){
+            localStorage.setItem('cp4_refresh_token',rt);
+            // Renovar token primero, luego entrar con token válido
+            refreshAuthToken().then(function(newToken){
+              if(newToken){
+                localStorage.setItem('cp4_auth_token',newToken);
+              }
+              enterApp(match, sd);
+            }).catch(function(){
+              // Si no se puede renovar, entrar igual con datos locales
+              enterApp(match, sd);
+            });
+          } else {
+            // Sin refresh_token, entrar con lo que hay (datos locales)
+            if(sd.auth_token) localStorage.setItem('cp4_auth_token',sd.auth_token);
+            enterApp(match, sd);
           }
-          enterApp(match, sd);
           return;
         }
       }catch(e){}
@@ -5200,20 +5230,37 @@ function handleMagicLinkCallback(){
         if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
         var expiresIn=params.get('expires_in')||3600;
         localStorage.setItem('cp4_token_exp',Date.now()+Number(expiresIn)*1000);
-        // Save session to Supabase incluyendo tokens para puente PWA↔Safari
-        var sessionDataWithTokens=Object.assign({},sessionData,{
-          auth_token:accessToken,
-          refresh_token:refreshToken||''
-        });
-        sbFetch('/rest/v1/imza_sessions',{
-          method:'POST',
-          headers:{'Prefer':'resolution=merge-duplicates'},
-          body:JSON.stringify({
-            device_id:(found.email||email).toLowerCase(),
-            session_data:JSON.stringify(sessionDataWithTokens),
-            updated_at:new Date().toISOString()
-          })
-        }).catch(function(){});
+
+        // Renovar token inmediatamente para obtener un refresh_token fresco
+        // que la PWA pueda usar (el original del magic link es de un solo uso)
+        function saveSessionToSupabase(freshAccessToken, freshRefreshToken){
+          var sessionDataWithTokens=Object.assign({},sessionData,{
+            auth_token:freshAccessToken||accessToken,
+            refresh_token:freshRefreshToken||refreshToken||''
+          });
+          sbFetch('/rest/v1/imza_sessions',{
+            method:'POST',
+            headers:{'Prefer':'resolution=merge-duplicates'},
+            body:JSON.stringify({
+              device_id:(found.email||email).toLowerCase(),
+              session_data:JSON.stringify(sessionDataWithTokens),
+              updated_at:new Date().toISOString()
+            })
+          }).catch(function(){});
+        }
+
+        if(refreshToken){
+          // Renovar para obtener tokens frescos antes de guardar en Supabase
+          refreshAuthToken().then(function(newToken){
+            var newRefresh=localStorage.getItem('cp4_refresh_token');
+            saveSessionToSupabase(newToken||accessToken, newRefresh||refreshToken);
+          }).catch(function(){
+            saveSessionToSupabase(accessToken, refreshToken);
+          });
+        } else {
+          saveSessionToSupabase(accessToken, '');
+        }
+
         window.history.replaceState(null,'',window.location.pathname);
         document.getElementById('login-screen').style.display='none';
         document.getElementById('app').style.display='flex';
