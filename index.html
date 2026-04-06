@@ -5098,18 +5098,27 @@ function initAuth(){
   }
 
   // Check Supabase sessions for any of our registered emails
-  sbFetch('/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20').then(function(rows){
+  // Usar anon key aquí porque aún no tenemos token — solo leemos sesiones propias
+  fetch(SB_URL+'/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20',{
+    credentials:'omit',
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
+  }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows){
     if(!rows||!rows.length){ showLoginScreen(); return; }
-    // Find a session that matches one of our registered users
     for(var i=0;i<rows.length;i++){
       try{
         var sd=JSON.parse(rows[i].session_data||'{}');
         if(!sd.email) continue;
         var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
         if(match){
-          // Check session is not too old (7 days)
           var age=Date.now()-new Date(rows[i].updated_at).getTime();
           if(age>7*24*60*60*1000) continue;
+          // Restaurar token si viene incluido en session_data
+          if(sd.auth_token) localStorage.setItem('cp4_auth_token',sd.auth_token);
+          if(sd.refresh_token) localStorage.setItem('cp4_refresh_token',sd.refresh_token);
+          // Intentar renovar el token en segundo plano
+          if(sd.refresh_token||localStorage.getItem('cp4_refresh_token')){
+            refreshAuthToken().catch(function(){});
+          }
           enterApp(match, sd);
           return;
         }
@@ -5191,13 +5200,17 @@ function handleMagicLinkCallback(){
         if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
         var expiresIn=params.get('expires_in')||3600;
         localStorage.setItem('cp4_token_exp',Date.now()+Number(expiresIn)*1000);
-        // Save session to Supabase by email so PWA can restore it
+        // Save session to Supabase incluyendo tokens para puente PWA↔Safari
+        var sessionDataWithTokens=Object.assign({},sessionData,{
+          auth_token:accessToken,
+          refresh_token:refreshToken||''
+        });
         sbFetch('/rest/v1/imza_sessions',{
           method:'POST',
           headers:{'Prefer':'resolution=merge-duplicates'},
           body:JSON.stringify({
             device_id:(found.email||email).toLowerCase(),
-            session_data:JSON.stringify(sessionData),
+            session_data:JSON.stringify(sessionDataWithTokens),
             updated_at:new Date().toISOString()
           })
         }).catch(function(){});
