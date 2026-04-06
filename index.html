@@ -5082,20 +5082,38 @@ function initAuth(){
     try{
       var u=JSON.parse(ss);
       if(u&&u.email){
-        var users=S.users||[];
-        if(!users.length){
-          var bk=localStorage.getItem('cp4_users_backup');
-          if(bk) try{ users=JSON.parse(bk); S.users=users; }catch(e){}
-        }
-        var found=users.find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
-        if(!found) found={id:u.id||'u1',nombre:u.nombre||'Usuario',rol:u.rol||'editor',email:u.email};
-        // Renovar token si está próximo a expirar o ya expiró
-        var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
-        var needsRefresh=!localStorage.getItem('cp4_auth_token')||(tokenExp&&Date.now()>tokenExp-5*60*1000);
-        if(needsRefresh&&localStorage.getItem('cp4_refresh_token')){
-          refreshAuthToken().catch(function(){});
-        }
-        enterApp(found, u);
+        var userToken=localStorage.getItem('cp4_auth_token')||SB_KEY;
+        // Siempre obtener usuarios frescos de Supabase para garantizar rol correcto
+        fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+          credentials:'omit',
+          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+userToken,'Content-Type':'application/json'}
+        }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows){
+          if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
+            S.users=rows[0].data.users;
+            localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+          }
+        }).catch(function(){
+          // Si falla el fetch, usar caché local
+          if(!S.users||!S.users.length){
+            var bk=localStorage.getItem('cp4_users_backup');
+            if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
+          }
+        }).finally(function(){
+          var found=(S.users||[]).find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
+          if(found){
+            // Rol siempre de S.users — nunca del localStorage
+            var sessionData={id:found.id,nombre:found.nombre,email:found.email.toLowerCase(),rol:found.rol};
+            var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
+            var needsRefresh=!localStorage.getItem('cp4_auth_token')||(tokenExp&&Date.now()>tokenExp-5*60*1000);
+            if(needsRefresh&&localStorage.getItem('cp4_refresh_token')){
+              refreshAuthToken().catch(function(){});
+            }
+            enterApp(found, sessionData);
+          } else {
+            // No encontrado ni en Supabase ni en caché — pedir login de nuevo
+            showLoginScreen();
+          }
+        });
         return;
       }
     }catch(e){}
@@ -5137,19 +5155,17 @@ function initAuth(){
         if(match){
           var age=Date.now()-new Date(rows[i].updated_at).getTime();
           if(age>7*24*60*60*1000) continue;
+          // Usar rol y datos de S.users (fuente de verdad), no del session_data guardado
+          var matchSession={id:match.id,nombre:match.nombre,email:match.email.toLowerCase(),rol:match.rol};
           var rt=sd.refresh_token||'';
           if(rt){
-            // Guardar refresh_token y renovar ANTES de entrar a la app
             localStorage.setItem('cp4_refresh_token',rt);
-            // Intentar renovar — si falla, esperar 2s y reintentar una vez más
             refreshAuthToken().then(function(newToken){
               if(newToken){
                 localStorage.setItem('cp4_auth_token',newToken);
-                enterApp(match, sd);
+                enterApp(match, matchSession);
               } else {
-                // Primer intento falló — esperar y reintentar con refresh más reciente de Supabase
                 setTimeout(function(){
-                  // Re-leer imza_sessions para obtener refresh_token más reciente
                   fetch(SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(sd.email)+'&select=session_data',{
                     credentials:'omit',
                     headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
@@ -5160,16 +5176,15 @@ function initAuth(){
                     return refreshAuthToken();
                   }).then(function(newToken2){
                     if(newToken2) localStorage.setItem('cp4_auth_token',newToken2);
-                    enterApp(match, sd);
-                  }).catch(function(){ enterApp(match, sd); });
+                    enterApp(match, matchSession);
+                  }).catch(function(){ enterApp(match, matchSession); });
                 }, 2000);
               }
             }).catch(function(){
-              enterApp(match, sd);
+              enterApp(match, matchSession);
             });
           } else {
-            // Sin refresh_token — entrar en modo offline
-            enterApp(match, sd);
+            enterApp(match, matchSession);
           }
           return;
         }
@@ -5183,10 +5198,7 @@ function showLoginScreen(){
   if(!S.users||!S.users.length){
     var bk=localStorage.getItem('cp4_users_backup');
     if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
-    if(!S.users||!S.users.length){
-      S.users=[{id:'u1',nombre:'Admin',rol:'admin',email:'ingenieriaimza@gmail.com'}];
-      localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-    }
+    // No crear usuario Admin falso — dejar vacío y que el login cargue los reales
   }
   showLogin();
 }
@@ -5295,26 +5307,47 @@ function handleMagicLinkCallback(){
         document.getElementById('login-screen').style.display='flex';
       }
     }).catch(function(){
-      // Fallback: try with cached users
-      var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
-      if(found){
-        _currentUser=found;
-        localStorage.setItem('cp4_session',JSON.stringify({id:found.id,nombre:found.nombre,email:(found.email||email).toLowerCase(),rol:found.rol}));
-        localStorage.setItem('cp4_auth_token',accessToken);
-        window.history.replaceState(null,'',window.location.pathname);
-        document.getElementById('login-screen').style.display='none';
-        document.getElementById('app').style.display='flex';
-        applyRoleRestrictions();
-        rAll();
-        toast('Bienvenido, '+found.nombre+' 👋','ok');
-      } else {
-        document.getElementById('login-error').textContent='Sin conexión. Intenta de nuevo.';
-        document.getElementById('login-step-email').style.display='block';
-        document.getElementById('login-step-sent').style.display='none';
-      }
+      // Fallback: intentar cargar usuarios con el accessToken antes de buscar
+      fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
+        credentials:'omit',
+        headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer '+accessToken}
+      }).then(function(r){ return r.json(); }).then(function(rows){
+        if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
+          S.users=rows[0].data.users;
+          localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+        }
+      }).catch(function(){}).finally(function(){
+        var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
+        if(found){
+          _currentUser=found;
+          var sd={id:found.id,nombre:found.nombre,email:(found.email||email).toLowerCase(),rol:found.rol};
+          localStorage.setItem('cp4_session',JSON.stringify(sd));
+          localStorage.setItem('cp4_auth_token',accessToken);
+          var rt=params.get('refresh_token');
+          if(rt) localStorage.setItem('cp4_refresh_token',rt);
+          window.history.replaceState(null,'',window.location.pathname);
+          var splash=document.getElementById('splash-screen');
+          if(splash) splash.style.display='none';
+          document.getElementById('login-screen').style.display='none';
+          document.getElementById('app').style.display='flex';
+          applyRoleRestrictions();
+          rAll();
+          toast('Bienvenido, '+found.nombre+' 👋','ok');
+        } else {
+          document.getElementById('login-error').textContent='Correo no registrado. Contacta al administrador.';
+          document.getElementById('login-step-email').style.display='block';
+          document.getElementById('login-step-sent').style.display='none';
+          var splash2=document.getElementById('splash-screen');
+          if(splash2) splash2.style.display='none';
+          document.getElementById('login-screen').style.display='flex';
+        }
+      });
     });
   }).catch(function(){
     document.getElementById('login-error').textContent='Error al verificar. Intenta de nuevo.';
+    var splash=document.getElementById('splash-screen');
+    if(splash) splash.style.display='none';
+    document.getElementById('login-screen').style.display='flex';
   });
   return true;
 }
