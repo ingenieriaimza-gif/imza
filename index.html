@@ -1248,9 +1248,15 @@ function pullFromCloud(){
       // Cloud is source of truth for estadoHistorial
       S.estadoHistorial=remote.estadoHistorial||{};
       // Sync today's historial to p.estado
+      // Si no hay entrada para hoy → resetear a 'activo' (nuevo día limpio)
       var todayH=S.estadoHistorial[td()]||{};
       S.personal.forEach(function(p){
-        if(todayH[p.id]) p.estado=todayH[p.id];
+        if(p.estado==='inactivo') return; // inactivo permanente nunca se toca
+        if(todayH[p.id]){
+          p.estado=todayH[p.id]; // usar lo registrado hoy
+        } else {
+          p.estado='activo'; // nuevo día: arrancar como activo
+        }
       });
       // Never reset S.date — keep user's selected date
       if(!S.date) S.date=td();
@@ -1386,6 +1392,16 @@ function load(){
   if(d){ try{ Object.assign(S,JSON.parse(d)); }catch(e){} }
   // Restore saved date or use today
   if(!S.date) S.date=td();
+  // Resetear estado al arrancar si no hay historial para hoy
+  var todayH=(S.estadoHistorial&&S.estadoHistorial[td()])||{};
+  (S.personal||[]).forEach(function(p){
+    if(p.estado==='inactivo') return;
+    if(todayH[p.id]){
+      p.estado=todayH[p.id];
+    } else {
+      p.estado='activo';
+    }
+  });
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
   updateSyncUI(false);
@@ -1605,7 +1621,14 @@ function chgHrs(id,delta){
 function bldWG(){
   const date=S.eADate||S.date;const dActs=S.actividades[date]||[];const eid=S.eAId;
   const g=document.getElementById('wg');
-  const ac=S.personal.filter(p=>p.estado==='activo');
+  // Excluir siempre los inactivos permanentes
+  // Para la fecha de la actividad, también excluir los que tengan falta/vacaciones si aplica
+  const histDate=(S.estadoHistorial&&S.estadoHistorial[date])||{};
+  const ac=S.personal.filter(p=>{
+    if(p.estado==='inactivo') return false;
+    const estDia=histDate[p.id]||p.estado||'activo';
+    return estDia==='activo'; // solo mostrar activos en esa fecha
+  });
   if(!ac.length){g.innerHTML='<div style="grid-column:1/-1;color:var(--txt3);text-align:center;padding:24px;font-size:13px">Sin personal activo.</div>';return;}
   g.innerHTML=ac.map(p=>{
     const aa=dActs.find(a=>a.id!==eid&&a.trabajadores?.includes(p.id));
@@ -3409,13 +3432,22 @@ function rPers(){
   var today=td();
   var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
   var activos=[], vacaciones=[], faltas=[], inactivos=[];
+  var estMap={};
   S.personal.forEach(function(p){
     var est;
-    if(selDate===today){
+    if(p.estado==='inactivo'){
+      // Inactivo siempre es inactivo, sin importar la fecha ni el historial del día
+      est='inactivo';
+    } else if(selDate===today){
       est=historial[p.id]||p.estado||'activo';
     } else {
-      est=historial[p.id]||'activo';
+      est=historial[p.id]||p.estado||'activo';
     }
+    estMap[p.id]=est;
+  });
+  var activos=[], vacaciones=[], faltas=[], inactivos=[];
+  S.personal.forEach(function(p){
+    var est=estMap[p.id];
     if(est==='activo') activos.push(p);
     else if(est==='vacaciones') vacaciones.push(p);
     else if(est==='falta') faltas.push(p);
@@ -3423,16 +3455,6 @@ function rPers(){
     else activos.push(p);
   });
   let html='';
-  var estMap={};
-  S.personal.forEach(function(p){
-    var est;
-    if(selDate===today){
-      est=historial[p.id]||p.estado||'activo';
-    } else {
-      est=historial[p.id]||'activo';
-    }
-    estMap[p.id]=est;
-  });
   html += persGroup('Activos',    '✅', 'var(--green)', 'bgr', activos,    true,  estMap);
   html += persGroup('Vacaciones', '🏖️', 'var(--gold)',  'bg',  vacaciones, true,  estMap);
   html += persGroup('Falta',      '❌', 'var(--red)',   'br',  faltas,     true,  estMap);
