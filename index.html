@@ -1214,6 +1214,13 @@ function updateSyncUI(ok){
     badge.style.color=ok?'var(--green)':'var(--red)';
     badge.style.background=ok?'rgba(61,214,140,0.12)':'rgba(240,96,96,0.12)';
   }
+  var mini=document.getElementById('sync-mini');
+  if(mini){
+    var nombre=_currentUser?_currentUser.nombre:'';
+    var estado=ok?'En línea':'Sin conexión';
+    mini.textContent=nombre?(nombre+' · '+estado):estado;
+    mini.style.color=ok?'var(--green)':'var(--red)';
+  }
   // sync-mini (hora junto al punto) lo actualiza SOLO el polling con la hora del chequeo
   // Aquí solo actualizamos el panel expandido con info del último cambio
   if(_lastSyncInfo&&_lastSyncInfo.time){
@@ -1410,12 +1417,6 @@ function startLiveSync(){
       if(!rows||!rows.length){ return; } // sin rows no significa sin red
       var t=rows[0].updated_at||'';
       updateSyncUI(true);
-      // Mostrar hora del chequeo (ahora mismo), no la del último cambio en la BD
-      var mini=document.getElementById('sync-mini');
-      if(mini){
-        var now=new Date();
-        mini.textContent=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
-      }
       if(t&&t!==_remoteUpdatedAt){
         _remoteUpdatedAt=t;
         pullFromCloud().then(function(updated){ if(updated) rAll(true); });
@@ -1428,11 +1429,6 @@ function startLiveSync(){
           sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
             if(!rows||!rows.length) return;
             updateSyncUI(true);
-            var mini=document.getElementById('sync-mini');
-            if(mini){
-              var now=new Date();
-              mini.textContent=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
-            }
             var t=rows[0].updated_at||'';
             if(t&&t!==_remoteUpdatedAt){
               _remoteUpdatedAt=t;
