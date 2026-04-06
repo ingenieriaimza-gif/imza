@@ -1092,14 +1092,32 @@ function sbFetch(path,opts){
           return res2.text().then(function(t){ return t?JSON.parse(t):null; });
         });
       }).catch(function(){
-        // Token no renovable — usar anon key como fallback para seguir funcionando
-        localStorage.setItem('cp4_auth_token', SB_KEY);
-        return fetch(SB_URL+path,Object.assign({},opts,{
+        // refresh_token local falló — intentar obtenerlo fresco de imza_sessions
+        if(!_currentUser||!_currentUser.email) throw new Error('Session expired');
+        var email=_currentUser.email.toLowerCase();
+        return fetch(SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(email)+'&select=session_data&order=updated_at.desc&limit=1',{
           credentials:'omit',
-          headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
-        })).then(function(res2){
-          if(!res2.ok) return res2.text().then(function(t){ throw new Error(t); });
-          return res2.text().then(function(t){ return t?JSON.parse(t):null; });
+          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
+        }).then(function(r){ return r.ok?r.json():Promise.reject(); })
+        .then(function(rows){
+          if(!rows||!rows.length) throw new Error('Session expired');
+          var sd=JSON.parse(rows[0].session_data||'{}');
+          var rt=sd.refresh_token||'';
+          if(!rt) throw new Error('Session expired');
+          localStorage.setItem('cp4_refresh_token',rt);
+          return refreshAuthToken();
+        }).then(function(newToken){
+          if(!newToken) throw new Error('Session expired');
+          localStorage.setItem('cp4_auth_token',newToken);
+          return fetch(SB_URL+path,Object.assign({},opts,{
+            credentials:'omit',
+            headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+newToken,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
+          })).then(function(res2){
+            if(!res2.ok) return res2.text().then(function(t){ throw new Error(t); });
+            return res2.text().then(function(t){ return t?JSON.parse(t):null; });
+          });
+        }).catch(function(){
+          throw new Error('Session expired');
         });
       });
     }
