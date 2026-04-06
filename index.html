@@ -77,14 +77,6 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
   50%  { background-position:0% 0; }
   100% { background-position:100% 0; }
 }
-@keyframes pulse {
-  0%,100% { opacity:1; }
-  50%      { opacity:0.65; }
-}
-@keyframes splashDot {
-  0%,80%,100% { transform:scale(0.6); opacity:0.3; }
-  40%         { transform:scale(1); opacity:1; }
-}
 .cal-btn { width:38px; height:38px; border-radius:12px; background:var(--golddim); border:1px solid rgba(240,201,74,0.2); display:flex; align-items:center; justify-content:center; cursor:pointer; position:relative; overflow:hidden; }
 .cal-btn svg { width:18px; height:18px; color:var(--gold); pointer-events:none; }
 .cal-btn input[type=date] { position:absolute; inset:0; opacity:0; cursor:pointer; font-size:16px; }
@@ -1075,93 +1067,14 @@ function detectDevice(){
 // ── API ───────────────────────────────────────────────────────────────────────
 function sbFetch(path,opts){
   opts=opts||{};
-  var userToken=localStorage.getItem('cp4_auth_token')||SB_KEY;
   return fetch(SB_URL+path,Object.assign({},opts,{
     credentials:'omit',
-    headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+userToken,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
+    headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
   })).then(function(res){
-    // Si el token expiró, intentar renovarlo automáticamente
-    if(res.status===401){
-      return refreshAuthToken().then(function(newToken){
-        if(!newToken) throw new Error('Session expired');
-        return fetch(SB_URL+path,Object.assign({},opts,{
-          credentials:'omit',
-          headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+newToken,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
-        })).then(function(res2){
-          if(!res2.ok) return res2.text().then(function(t){ throw new Error(t); });
-          return res2.text().then(function(t){ return t?JSON.parse(t):null; });
-        });
-      }).catch(function(){
-        // Token no renovable — solo marcar sin conexión, NO cerrar la app
-        updateSyncUI(false);
-        throw new Error('Session expired');
-      });
-    }
     if(!res.ok) return res.text().then(function(t){ throw new Error(t); });
     return res.text().then(function(t){ return t?JSON.parse(t):null; });
   });
 }
-
-// Renovar token usando el refresh_token guardado
-function refreshAuthToken(){
-  var refreshToken=localStorage.getItem('cp4_refresh_token');
-  if(!refreshToken) return Promise.resolve(null);
-  return fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/token?grant_type=refresh_token',{
-    method:'POST',
-    credentials:'omit',
-    headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
-    body:JSON.stringify({refresh_token:refreshToken})
-  }).then(function(res){ return res.json(); }).then(function(data){
-    if(data&&data.access_token){
-      localStorage.setItem('cp4_auth_token',data.access_token);
-      if(data.refresh_token) localStorage.setItem('cp4_refresh_token',data.refresh_token);
-      // Actualizar sesión en Supabase con tokens frescos para el puente PWA
-      if(_currentUser&&_currentUser.email){
-        var ss=localStorage.getItem('cp4_session');
-        var sessionData=ss?JSON.parse(ss):{};
-        var sessionDataWithTokens=Object.assign({},sessionData,{
-          auth_token:data.access_token,
-          refresh_token:data.refresh_token||''
-        });
-        fetch(SB_URL+'/rest/v1/imza_sessions',{
-          method:'POST',
-          credentials:'omit',
-          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+data.access_token,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},
-          body:JSON.stringify({
-            device_id:_currentUser.email.toLowerCase(),
-            session_data:JSON.stringify(sessionDataWithTokens),
-            updated_at:new Date().toISOString()
-          })
-        }).catch(function(){});
-      }
-      return data.access_token;
-    }
-    return null;
-  }).catch(function(){ return null; });
-}
-
-// Forzar re-login cuando el token no se puede renovar
-function forceRelogin(){
-  if(document.getElementById('login-screen')&&document.getElementById('login-screen').style.display!=='flex'){
-    localStorage.removeItem('cp4_auth_token');
-    localStorage.removeItem('cp4_refresh_token');
-    localStorage.removeItem('cp4_session');
-    document.getElementById('app').style.display='none';
-    document.getElementById('login-screen').style.display='flex';
-    toast('Sesión expirada — inicia sesión de nuevo','err');
-  }
-}
-
-// Renovar token proactivamente cada 45 minutos (expira en 1 hora)
-(function startTokenRefreshTimer(){
-  setInterval(function(){
-    var token=localStorage.getItem('cp4_auth_token');
-    var refresh=localStorage.getItem('cp4_refresh_token');
-    if(token&&refresh){
-      refreshAuthToken().catch(function(){});
-    }
-  }, 45*60*1000);
-})();
 
 // ── UI ────────────────────────────────────────────────────────────────────────
 function fmtSyncTime(iso){
@@ -1291,33 +1204,6 @@ function pullFromCloud(){
     try{
       var del=remote.deleted||{};
       S.proyectos=(remote.proyectos||[]).filter(function(p){ return !del['proj_'+p.id]; });
-      // Asignar completadoEn a proyectos completados que no lo tengan (migración única)
-      // También corregir fechas futuras causadas por bug UTC anterior
-      var needsPush=false;
-      var hoy=td();
-      S.proyectos.forEach(function(p){
-        if(p.estado==='completado'){
-          // Corregir si completadoEn está en el futuro (bug UTC) o falta
-          if(!p.completadoEn||p.completadoEn>hoy){
-            var fechaRef=hoy;
-            if(p._upd){
-              // Usar fecha LOCAL (no UTC) para evitar desfase de zona horaria
-              var dt=new Date(p._upd);
-              var y=dt.getFullYear();
-              var mo=String(dt.getMonth()+1).padStart(2,'0');
-              var d=String(dt.getDate()).padStart(2,'0');
-              var localDate=y+'-'+mo+'-'+d;
-              // Solo usar _upd si no es futuro
-              fechaRef=localDate<=hoy?localDate:hoy;
-            } else if(p.inicio&&p.inicio<=hoy){
-              fechaRef=p.inicio;
-            }
-            p.completadoEn=fechaRef;
-            needsPush=true;
-          }
-        }
-      });
-      if(needsPush) setTimeout(function(){ if(!_isPushing) pushToCloud(); },1000);
       S.personal=(remote.personal||[]).filter(function(p){ return !del['pers_'+p.id]; });
       S.actividades={};
       Object.keys(remote.actividades||{}).forEach(function(d){
@@ -1331,15 +1217,9 @@ function pullFromCloud(){
       // Cloud is source of truth for estadoHistorial
       S.estadoHistorial=remote.estadoHistorial||{};
       // Sync today's historial to p.estado
-      // Si no hay entrada para hoy → resetear a 'activo' (nuevo día limpio)
       var todayH=S.estadoHistorial[td()]||{};
       S.personal.forEach(function(p){
-        if(p.estado==='inactivo') return; // inactivo permanente nunca se toca
-        if(todayH[p.id]){
-          p.estado=todayH[p.id]; // usar lo registrado hoy
-        } else {
-          p.estado='activo'; // nuevo día: arrancar como activo
-        }
+        if(todayH[p.id]) p.estado=todayH[p.id];
       });
       // Never reset S.date — keep user's selected date
       if(!S.date) S.date=td();
@@ -1403,7 +1283,8 @@ function save(){
     addToChangeLog(new Date().toISOString(),_currentUser.nombre,logAction);
     renderChangeLog();
   }
-  _lastAction=''; // limpiar DESPUÉS de loguear
+  // NO limpiar _lastAction aquí — pushToCloud() la necesita para enviar la acción al servidor
+  // pushToCloud() ya la limpia después de un push exitoso
   if(!_isOnline){
     showNoConnection();
     return; // saved locally, will push when back online
@@ -1425,8 +1306,10 @@ function startLiveSync(){
       if(!rows||!rows.length){ updateSyncUI(false); return; }
       var t=rows[0].updated_at||'';
       updateSyncUI(true);
-      if(t&&t!==_remoteUpdatedAt){
+      // Hacer pull si: el timestamp cambió O si hay actualización pendiente y ya cerró la sheet
+      if(t&&(t!==_remoteUpdatedAt||(_pendingRemoteUpdate&&!isSheetOpen()))){
         _remoteUpdatedAt=t;
+        _pendingRemoteUpdate=false;
         pullFromCloud().then(function(updated){ if(updated) rAll(true); });
       }
     }).catch(function(){ updateSyncUI(false); });
@@ -1437,6 +1320,8 @@ function startPing(){ startLiveSync(); }
 function syncNow(){ pullFromCloud().then(function(u){ if(u) rAll(true); }); }
 
 // ── WEBSOCKET ─────────────────────────────────────────────────────────────────
+var _pendingRemoteUpdate=false; // true cuando llega evento WS con sheet abierta
+
 function startRealtime(){
   if(_realtimeWs&&(_realtimeWs.readyState===0||_realtimeWs.readyState===1)) return;
   try{
@@ -1454,8 +1339,10 @@ function startRealtime(){
         if(!isChange||_applyingCloudData) return;
         var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device)||'';
         if(dev&&dev===detectDevice()) return;
-        // No actualizar estado S si el usuario tiene una sheet abierta (podría estar editando)
-        if(isSheetOpen()) return;
+        // Si hay sheet abierta: marcar pendiente pero NO tocar los datos
+        // closeS() hará pull automáticamente al cerrar
+        if(isSheetOpen()){ _pendingRemoteUpdate=true; return; }
+        _pendingRemoteUpdate=false;
         pullFromCloud().then(function(u){ if(u){ rAll(true); updateSyncUI(true); } });
       }catch(e){}
     };
@@ -1475,16 +1362,6 @@ function load(){
   if(d){ try{ Object.assign(S,JSON.parse(d)); }catch(e){} }
   // Restore saved date or use today
   if(!S.date) S.date=td();
-  // Resetear estado al arrancar si no hay historial para hoy
-  var todayH=(S.estadoHistorial&&S.estadoHistorial[td()])||{};
-  (S.personal||[]).forEach(function(p){
-    if(p.estado==='inactivo') return;
-    if(todayH[p.id]){
-      p.estado=todayH[p.id];
-    } else {
-      p.estado='activo';
-    }
-  });
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
   updateSyncUI(false);
@@ -1587,17 +1464,7 @@ function openActM(eid=null,edate=null){
   document.getElementById('sact-title').textContent=eid?'Editar actividad':'Nueva actividad';
   const sel=document.getElementById('a-p');
   sel.innerHTML='<option value="">— Selecciona proyecto —</option>';
-  S.proyectos.forEach((p,i)=>{
-    // Al editar, mostrar siempre el proyecto actual aunque esté completado
-    // Al crear, excluir proyectos completados
-    if(p.estado==='completado' && eid){
-      const existingAct=(S.actividades[edate||S.date]||[]).find(a=>a.id===eid);
-      if(!existingAct||existingAct.proyectoId!==p.id) return;
-    } else if(p.estado==='completado') {
-      return;
-    }
-    sel.innerHTML+=`<option value="${p.id}">A${i+1} — ${p.nombre}${p.estado==='pausado'?' (Pausado)':''}</option>`;
-  });
+  S.proyectos.forEach((p,i)=>{sel.innerHTML+=`<option value="${p.id}">A${i+1} — ${p.nombre}</option>`;});
   // Actualizar título del sheet al instante cuando cambia el proyecto
   sel.onchange=function(){
     const nombre=this.value?gpn(this.value):'';
@@ -1704,14 +1571,7 @@ function chgHrs(id,delta){
 function bldWG(){
   const date=S.eADate||S.date;const dActs=S.actividades[date]||[];const eid=S.eAId;
   const g=document.getElementById('wg');
-  // Excluir siempre los inactivos permanentes
-  // Para la fecha de la actividad, también excluir los que tengan falta/vacaciones si aplica
-  const histDate=(S.estadoHistorial&&S.estadoHistorial[date])||{};
-  const ac=S.personal.filter(p=>{
-    if(p.estado==='inactivo') return false;
-    const estDia=histDate[p.id]||p.estado||'activo';
-    return estDia==='activo'; // solo mostrar activos en esa fecha
-  });
+  const ac=S.personal.filter(p=>p.estado==='activo');
   if(!ac.length){g.innerHTML='<div style="grid-column:1/-1;color:var(--txt3);text-align:center;padding:24px;font-size:13px">Sin personal activo.</div>';return;}
   g.innerHTML=ac.map(p=>{
     const aa=dActs.find(a=>a.id!==eid&&a.trabajadores?.includes(p.id));
@@ -1751,9 +1611,7 @@ function saveAct(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permi
     var actDate=S.eADate||S.date;
     var savedAct=S.eAId?(S.actividades[actDate]||[]).find(function(a){ return a.id===S.eAId; }):(S.actividades[actDate]||[]).slice(-1)[0];
     _lastSaveType='act'; _lastSaveItem=savedAct; _lastSaveExtra={date:actDate};
-    var _pNom=gpn(pId);var _nW=selW.length;var _nG=gastos.length;var _gT=gastos.reduce(function(s,g){return s+(g.monto||0);},0);
-    var _desc=(S.eAId?'Editó':'Nueva')+' actividad · '+_pNom+' · '+fmtDate(date)+' · '+_nW+' trabajador'+(_nW!==1?'es':'')+(_nG?' · $'+_gT.toLocaleString()+' gastos':'')+((document.getElementById('a-n').value.trim())?' · "'+document.getElementById('a-n').value.trim().slice(0,40)+'"':'');
-    setAction(_desc);
+    setAction(S.eAId?'Editó actividad':'Nueva actividad');
     save();
   }catch(e){}
   document.getElementById('sov-act').classList.remove('open');
@@ -1818,18 +1676,13 @@ function saveProj(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
   const dup=S.proyectos.find(p=>p.folio===folio&&p.id!==id);
   if(dup){toast('El número "'+folio+'" ya está en uso','err');return;}
   const diasVal=parseInt(document.getElementById('pdias').value)||0;
-  const nuevoEstado=document.getElementById('pe').value;
-  const proyExistente=id?S.proyectos.find(p=>p.id===id):null;
   const d={
     folio,
     nombre:n,
     lider:document.getElementById('pd').value.trim(),
     inicio:document.getElementById('pi').value,
     diasEstimados:diasVal||null,
-    estado:nuevoEstado,
-    completadoEn: nuevoEstado==='completado'
-      ? (proyExistente&&proyExistente.completadoEn) || td()
-      : null
+    estado:document.getElementById('pe').value
   };
   if(id){const i=S.proyectos.findIndex(p=>p.id===id);if(i!==-1)S.proyectos[i]={...S.proyectos[i],...d,_upd:Date.now()};}
   else S.proyectos.push({id:'p'+Date.now(),...d,_upd:Date.now()});
@@ -1837,9 +1690,7 @@ function saveProj(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
     var pid2=document.getElementById('pid').value;
     var savedProj=pid2?(S.proyectos.find(function(p){ return p.id===pid2; })):S.proyectos[S.proyectos.length-1];
     _lastSaveType='proj'; _lastSaveItem=savedProj;
-    var _pAcc=pid2?'Editó':'Nuevo';var _pSN=savedProj?(savedProj.folio?'['+savedProj.folio+'] ':'')+savedProj.nombre:'';
-    var _pEst=savedProj?savedProj.estado:'';var _pLid=savedProj&&savedProj.lider?' · 👷 '+savedProj.lider:'';
-    setAction(_pAcc+' proyecto · '+_pSN+_pLid+' · '+_pEst);
+    setAction(pid2?('Editó proyecto '+(savedProj?savedProj.nombre||savedProj.folio:'')):'Nuevo proyecto');
     save();
   }catch(e){}
   document.getElementById('sov-proj').classList.remove('open');
@@ -1869,7 +1720,7 @@ function confirmCancel(){
 function dProj(id){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permisos para eliminar','err');return;}markChanged('proyectos');const p=S.proyectos.find(x=>x.id===id);confirmShow('¿Eliminar proyecto?',p?'"'+p.nombre+'" será eliminado permanentemente.':'Esta acción no se puede deshacer.',()=>{var dP=S.proyectos.find(x=>x.id===id);
     S.proyectos=S.proyectos.filter(x=>x.id!==id);
     recordDeleted('proj',id);
-    setAction('Eliminó proyecto · '+(dP?(dP.folio?'['+dP.folio+'] ':'')+dP.nombre:'')+(dP&&dP.lider?' · 👷 '+dP.lider:''));
+    setAction('Eliminó proyecto '+(dP?dP.nombre||dP.folio:''));
     save();rAll();toast('Proyecto eliminado','ok');});}
 
 // PERSONAL
@@ -1926,8 +1777,7 @@ function savePers(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
     if(!S.estadoHistorial[hDateP]) S.estadoHistorial[hDateP]={};
     if(savedPers) S.estadoHistorial[hDateP][savedPers.id]=savedPers.estado||'activo';
     _lastSaveType='pers'; _lastSaveItem=savedPers;
-    var _wAcc=wid2?'Editó':'Nuevo';var _wNom=savedPers?savedPers.nombre:'';var _wCar=savedPers&&savedPers.cargo?' · '+savedPers.cargo:'';var _wEst=savedPers?' · '+savedPers.estado:'';
-    setAction(_wAcc+' trabajador · '+_wNom+_wCar+_wEst);
+    setAction(wid2?('Editó trabajador '+(savedPers?savedPers.nombre:'')):'Nuevo trabajador');
     save();
   }catch(e){}
   document.getElementById('sov-pers').classList.remove('open');
@@ -1948,7 +1798,7 @@ function dPers(id){
     var dW=S.personal.find(x=>x.id===id);
     S.personal=S.personal.filter(x=>x.id!==id);
     recordDeleted('pers',id);
-    setAction('Eliminó trabajador · '+(dW?dW.nombre+( dW.cargo?' · '+dW.cargo:''):''));
+    setAction('Eliminó trabajador '+(dW?dW.nombre:''));
     save();rAll();toast('Trabajador eliminado','ok');
   });
 }
@@ -1987,8 +1837,7 @@ function dAct(id,date){
     S.actividades[date]=(S.actividades[date]||[]).filter(a=>a.id!==id);
     recordDeleted('act',id);
     _lastSaveType='act_delete'; _lastSaveItem=dAct2; _lastSaveExtra={date:date};
-    var _dPNom=dAct2?gpn(dAct2.proyectoId):'';var _dDate=date||'';
-    setAction('Eliminó actividad · '+_dPNom+(_dDate?' · '+fmtDate(_dDate):''));
+    setAction('Eliminó actividad');
     save();rAll();toast('Actividad eliminada','ok');
   });
 }
@@ -2037,6 +1886,8 @@ var _lastInteraction=0;
 var _applyingCloudData=false; // blocks save/push while applying cloud data
 
 var _rAllTimer=null;
+var _rAllRetries=0; // límite de reintentos para evitar loop infinito
+
 function isSheetOpen(){
   // Check if any overlay/sheet is open
   return document.querySelectorAll('.sov.open').length > 0 ||
@@ -2054,13 +1905,16 @@ function rAll(fromSync){
 
   if(fromSync){
     if(_rAllTimer) clearTimeout(_rAllTimer);
-    _rAllTimer=setTimeout(function(){
-      // Si hay una sheet/modal abierta o el usuario interactuó en los últimos 4s,
-      // posponer el render hasta que termine — verificar cada 500ms
-      if(isUserInteracting()){
-        _rAllTimer=setTimeout(function(){ rAll(true); }, 500);
+    _rAllRetries=0;
+    _rAllTimer=setTimeout(function tryRender(){
+      // Si hay una sheet/modal abierta o el usuario interactuó en los últimos 3s,
+      // posponer el render — máx 20 reintentos (~10 segundos) para no quedarse en loop
+      if(isUserInteracting()&&_rAllRetries<20){
+        _rAllRetries++;
+        _rAllTimer=setTimeout(tryRender, 500);
         return;
       }
+      _rAllRetries=0;
       _syncRendering=true;
       if(scroll) scroll.style.overflow='hidden';
       requestAnimationFrame(function(){
@@ -2295,9 +2149,8 @@ function togVac(id){
     markChanged('personal');
   }
   markChanged('estadoHistorial');
-  var estadoLabels={activo:'✅ Activo',vacaciones:'🏖️ Vacaciones',falta:'❌ Falta',inactivo:'⏸️ Inactivo'};
-  var _cargoLbl=p.cargo?' · '+p.cargo:'';
-  setAction('Estado · '+(p.nombre||'Trabajador')+_cargoLbl+' → '+(estadoLabels[next]||next)+' · '+fmtDate(hDate));
+  var estadoLabels={activo:'Activo',vacaciones:'Vacaciones',falta:'Falta',inactivo:'Inactivo'};
+  setAction((p.nombre||'Trabajador')+' → '+(estadoLabels[next]||next)+' ('+hDate+')');
   save();
   // Update immediately without debounce
   try{ renderVacList(); }catch(e){}
@@ -2549,54 +2402,42 @@ function rHistProj(){
   }
 
   const bm={activo:'bgr',pausado:'bg',completado:'bb'};
-  const todayStr=td();
 
   function buildProjCard(proj){
     const i=S.proyectos.indexOf(proj);
     const projColor=PC[i%PC.length];
-    const pCode=proj.folio||('A'+(i+1));
+    const pCode='A'+(i+1);
     const entries=(projMap[proj.id]||[]).sort((a,b)=>b.date.localeCompare(a.date));
     const totalDias=new Set(entries.map(e=>e.date)).size;
     const totalGastos=entries.reduce((s,e)=>s+sumG(e.a.gastos),0);
     const allWorkers=new Set(entries.flatMap(e=>e.a.trabajadores||[]));
-    const esCompletado=proj.estado==='completado';
-    const terminadoHoy=esCompletado&&proj.completadoEn===todayStr;
-    const cardBorder=terminadoHoy?'border:2px solid var(--gold);box-shadow:0 0 0 3px rgba(245,207,85,0.12)':'';
-    const badgeHtml=terminadoHoy
-      ?`<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,207,85,0.18);color:var(--gold);border:1px solid rgba(245,207,85,0.4);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:800;white-space:nowrap;animation:pulse 2s ease infinite">✅ Terminado hoy</span>`
-      :esCompletado
-        ?`<span style="background:rgba(91,156,246,0.12);color:var(--blue);border:1px solid rgba(91,156,246,0.25);border-radius:100px;padding:3px 10px;font-size:10px;font-weight:700;white-space:nowrap">${proj.completadoEn?'✓ '+fmtDate(proj.completadoEn):'✓ Completado'}</span>`
-        :'';
 
     if(!entries.length){
-      return`<div class="hday" style="opacity:${terminadoHoy?1:0.55};margin-bottom:6px;${cardBorder}${terminadoHoy?'background:rgba(245,207,85,0.03)':''}">
-        <div class="hday-h" style="cursor:default;padding:12px 14px${terminadoHoy?';background:rgba(245,207,85,0.05)':''}">
-          <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
-            <div style="width:34px;height:34px;border-radius:9px;background:${terminadoHoy?'rgba(245,207,85,0.2)':projColor+'22'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${terminadoHoy?'var(--gold)':projColor};flex-shrink:0">${pCode}</div>
-            <div style="min-width:0"><div class="hday-date" style="font-size:14px;color:${terminadoHoy?'var(--gold)':''}">${proj.nombre}</div><div style="font-size:11px;color:var(--txt3);margin-top:1px">Sin actividades · inicio ${fmtDate(proj.inicio)}</div></div>
+      return`<div class="hday" style="opacity:0.55;margin-bottom:6px">
+        <div class="hday-h" style="cursor:default;padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:34px;height:34px;border-radius:9px;background:${projColor}22;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${projColor};flex-shrink:0">${pCode}</div>
+            <div><div class="hday-date" style="font-size:14px">${proj.nombre}</div><div style="font-size:11px;color:var(--txt3);margin-top:1px">Sin actividades · inicio ${fmtDate(proj.inicio)}</div></div>
           </div>
-          ${badgeHtml||`<span class="b ${bm[proj.estado]||'bb'}" style="font-size:10px">${proj.estado}</span>`}
+          <span class="b ${bm[proj.estado]||'bb'}" style="font-size:10px">${proj.estado}</span>
         </div>
       </div>`;
     }
 
-    return`<div class="hday" data-hkey="proj-${proj.id}" style="margin-bottom:6px;${cardBorder}${terminadoHoy?'background:rgba(245,207,85,0.03)':''}">
-      <div class="hday-h" onclick="togH(this)" style="padding:12px 14px${terminadoHoy?';background:rgba(245,207,85,0.05)':''}">
+    return`<div class="hday" data-hkey="proj-${proj.id}" style="margin-bottom:6px">
+      <div class="hday-h" onclick="togH(this)" style="padding:12px 14px">
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
-          <div style="width:34px;height:34px;border-radius:9px;background:${terminadoHoy?'rgba(245,207,85,0.2)':projColor+'22'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${terminadoHoy?'var(--gold)':projColor};flex-shrink:0">${pCode}</div>
+          <div style="width:34px;height:34px;border-radius:9px;background:${projColor}22;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${projColor};flex-shrink:0">${pCode}</div>
           <div style="min-width:0">
-            <div class="hday-date" style="color:${terminadoHoy?'var(--gold)':projColor};font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${proj.nombre}</div>
+            <div class="hday-date" style="color:${projColor};font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${proj.nombre}</div>
             <div style="font-size:11px;color:var(--txt3);margin-top:1px">${totalDias}d trabajados · ${allWorkers.size} pers.${totalGastos?' · $'+totalGastos.toLocaleString():''}${entries.length?' · último: '+fmtDate(entries[0].date):''}</div>
           </div>
         </div>
-        <div class="hday-meta" style="flex-shrink:0;margin-left:8px;display:flex;flex-direction:column;align-items:flex-end;gap:5px">
-          ${badgeHtml}
-          <div style="display:flex;gap:4px;align-items:center">
-            <button style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(37,211,102,0.15);color:#25d166;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0" onclick="event.stopPropagation();shareProj('${proj.id}')" title="Copiar para WhatsApp">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-            </button>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>
-          </div>
+        <div class="hday-meta" style="flex-shrink:0;margin-left:8px;gap:4px">
+          <button style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(37,211,102,0.15);color:#25d166;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0" onclick="event.stopPropagation();shareProj('${proj.id}')" title="Copiar para WhatsApp">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
       </div>
       <div class="hbody">
@@ -2612,6 +2453,7 @@ function rHistProj(){
   function buildGroup(icon,label,color,badgeCls,projects,subtitle,groupKey){
     const count=projects.length;
     const cards=projects.map(p=>buildProjCard(p)).join('');
+    // Si hay estado previo, respetarlo; si es primera vez, abrir por defecto
     const isOpen=prevOpen.size===0 ? true : prevOpen.has('group-'+groupKey);
     return`<div class="hday" data-hkey="group-${groupKey}" style="margin-bottom:12px;border-color:${color}40;overflow:visible">
       <div class="hday-h" onclick="togH(this)" style="background:${color}0a;border-radius:var(--r) var(--r) 0 0">
@@ -2635,21 +2477,14 @@ function rHistProj(){
 
   const actPaus = sortByActivity(S.proyectos.filter(p=>p.estado==='activo'||p.estado==='pausado'));
   const completados = S.proyectos.filter(p=>p.estado==='completado')
-    .sort((a,b)=>{
-      const aHoy=a.completadoEn===todayStr?1:0;
-      const bHoy=b.completadoEn===todayStr?1:0;
-      if(bHoy!==aHoy) return bHoy-aHoy;
-      return (b.completadoEn||b.inicio||'').localeCompare(a.completadoEn||a.inicio||'');
-    });
+    .sort((a,b)=>(b.inicio||'').localeCompare(a.inicio||''));
 
-  const terminadosHoy=completados.filter(p=>p.completadoEn===todayStr).length;
   const apSubtitle = actPaus.filter(p=>p.estado==='activo').length+' activos · '+actPaus.filter(p=>p.estado==='pausado').length+' pausados';
-  const compSubtitle = completados.length+' proyecto'+(completados.length!==1?'s':'')+' terminados'+(terminadosHoy?' · '+terminadosHoy+' hoy 🟡':'');
+  const compSubtitle = completados.length+' proyecto'+(completados.length!==1?'s':'')+' terminados';
 
   c.innerHTML =
     buildGroup('🏗️','Activos y Pausados','var(--green)','bgr', actPaus, apSubtitle,'activos') +
     buildGroup('✅','Completados','var(--blue)','bb', completados, compSubtitle,'completados');
-
   // Restaurar acordeones que estaban abiertos antes del re-render
   restoreAccordionState(c, prevOpen);
 }
@@ -2671,20 +2506,7 @@ function restoreAccordionState(container, state){
   });
 }
 
-function togH(head){
-  var scroll=document.getElementById('scroll');
-  var headTop=head.getBoundingClientRect().top;
-  var body=head.nextElementSibling;
-  var wasOpen=body.classList.contains('open');
-  body.classList.toggle('open');
-  if(wasOpen&&scroll){
-    requestAnimationFrame(function(){
-      var headTopAfter=head.getBoundingClientRect().top;
-      var diff=headTopAfter-headTop;
-      if(Math.abs(diff)>2) scroll.scrollTop=scroll.scrollTop-diff;
-    });
-  }
-}
+function togH(head){head.nextElementSibling.classList.toggle('open');}
 
 // ── Helper: imprime o abre reporte según plataforma ──────────────────────────
 function _printBlob(pdfName, blob){
@@ -2701,24 +2523,19 @@ function _printBlob(pdfName, blob){
   fr.onload=function(){
     try{
       fr.contentWindow.focus();
-      // Cambiar document.title en todos los navegadores — es lo que usan para nombrar el PDF
-      var orig=document.title;
-      document.title=pdfName;
-      var restore=function(){ document.title=orig; };
       if(isIOS){
+        // Safari iOS usa el <title> del documento padre para nombrar el PDF.
+        // Cambiamos document.title antes de imprimir y lo restauramos al recuperar foco.
+        var orig=document.title;
+        document.title=pdfName;
         setTimeout(function(){
           fr.contentWindow.print();
+          var restore=function(){ document.title=orig; };
           window.addEventListener('focus',restore,{once:true});
           setTimeout(restore,8000);
         },100);
       } else {
-        // PC: pequeño delay para que el título se aplique antes del diálogo de impresión
-        setTimeout(function(){
-          fr.contentWindow.print();
-          // Restaurar título después de que cierre el diálogo
-          window.addEventListener('focus',restore,{once:true});
-          setTimeout(restore,30000);
-        },80);
+        fr.contentWindow.print();
       }
     }catch(e){
       var a=document.createElement('a');
@@ -3299,26 +3116,14 @@ function _doShareProj(projId){
 function projCard(p,i){
   const code=p.folio||('A'+(i+1)); const clr=PC[i%PC.length];
   const bm={activo:'bgr',pausado:'bg',completado:'bb'};
-  const hoy=td();
-  const esCompletado=p.estado==='completado';
-  const terminadoHoy=esCompletado&&p.completadoEn===hoy;
-  const cardBorder=terminadoHoy?'border-color:var(--gold);border-width:2px;background:rgba(245,207,85,0.03)':'';
-  const avBg=terminadoHoy?'rgba(245,207,85,0.2)':clr+'22';
-  const avClr=terminadoHoy?'var(--gold)':clr;
-  const nameClr=terminadoHoy?'color:var(--gold)':'';
-  const badgeHtml=terminadoHoy
-    ?`<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(245,207,85,0.18);color:var(--gold);border:1px solid rgba(245,207,85,0.4);border-radius:100px;padding:3px 9px;font-size:10px;font-weight:800;white-space:nowrap;animation:pulse 2s ease infinite">✅ Hoy</span>`
-    :esCompletado
-      ?`<span class="b bb" style="font-size:10px;white-space:nowrap">${p.completadoEn?'✓ '+fmtDate(p.completadoEn):'✓ Listo'}</span>`
-      :`<span class="b ${bm[p.estado]||'bb'}">${p.estado}</span>`;
-  return `<div class="li" style="${cardBorder}">
-    <div class="liav" style="background:${avBg};color:${avClr};font-size:13px;font-weight:900;letter-spacing:-0.5px">${code}</div>
+  return `<div class="li">
+    <div class="liav" style="background:${clr}22;color:${clr};font-size:13px;font-weight:900;letter-spacing:-0.5px">${code}</div>
     <div class="lib">
-      <div class="liname" style="${nameClr}">${p.nombre}</div>
+      <div class="liname">${p.nombre}</div>
       <div class="lisub">${p.lider?'👷 '+p.lider:'Sin líder'}${p.inicio?' · '+fmtDate(p.inicio):''}${p.diasEstimados?' · '+p.diasEstimados+'d est.':''}</div>
     </div>
     <div class="lir" style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
-      ${badgeHtml}
+      <span class="b ${bm[p.estado]||'bb'}">${p.estado}</span>
       <div style="display:flex;gap:6px">
         <button class="ibtn ibe" onclick="openProjM('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
         <button class="ibtn ibd" onclick="dProj('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></button>
@@ -3354,36 +3159,45 @@ function rProj(){
   const c=document.getElementById('proj-list');
   if(!S.proyectos.length){c.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/></svg><p>Sin proyectos. Toca "+ Nuevo".</p></div>';return;}
 
-  const hoy=td();
-  // Terminados hoy primero, luego por completadoEn desc
-  const byCompletado=(a,b)=>{
-    const aHoy=a.completadoEn===hoy?1:0, bHoy=b.completadoEn===hoy?1:0;
-    if(bHoy!==aHoy) return bHoy-aHoy;
-    return (b.completadoEn||b.inicio||'').localeCompare(a.completadoEn||a.inicio||'');
-  };
+  const byDate=(a,b)=>(b.inicio||'').localeCompare(a.inicio||'');
 
   const activPaus = S.proyectos
     .filter(p=>p.estado==='activo'||p.estado==='pausado')
-    .sort((a,b)=>(b.inicio||'').localeCompare(a.inicio||''));
+    .sort(byDate);
 
   const completados = S.proyectos
     .filter(p=>p.estado==='completado')
-    .sort(byCompletado);
+    .sort(byDate);
 
   let html='';
-  html += projGroup('grp-ap','🏗️','Activos y Pausados','bgr','var(--green)',activPaus,true);
-  html += projGroup('grp-done','✅','Terminados','bb','var(--blue)',completados,false);
+
+  // Group 1: Activos + Pausados
+  html += projGroup(
+    'grp-ap', '🏗️',
+    'Activos y Pausados',
+    'bgr',
+    'var(--green)',
+    activPaus,
+    true   // open by default
+  );
+
+  // Group 2: Completados
+  html += projGroup(
+    'grp-done', '✅',
+    'Terminados',
+    'bb',
+    'var(--blue)',
+    completados,
+    false  // closed by default
+  );
+
   c.innerHTML = html;
 }
 
 function persCard(p,i,estOverride){
   const est=estOverride||p.estado||'activo';
   const bm={activo:'bgr',inactivo:'bb',vacaciones:'bg',falta:'br'};
-  const isVisor=_currentUser&&_currentUser.rol==='visor';
-  return`<div class="li pers-sortable" data-pid="${p.id}" style="user-select:none">
-    ${!isVisor?`<div class="pers-drag-handle" style="width:28px;height:36px;display:flex;align-items:center;justify-content:center;cursor:grab;flex-shrink:0;opacity:0.3;touch-action:none">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px;color:var(--txt3)"><line x1="5" y1="6" x2="19" y2="6"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="5" y1="18" x2="19" y2="18"/></svg>
-    </div>`:''}
+  return`<div class="li">
     <div class="liav" style="background:${WC[i%WC.length]}22;color:${WC[i%WC.length]}">${inits(p.nombre)}</div>
     <div class="lib">
       <div class="liname">${p.nombre}</div>
@@ -3397,102 +3211,6 @@ function persCard(p,i,estOverride){
       </div>
     </div>
   </div>`;
-}
-
-// ── DRAG & DROP REORDER PERSONAL ─────────────────────────────────────────────
-var _dragEl=null,_dragClone=null,_dragStartY=0,_dragCloneTop=0,_dragPlaceholder=null;
-
-function initPersDrag(container){
-  if(_currentUser&&_currentUser.rol==='visor') return;
-  var rows=Array.from(container.querySelectorAll('.pers-sortable'));
-  if(!rows.length) return;
-
-  rows.forEach(function(row){
-    var handle=row.querySelector('.pers-drag-handle');
-    if(!handle) return;
-
-    function onStart(e){
-      e.preventDefault();
-      var clientY=e.touches?e.touches[0].clientY:e.clientY;
-      _dragEl=row;
-      _dragStartY=clientY;
-
-      var rect=row.getBoundingClientRect();
-      _dragCloneTop=rect.top;
-
-      _dragClone=row.cloneNode(true);
-      _dragClone.style.cssText='position:fixed;left:'+rect.left+'px;top:'+rect.top+'px;width:'+rect.width+'px;z-index:9999;opacity:0.95;box-shadow:0 8px 32px rgba(0,0,0,0.6);border-radius:12px;pointer-events:none;background:var(--card2);border:1.5px solid var(--gold);transition:none';
-      document.body.appendChild(_dragClone);
-
-      _dragPlaceholder=document.createElement('div');
-      _dragPlaceholder.style.cssText='height:'+rect.height+'px;border-radius:12px;background:rgba(245,207,85,0.07);border:1.5px dashed rgba(245,207,85,0.3);margin-bottom:8px';
-      row.parentNode.insertBefore(_dragPlaceholder,row);
-      row.style.visibility='hidden';
-
-      document.addEventListener('mousemove',onMove);
-      document.addEventListener('touchmove',onMove,{passive:false});
-      document.addEventListener('mouseup',onEnd);
-      document.addEventListener('touchend',onEnd);
-    }
-
-    function onMove(e){
-      if(!_dragClone) return;
-      e.preventDefault();
-      var clientY=e.touches?e.touches[0].clientY:e.clientY;
-      var dy=clientY-_dragStartY;
-      _dragStartY=clientY;
-      _dragCloneTop+=dy;
-      _dragClone.style.top=_dragCloneTop+'px';
-
-      var cloneH=_dragClone.getBoundingClientRect().height;
-      var cloneMid=_dragCloneTop+cloneH/2;
-
-      var allRows=Array.from(container.querySelectorAll('.pers-sortable'));
-      var target=null, insertBefore=true;
-      allRows.forEach(function(r){
-        if(r===_dragEl) return;
-        var rr=r.getBoundingClientRect();
-        if(cloneMid>rr.top&&cloneMid<rr.bottom){
-          target=r;
-          insertBefore=cloneMid<rr.top+rr.height/2;
-        }
-      });
-      if(target){
-        if(insertBefore) target.parentNode.insertBefore(_dragPlaceholder,target);
-        else target.parentNode.insertBefore(_dragPlaceholder,target.nextSibling);
-      }
-    }
-
-    function onEnd(){
-      if(!_dragClone) return;
-      document.removeEventListener('mousemove',onMove);
-      document.removeEventListener('touchmove',onMove);
-      document.removeEventListener('mouseup',onEnd);
-      document.removeEventListener('touchend',onEnd);
-
-      _dragEl.style.visibility='';
-      _dragPlaceholder.parentNode.insertBefore(_dragEl,_dragPlaceholder);
-      _dragPlaceholder.remove();
-      _dragClone.remove();
-      _dragClone=null; _dragPlaceholder=null; _dragEl=null;
-
-      // Reconstruir S.personal según nuevo orden DOM
-      var newOrder=Array.from(container.querySelectorAll('.pers-sortable')).map(function(r){return r.dataset.pid;});
-      var map={};
-      S.personal.forEach(function(p){map[p.id]=p;});
-      var sorted=newOrder.filter(function(id){return map[id];}).map(function(id){return map[id];});
-      S.personal.forEach(function(p){if(!sorted.find(function(x){return x.id===p.id;}))sorted.push(p);});
-      S.personal=sorted;
-      markChanged('personal');
-      setAction('Reordenó personal');
-      save();
-      toast('Orden guardado ✓','ok');
-      rPers();
-    }
-
-    handle.addEventListener('mousedown',onStart);
-    handle.addEventListener('touchstart',onStart,{passive:false});
-  });
 }
 
 function persGroup(label, emoji, color, badgeCls, workers, openByDefault, estMap){
@@ -3527,22 +3245,13 @@ function rPers(){
   var today=td();
   var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
   var activos=[], vacaciones=[], faltas=[], inactivos=[];
-  var estMap={};
   S.personal.forEach(function(p){
     var est;
-    if(p.estado==='inactivo'){
-      // Inactivo siempre es inactivo, sin importar la fecha ni el historial del día
-      est='inactivo';
-    } else if(selDate===today){
+    if(selDate===today){
       est=historial[p.id]||p.estado||'activo';
     } else {
-      est=historial[p.id]||p.estado||'activo';
+      est=historial[p.id]||'activo';
     }
-    estMap[p.id]=est;
-  });
-  var activos=[], vacaciones=[], faltas=[], inactivos=[];
-  S.personal.forEach(function(p){
-    var est=estMap[p.id];
     if(est==='activo') activos.push(p);
     else if(est==='vacaciones') vacaciones.push(p);
     else if(est==='falta') faltas.push(p);
@@ -3550,13 +3259,21 @@ function rPers(){
     else activos.push(p);
   });
   let html='';
+  var estMap={};
+  S.personal.forEach(function(p){
+    var est;
+    if(selDate===today){
+      est=historial[p.id]||p.estado||'activo';
+    } else {
+      est=historial[p.id]||'activo';
+    }
+    estMap[p.id]=est;
+  });
   html += persGroup('Activos',    '✅', 'var(--green)', 'bgr', activos,    true,  estMap);
   html += persGroup('Vacaciones', '🏖️', 'var(--gold)',  'bg',  vacaciones, true,  estMap);
   html += persGroup('Falta',      '❌', 'var(--red)',   'br',  faltas,     true,  estMap);
   html += persGroup('Inactivos',  '⏸️', 'var(--txt2)',  'bb',  inactivos,  true,  estMap);
   c.innerHTML=html||'<div class="empty"><p>Sin trabajadores</p></div>';
-  // Activar drag & drop para reordenar
-  requestAnimationFrame(function(){ initPersDrag(c); });
 }
 
 let _nomTab='personal';
@@ -5057,8 +4774,6 @@ function getSbClient(){
 function enterApp(found, sessionData){
   _currentUser=found;
   localStorage.setItem('cp4_session',JSON.stringify(sessionData));
-  var splash=document.getElementById('splash-screen');
-  if(splash) splash.style.display='none';
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
   applyRoleRestrictions();
@@ -5089,12 +4804,6 @@ function initAuth(){
         }
         var found=users.find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
         if(!found) found={id:u.id||'u1',nombre:u.nombre||'Usuario',rol:u.rol||'editor',email:u.email};
-        // Renovar token si está próximo a expirar o ya expiró
-        var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
-        var needsRefresh=!localStorage.getItem('cp4_auth_token')||(tokenExp&&Date.now()>tokenExp-5*60*1000);
-        if(needsRefresh&&localStorage.getItem('cp4_refresh_token')){
-          refreshAuthToken().catch(function(){});
-        }
         enterApp(found, u);
         return;
       }
@@ -5123,54 +4832,19 @@ function initAuth(){
   }
 
   // Check Supabase sessions for any of our registered emails
-  // Usar anon key aquí porque aún no tenemos token — solo leemos sesiones propias
-  fetch(SB_URL+'/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20',{
-    credentials:'omit',
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
-  }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows){
+  sbFetch('/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20').then(function(rows){
     if(!rows||!rows.length){ showLoginScreen(); return; }
+    // Find a session that matches one of our registered users
     for(var i=0;i<rows.length;i++){
       try{
         var sd=JSON.parse(rows[i].session_data||'{}');
         if(!sd.email) continue;
         var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
         if(match){
+          // Check session is not too old (7 days)
           var age=Date.now()-new Date(rows[i].updated_at).getTime();
           if(age>7*24*60*60*1000) continue;
-          var rt=sd.refresh_token||'';
-          if(rt){
-            // Guardar refresh_token y renovar ANTES de entrar a la app
-            localStorage.setItem('cp4_refresh_token',rt);
-            // Intentar renovar — si falla, esperar 2s y reintentar una vez más
-            refreshAuthToken().then(function(newToken){
-              if(newToken){
-                localStorage.setItem('cp4_auth_token',newToken);
-                enterApp(match, sd);
-              } else {
-                // Primer intento falló — esperar y reintentar con refresh más reciente de Supabase
-                setTimeout(function(){
-                  // Re-leer imza_sessions para obtener refresh_token más reciente
-                  fetch(SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(sd.email)+'&select=session_data',{
-                    credentials:'omit',
-                    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
-                  }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows2){
-                    var sd2=rows2&&rows2[0]?JSON.parse(rows2[0].session_data||'{}'):{};
-                    var rt2=sd2.refresh_token||rt;
-                    if(rt2!==rt) localStorage.setItem('cp4_refresh_token',rt2);
-                    return refreshAuthToken();
-                  }).then(function(newToken2){
-                    if(newToken2) localStorage.setItem('cp4_auth_token',newToken2);
-                    enterApp(match, sd);
-                  }).catch(function(){ enterApp(match, sd); });
-                }, 2000);
-              }
-            }).catch(function(){
-              enterApp(match, sd);
-            });
-          } else {
-            // Sin refresh_token — entrar en modo offline
-            enterApp(match, sd);
-          }
+          enterApp(match, sd);
           return;
         }
       }catch(e){}
@@ -5236,7 +4910,7 @@ function handleMagicLinkCallback(){
     // Always fetch fresh users from Supabase before matching
     fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
       credentials:'omit',
-      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer '+accessToken}
+      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY'}
     }).then(function(r){ return r.json(); }).then(function(rows){
       if(rows&&rows[0]&&rows[0].data&&rows[0].data.users) S.users=rows[0].data.users;
       var found=(S.users||[]).find(function(u){
@@ -5249,39 +4923,16 @@ function handleMagicLinkCallback(){
         localStorage.setItem('cp4_auth_token',accessToken);
         var refreshToken=params.get('refresh_token');
         if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
-        var expiresIn=params.get('expires_in')||3600;
-        localStorage.setItem('cp4_token_exp',Date.now()+Number(expiresIn)*1000);
-
-        // Renovar token inmediatamente para obtener un refresh_token fresco
-        // que la PWA pueda usar (el original del magic link es de un solo uso)
-        function saveSessionToSupabase(freshAccessToken, freshRefreshToken){
-          var sessionDataWithTokens=Object.assign({},sessionData,{
-            auth_token:freshAccessToken||accessToken,
-            refresh_token:freshRefreshToken||refreshToken||''
-          });
-          sbFetch('/rest/v1/imza_sessions',{
-            method:'POST',
-            headers:{'Prefer':'resolution=merge-duplicates'},
-            body:JSON.stringify({
-              device_id:(found.email||email).toLowerCase(),
-              session_data:JSON.stringify(sessionDataWithTokens),
-              updated_at:new Date().toISOString()
-            })
-          }).catch(function(){});
-        }
-
-        if(refreshToken){
-          // Renovar para obtener tokens frescos antes de guardar en Supabase
-          refreshAuthToken().then(function(newToken){
-            var newRefresh=localStorage.getItem('cp4_refresh_token');
-            saveSessionToSupabase(newToken||accessToken, newRefresh||refreshToken);
-          }).catch(function(){
-            saveSessionToSupabase(accessToken, refreshToken);
-          });
-        } else {
-          saveSessionToSupabase(accessToken, '');
-        }
-
+        // Save session to Supabase by email so PWA can restore it
+        sbFetch('/rest/v1/imza_sessions',{
+          method:'POST',
+          headers:{'Prefer':'resolution=merge-duplicates'},
+          body:JSON.stringify({
+            device_id:(found.email||email).toLowerCase(),
+            session_data:JSON.stringify(sessionData),
+            updated_at:new Date().toISOString()
+          })
+        }).catch(function(){});
         window.history.replaceState(null,'',window.location.pathname);
         document.getElementById('login-screen').style.display='none';
         document.getElementById('app').style.display='flex';
@@ -5325,8 +4976,6 @@ var _loginUser=null;
 function showLogin(){
   _currentUser=null;
   _loginUser=null;
-  var splash=document.getElementById('splash-screen');
-  if(splash) splash.style.display='none';
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('login-step-email').style.display='block';
   document.getElementById('login-step-sent').style.display='none';
@@ -5348,29 +4997,40 @@ function sendMagicLink(){
   var errEl=document.getElementById('login-error');
   if(!email||!email.includes('@')){ errEl.textContent='Ingresa un correo válido'; return; }
   var btn=document.querySelector('#login-step-email button');
+
   function resetBtn(){ if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; } }
+
   if(btn){ btn.disabled=true; btn.textContent='Verificando...'; }
   errEl.textContent='';
 
-  // Verificar contra caché local si existe
+  // Primero verificar en usuarios cacheados localmente para respuesta inmediata
   var cachedUsers=S.users||[];
-  if(!cachedUsers.length){
-    var bk=localStorage.getItem('cp4_users_backup');
-    if(bk) try{ cachedUsers=JSON.parse(bk); }catch(e){}
-  }
+  var cachedFound=cachedUsers.find(function(u){ return (u.email||'').toLowerCase()===email; });
 
-  // Si hay caché y el correo no está — bloquear
-  if(cachedUsers.length>0){
-    var found=cachedUsers.find(function(u){ return (u.email||'').toLowerCase()===email; });
+  fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
+    credentials:'omit',
+    headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY'}
+  }).then(function(r){ return r.json(); }).then(function(rows){
+    resetBtn();
+    var users=(rows&&rows[0]&&rows[0].data&&rows[0].data.users)||[];
+    if(users.length) S.users=users;
+    var found=users.find(function(u){ return (u.email||'').toLowerCase()===email; });
     if(!found){
-      resetBtn();
       errEl.textContent='Este correo no está registrado. Contacta al administrador.';
       return;
     }
-  }
-  // Sin caché o correo encontrado — enviar directamente
-  resetBtn();
-  _doSendMagicLink(email,errEl,btn);
+    _doSendMagicLink(email,errEl,btn);
+  }).catch(function(){
+    resetBtn();
+    // Fallback a usuarios cacheados si Supabase no responde
+    if(cachedFound){
+      _doSendMagicLink(email,errEl,btn);
+    } else if(!navigator.onLine){
+      errEl.textContent='Sin internet. Conéctate para iniciar sesión.';
+    } else {
+      errEl.textContent='Error de conexión. Intenta de nuevo.';
+    }
+  });
 }
 
 function _doSendMagicLink(email,errEl,btn){
@@ -5380,13 +5040,11 @@ function _doSendMagicLink(email,errEl,btn){
   function resetBtn(){ if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; } }
 
   // Supabase usa /auth/v1/otp para magic links (magiclink fue deprecado)
-  // redirect_to apunta a la misma app para que el link abra en el contexto correcto
-  var redirectTo=window.location.origin+window.location.pathname;
   fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/otp',{
     method:'POST',
     credentials:'omit',
     headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Content-Type':'application/json'},
-    body:JSON.stringify({email:email, create_user:false, options:{emailRedirectTo:redirectTo}})
+    body:JSON.stringify({email:email, create_user:false})
   }).then(function(res){
     resetBtn();
     if(res.ok||res.status===200||res.status===204){
@@ -6309,25 +5967,10 @@ load();updDates();rAll();
   const c=localStorage.getItem('cp4_logocolor')||'linear-gradient(90deg,#64a0ff 0%,#a78bfa 50%,#64a0ff 100%)';
   const sz=localStorage.getItem('cp4_logosize')||'19px';
   applyLogoStyle(n,c,sz);
-  // Aplicar nombre también al splash
-  var splash=document.getElementById('splash-appname');
-  if(splash) splash.textContent=n;
 })();
 </script>
 
-<div id="splash-screen" style="position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999">
-  <div style="width:56px;height:56px;background:linear-gradient(135deg,#1a1f2e,#252b3b);border-radius:16px;border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 0 24px rgba(100,160,255,0.2)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="#6aaaff" stroke-width="2" style="width:24px;height:24px"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-  </div>
-  <div id="splash-appname" style="font-size:26px;font-weight:900;letter-spacing:0.08em;background:linear-gradient(90deg,#64a0ff,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">IMZA</div>
-  <div style="margin-top:32px;display:flex;gap:6px;align-items:center">
-    <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);animation:splashDot 1.2s ease infinite"></div>
-    <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);animation:splashDot 1.2s ease 0.2s infinite"></div>
-    <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);animation:splashDot 1.2s ease 0.4s infinite"></div>
-  </div>
-</div>
-
-<div id="login-screen" style="display:none">
+<div id="login-screen" style="display:flex">
   <div style="width:48px;height:48px;background:linear-gradient(135deg,#1a1f2e,#252b3b);border-radius:14px;border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;margin-bottom:14px">
     <svg viewBox="0 0 24 24" fill="none" stroke="#6aaaff" stroke-width="2" style="width:20px;height:20px"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
   </div>
@@ -6335,9 +5978,6 @@ load();updDates();rAll();
 
   <!-- STEP 1: Enter email -->
   <div id="login-step-email" style="width:100%;max-width:300px;margin-top:20px">
-    <div id="login-pwa-hint" style="display:none;background:rgba(100,170,255,0.1);border:1px solid rgba(100,170,255,0.25);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--blue);line-height:1.5;text-align:center">
-      📱 <b>iPhone:</b> Al tocar el link del correo se abrirá Safari. Después regresa a esta app desde tu pantalla de inicio.
-    </div>
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--txt3);margin-bottom:8px;text-align:center">Ingresa tu correo</div>
     <input id="login-email-input" type="email" inputmode="email" autocomplete="email" autocapitalize="off" autocorrect="off" placeholder="tu@correo.com" style="width:100%;box-sizing:border-box;padding:14px 16px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt);font-size:15px;font-family:inherit;outline:none;margin-bottom:12px">
     <div id="login-error" style="font-size:13px;color:var(--red);margin-bottom:10px;min-height:18px;text-align:center"></div>
@@ -6348,13 +5988,7 @@ load();updDates();rAll();
   <div id="login-step-sent" style="display:none;width:100%;max-width:300px;margin-top:20px;text-align:center">
     <div style="font-size:48px;margin-bottom:16px">📬</div>
     <div style="font-size:16px;font-weight:800;color:var(--txt);margin-bottom:8px">Revisa tu correo</div>
-    <div id="login-sent-msg" style="font-size:13px;color:var(--txt2);line-height:1.6;margin-bottom:16px"></div>
-    <div id="login-pwa-step2" style="display:none;background:rgba(245,207,85,0.1);border:1px solid rgba(245,207,85,0.25);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--gold);line-height:1.6;text-align:left">
-      <b>Pasos en iPhone:</b><br>
-      1. Toca el link en tu correo<br>
-      2. Se abrirá Safari — espera que cargue<br>
-      3. Regresa a esta app desde tu pantalla de inicio ↩
-    </div>
+    <div id="login-sent-msg" style="font-size:13px;color:var(--txt2);line-height:1.6;margin-bottom:20px"></div>
     <button onclick="loginBack()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt2);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">← Usar otro correo</button>
   </div>
 </div>
@@ -6362,18 +5996,6 @@ load();updDates();rAll();
 document.addEventListener('touchstart',function(){ window._lastInteraction=Date.now(); },true);
 document.addEventListener('mousedown',function(){ window._lastInteraction=Date.now(); },true);
 document.addEventListener('keydown',function(){ window._lastInteraction=Date.now(); },true);
-
-// Detectar si corre como PWA en iPhone y mostrar hints de login
-(function(){
-  var isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent);
-  var isPWA=window.navigator.standalone===true;
-  if(isIOS&&isPWA){
-    var h1=document.getElementById('login-pwa-hint');
-    var h2=document.getElementById('login-pwa-step2');
-    if(h1) h1.style.display='block';
-    if(h2) h2.style.display='block';
-  }
-})();
 </script>
 </body>
 </html>
