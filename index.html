@@ -1691,13 +1691,20 @@ function chgHrs(id,delta){
 function bldWG(){
   const date=S.eADate||S.date;const dActs=S.actividades[date]||[];const eid=S.eAId;
   const g=document.getElementById('wg');
-  // Excluir siempre los inactivos permanentes
-  // Para la fecha de la actividad, también excluir los que tengan falta/vacaciones si aplica
+  const hoy=td();
   const histDate=(S.estadoHistorial&&S.estadoHistorial[date])||{};
   const ac=S.personal.filter(p=>{
-    if(p.estado==='inactivo') return false;
-    const estDia=histDate[p.id]||p.estado||'activo';
-    return estDia==='activo'; // solo mostrar activos en esa fecha
+    if(p.estado==='inactivo') return false; // inactivo permanente: nunca aparece
+    // Para la fecha de la actividad usar el historial de ESE día
+    // Si no hay historial para ese día y es una fecha pasada → asumir activo
+    // Solo usar p.estado (hoy) si estamos editando una actividad de HOY
+    var estDia;
+    if(date===hoy){
+      estDia=histDate[p.id]||p.estado||'activo';
+    } else {
+      estDia=histDate[p.id]||'activo'; // fecha pasada/futura: historial del día o activo
+    }
+    return estDia==='activo';
   });
   if(!ac.length){g.innerHTML='<div style="grid-column:1/-1;color:var(--txt3);text-align:center;padding:24px;font-size:13px">Sin personal activo.</div>';return;}
   g.innerHTML=ac.map(p=>{
