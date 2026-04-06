@@ -5128,6 +5128,8 @@ function getSbClient(){
 function enterApp(found, sessionData){
   _currentUser=found;
   localStorage.setItem('cp4_session',JSON.stringify(sessionData));
+  // Guardar email para que futuros arranques sin sesión local sepan qué usuario buscar
+  if(found&&found.email) localStorage.setItem('cp4_last_email',found.email.toLowerCase());
   var splash=document.getElementById('splash-screen');
   if(splash) splash.style.display='none';
   document.getElementById('login-screen').style.display='none';
@@ -5224,9 +5226,13 @@ function initAuth(){
     return;
   }
 
-  // Check Supabase sessions for any of our registered emails
-  // Usar anon key aquí porque aún no tenemos token — solo leemos sesiones propias
-  fetch(SB_URL+'/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20',{
+  // Check Supabase sessions — buscar SOLO la sesión del email invitado o del dispositivo actual
+  // NUNCA entrar como otro usuario por tener una sesión más reciente en la misma BD
+  var _filterEmail=_inviteEmail||localStorage.getItem('cp4_last_email')||'';
+  var sessionUrl=_filterEmail
+    ? SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(_filterEmail)+'&select=session_data,updated_at&order=updated_at.desc&limit=5'
+    : SB_URL+'/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20';
+  fetch(sessionUrl,{
     credentials:'omit',
     headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
   }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows){
@@ -5235,6 +5241,8 @@ function initAuth(){
       try{
         var sd=JSON.parse(rows[i].session_data||'{}');
         if(!sd.email) continue;
+        // Si hay email filtrado, solo aceptar esa sesión exacta
+        if(_filterEmail&&sd.email.toLowerCase()!==_filterEmail.toLowerCase()) continue;
         var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
         if(match){
           var age=Date.now()-new Date(rows[i].updated_at).getTime();
@@ -5343,6 +5351,7 @@ function handleMagicLinkCallback(){
         var sessionData={id:found.id,nombre:found.nombre,email:(found.email||email).toLowerCase(),rol:found.rol};
         localStorage.setItem('cp4_session',JSON.stringify(sessionData));
         localStorage.setItem('cp4_auth_token',accessToken);
+        localStorage.setItem('cp4_last_email',(found.email||email).toLowerCase());
         var refreshToken=params.get('refresh_token');
         if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
         var expiresIn=params.get('expires_in')||3600;
@@ -5898,6 +5907,11 @@ function checkInviteParam(){
   var inv=params.get('invite');
   if(!inv) return;
   _inviteEmail=decodeURIComponent(inv).toLowerCase();
+  // Borrar sesión anterior para forzar login con el email de la invitación
+  // Sin esto, un dispositivo con sesión de otro usuario entraría como ese usuario
+  ['cp4_session','cp4_auth_token','cp4_refresh_token','cp4_token_exp','cp4_last_email'].forEach(function(k){
+    localStorage.removeItem(k);
+  });
   // Limpiar la URL sin recargar
   var clean=window.location.pathname;
   window.history.replaceState({},'',clean);
