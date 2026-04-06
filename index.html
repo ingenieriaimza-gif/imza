@@ -5352,6 +5352,13 @@ function sendMagicLink(){
   if(btn){ btn.disabled=true; btn.textContent='Verificando...'; }
   errEl.textContent='';
 
+  // Si viene de link de invitación — enviar directamente sin verificar
+  if(_inviteEmail&&email===_inviteEmail){
+    resetBtn();
+    _doSendMagicLink(email,errEl,btn);
+    return;
+  }
+
   // Verificar contra caché local si existe
   var cachedUsers=S.users||[];
   if(!cachedUsers.length){
@@ -5359,16 +5366,20 @@ function sendMagicLink(){
     if(bk) try{ cachedUsers=JSON.parse(bk); }catch(e){}
   }
 
-  // Si hay caché y el correo no está — bloquear
-  if(cachedUsers.length>0){
-    var found=cachedUsers.find(function(u){ return (u.email||'').toLowerCase()===email; });
-    if(!found){
-      resetBtn();
-      errEl.textContent='Este correo no está registrado. Contacta al administrador.';
-      return;
-    }
+  // Sin caché — enviar directamente (dispositivo nuevo, primera vez)
+  if(!cachedUsers.length){
+    resetBtn();
+    _doSendMagicLink(email,errEl,btn);
+    return;
   }
-  // Sin caché o correo encontrado — enviar directamente
+
+  // Con caché — verificar que el correo esté registrado
+  var found=cachedUsers.find(function(u){ return (u.email||'').toLowerCase()===email; });
+  if(!found){
+    resetBtn();
+    errEl.textContent='Este correo no está registrado. Contacta al administrador.';
+    return;
+  }
   resetBtn();
   _doSendMagicLink(email,errEl,btn);
 }
@@ -5764,17 +5775,19 @@ function shareInviteLink(){
 }
 
 // Detectar ?invite=email al cargar y pre-llenar el login
+var _inviteEmail='';
 function checkInviteParam(){
   var params=new URLSearchParams(window.location.search);
   var inv=params.get('invite');
   if(!inv) return;
+  _inviteEmail=decodeURIComponent(inv).toLowerCase();
   // Limpiar la URL sin recargar
   var clean=window.location.pathname;
   window.history.replaceState({},'',clean);
   // Pre-llenar el email en el login
   setTimeout(function(){
     var inp=document.getElementById('login-email-input');
-    if(inp){ inp.value=decodeURIComponent(inv); inp.focus(); }
+    if(inp){ inp.value=_inviteEmail; inp.focus(); }
   },300);
 }
 
