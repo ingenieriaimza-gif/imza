@@ -1276,128 +1276,136 @@ function persistLocal(){
 }
 
 // ── PULL FROM CLOUD ───────────────────────────────────────────────────────────
+// ── SYNC HELPERS ─────────────────────────────────────────────────────────────
+function _mergeEstadoHistorial(remote, local){
+  // Merge por timestamp — el cambio más reciente por persona/fecha gana
+  var merged={};
+  // Copiar todo lo de la nube primero
+  Object.keys(remote||{}).forEach(function(date){
+    merged[date]=Object.assign({},remote[date]);
+  });
+  // Aplicar entradas locales donde el timestamp local sea más reciente
+  Object.keys(local||{}).forEach(function(date){
+    if(!merged[date]) merged[date]={};
+    var rts=(remote[date]&&remote[date]._ts)||{};
+    var lts=(local[date]&&local[date]._ts)||{};
+    Object.keys(local[date]).forEach(function(pid){
+      if(pid==='_ts') return;
+      // Ganar si: local tiene timestamp más reciente, o la nube no tiene esta entrada
+      if((lts[pid]||0)>(rts[pid]||0) || !(remote[date]&&pid in remote[date])){
+        merged[date][pid]=local[date][pid];
+        if(!merged[date]._ts) merged[date]._ts={};
+        merged[date]._ts[pid]=lts[pid]||0;
+      }
+    });
+  });
+  return merged;
+}
+
+function _applyRemoteData(remote){
+  var del=remote.deleted||{};
+  // Proyectos
+  S.proyectos=(remote.proyectos||[]).filter(function(p){ return !del['proj_'+p.id]; });
+  // Asignar completadoEn si falta
+  var hoy=td(); var needsPush=false;
+  S.proyectos.forEach(function(p){
+    if(p.estado==='completado'&&(!p.completadoEn||p.completadoEn>hoy)){
+      p.completadoEn=hoy; needsPush=true;
+    }
+  });
+  if(needsPush) setTimeout(function(){ if(!_isPushing) pushToCloud(); },2000);
+  // Personal
+  S.personal=(remote.personal||[]).filter(function(p){ return !del['pers_'+p.id]; });
+  // Actividades
+  S.actividades={};
+  Object.keys(remote.actividades||{}).forEach(function(d){
+    var acts=(remote.actividades[d]||[]).filter(function(a){ return !del['act_'+a.id]; });
+    if(acts.length) S.actividades[d]=acts;
+  });
+  // Users
+  if(remote.users&&remote.users.length) S.users=remote.users;
+  // Misc
+  S.deleted=del;
+  S.exPersonal=remote.exPersonal||{};
+  S.deletedUsers=remote.deletedUsers||{};
+  // estadoHistorial — merge con local para no perder cambios de otros dispositivos
+  S.estadoHistorial=_mergeEstadoHistorial(remote.estadoHistorial, S.estadoHistorial);
+  // Sincronizar p.estado con el historial de hoy
+  var todayH=S.estadoHistorial[td()]||{};
+  S.personal.forEach(function(p){
+    if(p.estado==='inactivo') return;
+    p.estado=todayH[p.id]||'activo';
+  });
+  if(!S.date) S.date=td();
+  persistLocal();
+}
+
 function pullFromCloud(){
-  // No bloquear pull por push en curso — son operaciones independientes
-  // Mostrar indicador de actualización
   var mini=document.getElementById('sync-mini');
+  function restoreMini(){ if(mini){ mini.textContent=_currentUser?_currentUser.nombre:''; mini.style.color='var(--txt2)'; } }
   if(mini){ mini.textContent='Actualizando...'; mini.style.color='var(--gold)'; }
-  return sbFetch('/rest/v1/imza_data?id=eq.main&select=id,data,updated_at,device,user_name,last_action,changelog').then(function(rows){
-    if(!rows||!rows.length){ if(mini){ mini.textContent=_currentUser?_currentUser.nombre:''; mini.style.color='var(--txt2)'; } return false; }
-    var row=rows[0]; var remote=row.data||{};
-    if(!remote||!remote.proyectos){ if(mini){ mini.textContent=_currentUser?_currentUser.nombre:''; mini.style.color='var(--txt2)'; } return false; }
-    var userName=row.user_name||(row.data&&row.data._user)||'';
-    var action=row.last_action||(row.data&&row.data._action)||'';
+
+  return sbFetch('/rest/v1/imza_data?id=eq.main&select=id,data,updated_at,device,user_name,last_action,changelog')
+  .then(function(rows){
+    restoreMini();
+    if(!rows||!rows.length) return false;
+    var row=rows[0];
+    var remote=row.data||{};
+    if(!remote||!remote.proyectos) return false;
+
+    // Actualizar timestamp de referencia
+    _remoteUpdatedAt=row.updated_at||'';;
+
+    // Guardar info de sync
+    var userName=row.user_name||(remote._user)||'';
+    var action=row.last_action||(remote._action)||'';
     _lastSyncInfo={time:row.updated_at,device:row.device,user:userName,action:action};
     addToSyncHistory(_lastSyncInfo);
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
-    _remoteUpdatedAt=row.updated_at||'';
     updateSyncUI(true);
     refreshSyncTime();
-    if(mini){ mini.textContent=_currentUser?_currentUser.nombre:''; mini.style.color='var(--txt2)'; }
+
+    // Aplicar datos — proteger con flag para evitar saves concurrentes
     _applyingCloudData=true;
-    try{
-      var del=remote.deleted||{};
-      S.proyectos=(remote.proyectos||[]).filter(function(p){ return !del['proj_'+p.id]; });
-      // Asignar completadoEn a proyectos completados que no lo tengan
-      var needsPush=false;
-      var hoy=td();
-      S.proyectos.forEach(function(p){
-        if(p.estado==='completado'){
-          if(!p.completadoEn||p.completadoEn>hoy){
-            // Si no tiene fecha o tiene fecha futura (bug UTC): asignar hoy
-            // No usar _upd porque es la fecha de última actividad, no de cuando se completó
-            p.completadoEn=hoy;
-            needsPush=true;
-          }
-        }
-      });
-      if(needsPush) setTimeout(function(){ if(!_isPushing) pushToCloud(); },1000);
-      S.personal=(remote.personal||[]).filter(function(p){ return !del['pers_'+p.id]; });
-      S.actividades={};
-      Object.keys(remote.actividades||{}).forEach(function(d){
-        var acts=(remote.actividades[d]||[]).filter(function(a){ return !del['act_'+a.id]; });
-        if(acts.length) S.actividades[d]=acts;
-      });
-      if(remote.users&&remote.users.length) S.users=remote.users;
-      S.deleted=del;
-      S.exPersonal=remote.exPersonal||{};
-      S.deletedUsers=remote.deletedUsers||{};
-      // Merge estadoHistorial: combinar nube + local para no perder cambios de ningún dispositivo
-      // La nube tiene prioridad por fecha — pero si hay entrada local más reciente, se conserva
-      var remoteHist=remote.estadoHistorial||{};
-      var localHist=S.estadoHistorial||{};
-      var mergedHist={};
-      // Primero copiar todo lo de la nube
-      Object.keys(remoteHist).forEach(function(date){
-        mergedHist[date]=Object.assign({},remoteHist[date]);
-      });
-      // Luego aplicar entradas locales — el timestamp más reciente gana el conflicto
-      Object.keys(localHist).forEach(function(date){
-        if(!mergedHist[date]) mergedHist[date]={};
-        var remoteTs=(remoteHist[date]&&remoteHist[date]._ts)||{};
-        var localTs=(localHist[date]&&localHist[date]._ts)||{};
-        Object.keys(localHist[date]).forEach(function(pid){
-          if(pid==='_ts') return;
-          var rt=remoteTs[pid]||0;
-          var lt=localTs[pid]||0;
-          // Si local es más reciente o la nube no tiene esta entrada, usar local
-          if(lt>rt||!remoteHist[date]||!(pid in remoteHist[date])){
-            mergedHist[date][pid]=localHist[date][pid];
-            if(!mergedHist[date]._ts) mergedHist[date]._ts={};
-            mergedHist[date]._ts[pid]=lt||rt;
-          }
-        });
-      });
-      S.estadoHistorial=mergedHist;
-      // Sync today historial to p.estado
-      var todayH=S.estadoHistorial[td()]||{};
-      S.personal.forEach(function(p){
-        if(p.estado==='inactivo') return; // inactivo permanente nunca se toca
-        if(todayH[p.id]){
-          p.estado=todayH[p.id]; // usar lo registrado hoy
-        } else {
-          p.estado='activo'; // nuevo día: arrancar como activo
-        }
-      });
-      // Never reset S.date — keep user's selected date
-      if(!S.date) S.date=td();
-      persistLocal();
-    }finally{ _applyingCloudData=false; }
+    try{ _applyRemoteData(remote); }
+    finally{ _applyingCloudData=false; _applyingCloudDataSince=0; }
+
     return true;
-  }).catch(function(err){
-    if(mini){ mini.textContent=_currentUser?_currentUser.nombre:''; mini.style.color='var(--txt2)'; }
+  }).catch(function(){
+    restoreMini();
     return false;
   });
 }
 
 // ── PUSH TO CLOUD ─────────────────────────────────────────────────────────────
-// Only called when user makes a change AND is online
-// Returns promise — resolves true if saved, false if failed
 function pushToCloud(){
   if(_isPushing) return Promise.resolve(false);
   _isPushing=true;
-  // Timeout de seguridad — desbloquear después de 15s por si acaso
-  var _pushTimeout=setTimeout(function(){ _isPushing=false; },15000);
+  var _pt=setTimeout(function(){ _isPushing=false; },15000); // safety timeout
+
   if(!S.users||!S.users.length){
     var bk=localStorage.getItem('cp4_users_backup');
     if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
   }
   if(S.users&&S.users.length) localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+
   var device=detectDevice();
   var now=new Date().toISOString();
   var userName=_currentUser?_currentUser.nombre:'';
   var action=_lastAction||'';
-  _lastAction=''; // limpiar aquí — después de capturar, antes del fetch
+  _lastAction='';
+
   var patch=getLocalData();
-  patch._device=device;
-  patch._user=userName;
-  patch._action=action;
-  var changelog=loadChangeLog();
+  patch._device=device; patch._user=userName; patch._action=action;
+
   return sbFetch('/rest/v1/imza_data?id=eq.main',{
     method:'PATCH',
-    body:JSON.stringify({data:patch,updated_at:now,device:device,user_name:userName,last_action:action,changelog:changelog})
+    body:JSON.stringify({
+      data:patch, updated_at:now, device:device,
+      user_name:userName, last_action:action, changelog:loadChangeLog()
+    })
   }).then(function(){
-    clearTimeout(_pushTimeout);
+    clearTimeout(_pt);
     _isPushing=false;
     _lastSyncInfo={time:now,device:device,user:userName,action:action};
     addToHistory(now,userName,action);
@@ -1405,72 +1413,61 @@ function pushToCloud(){
     addToSyncHistory(_lastSyncInfo);
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     updateSyncUI(true);
-    // Leer el updated_at real de Supabase para sincronizar correctamente
-    // (Supabase puede tener trigger que sobreescribe el updated_at)
-    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
-      if(rows&&rows[0]) _remoteUpdatedAt=rows[0].updated_at||now;
-      else _remoteUpdatedAt=now;
-    }).catch(function(){ _remoteUpdatedAt=now; });
+    // Confirmar updated_at real del servidor (puede diferir del cliente)
+    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at')
+      .then(function(r){ _remoteUpdatedAt=(r&&r[0]&&r[0].updated_at)||now; })
+      .catch(function(){ _remoteUpdatedAt=now; });
     return true;
   }).catch(function(){
-    clearTimeout(_pushTimeout);
+    clearTimeout(_pt);
     _isPushing=false;
     return false;
   });
 }
 
 // ── SAVE ─────────────────────────────────────────────────────────────────────
-// If online: save to cloud immediately, then update all screens
-// If offline: block the edit with a message
 function save(){
-  // Guardar localmente siempre, sin importar estado de sync
   persistLocal();
   if(_currentUser){
-    var logAction=_lastAction||'Cambio realizado';
-    addToChangeLog(new Date().toISOString(),_currentUser.nombre,logAction);
+    addToChangeLog(new Date().toISOString(),_currentUser.nombre,_lastAction||'Cambio');
     renderChangeLog();
   }
-  // Push a la nube — si falla, marcar pendiente para reintentar
   pushToCloud().then(function(ok){
     if(!ok) localStorage.setItem('cp4_pending_push','1');
-  }).catch(function(){
-    localStorage.setItem('cp4_pending_push','1');
-  });
+  }).catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
 }
 
 // ── LIVE SYNC ─────────────────────────────────────────────────────────────────
-// Polling de respaldo cada 10s (el WebSocket hace el trabajo en tiempo real)
-// Se pausa automáticamente cuando la app está en segundo plano
 function startLiveSync(){
   if(_liveTimer) clearInterval(_liveTimer);
   _liveTimer=setInterval(function(){
-    if(!_currentUser) return;
-    if(document.hidden) return;
-    // Desbloquear _applyingCloudData si lleva más de 10s atorado
+    if(!_currentUser||document.hidden) return;
+    // Desbloquear _applyingCloudData si lleva atorado >10s
     if(_applyingCloudData){
       if(!_applyingCloudDataSince) _applyingCloudDataSince=Date.now();
       if(Date.now()-_applyingCloudDataSince>10000){ _applyingCloudData=false; _applyingCloudDataSince=0; }
       else return;
     } else { _applyingCloudDataSince=0; }
-    // Si hay push pendiente, enviarlo primero y esperar antes de hacer el poll
+    // Push pendiente primero
     if(localStorage.getItem('cp4_pending_push')&&!_isPushing){
       localStorage.removeItem('cp4_pending_push');
       pushToCloud().then(function(ok){
         if(!ok) localStorage.setItem('cp4_pending_push','1');
       }).catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
-      return; // el próximo tick del polling hará el fetch
+      return;
     }
-    if(_isPushing) return; // esperar a que termine el push antes de comparar timestamps
+    if(_isPushing) return;
+    // Verificar si hay cambios en la nube
     sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
-      if(!rows||!rows.length){ return; }
-      var t=rows[0].updated_at||'';
+      if(!rows||!rows.length) return;
       updateSyncUI(true);
+      var t=rows[0].updated_at||'';
       if(t&&t!==_remoteUpdatedAt){
         _remoteUpdatedAt=t;
         pullFromCloud().then(function(updated){ if(updated) rAll(true); });
       }
     }).catch(function(){});
-  },10000); // 10s en lugar de 2s — el WS cubre las actualizaciones inmediatas
+  },10000);
 }
 
 function startPing(){ startLiveSync(); }
