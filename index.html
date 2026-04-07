@@ -5463,7 +5463,9 @@ function handleMagicLinkCallback(){
 
   function finishLogin(found){
     var email=(found.email||'').toLowerCase();
-    var sessionData={id:found.id,nombre:found.nombre,email:email,rol:found.rol};
+    // El rol SIEMPRE viene del objeto found que llegó fresco de Supabase
+    var rol=found.rol||'visor'; // default visor si no tiene rol definido
+    var sessionData={id:found.id,nombre:found.nombre,email:email,rol:rol};
     localStorage.setItem('cp4_session',JSON.stringify(sessionData));
     localStorage.setItem('cp4_auth_token',accessToken);
     localStorage.setItem('cp4_last_email',email);
@@ -5512,29 +5514,26 @@ function handleMagicLinkCallback(){
     if(!user||!user.email) throw new Error('no_email');
     var email=user.email.toLowerCase();
 
-    // Paso 2: cargar usuarios frescos de Supabase
+    // Paso 2: cargar usuarios frescos de Supabase — obligatorio, sin caché
     fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
       credentials:'omit',
       headers:{'apikey':SB_KEY,'Authorization':'Bearer '+accessToken,'Content-Type':'application/json'}
     }).then(function(r){ return r.ok?r.json():Promise.reject('data_fail'); })
     .then(function(rows){
-      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
-        S.users=rows[0].data.users;
-        localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+      if(!rows||!rows[0]||!rows[0].data||!rows[0].data.users){
+        showErr('No se pudo verificar el acceso. Intenta de nuevo.');
+        return;
       }
-    }).catch(function(){
-      // Si falla usar caché local
-      if(!S.users||!S.users.length){
-        var bk=localStorage.getItem('cp4_users_backup');
-        if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
-      }
-    }).finally(function(){
-      var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
+      S.users=rows[0].data.users;
+      localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+      var found=S.users.find(function(u){ return (u.email||'').toLowerCase()===email; });
       if(found){
         finishLogin(found);
       } else {
         showErr('Correo no registrado. Contacta al administrador.');
       }
+    }).catch(function(){
+      showErr('Error al verificar acceso. Revisa tu conexión.');
     });
   }).catch(function(){
     showErr('Error al verificar. Intenta de nuevo.');
