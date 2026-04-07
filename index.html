@@ -1414,9 +1414,13 @@ function pushToCloud(){
     addToSyncHistory(_lastSyncInfo);
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     updateSyncUI(true);
-    // Confirmar updated_at real del servidor (puede diferir del cliente)
+    // Confirmar updated_at real del servidor
     sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at')
-      .then(function(r){ _remoteUpdatedAt=(r&&r[0]&&r[0].updated_at)||now; })
+      .then(function(r){
+        var serverTs=(r&&r[0]&&r[0].updated_at)||now;
+        toast('server_ts='+serverTs.slice(11,19)+' local='+now.slice(11,19),'ok');
+        _remoteUpdatedAt=serverTs;
+      })
       .catch(function(){ _remoteUpdatedAt=now; });
     return true;
   }).catch(function(){
