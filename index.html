@@ -1397,7 +1397,11 @@ function _applyRemoteData(remote){
     if(acts.length) S.actividades[d]=acts;
   });
   // Users
-  if(remote.users&&remote.users.length) S.users=remote.users;
+  if(remote.users&&remote.users.length){
+    S.users=remote.users;
+    // Guardar backup para auth en futuros arranques
+    localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+  }
   // Misc
   S.deleted=del;
   S.exPersonal=remote.exPersonal||{};
@@ -5240,134 +5244,127 @@ function initAuth(){
   var el=document.getElementById('login-appname');
   if(el) el.textContent=n;
 
-  // 1. Magic link in URL (Safari just processed it)
+  // 1. Magic link en URL (Safari lo acaba de procesar)
   if(window.location.hash&&window.location.hash.includes('access_token')){
     handleMagicLinkCallback();
     return;
   }
 
-  // 2. Local session exists
+  // 2. Sesión local guardada — la ruta más común en PWA
   var ss=localStorage.getItem('cp4_session');
   if(ss){
     try{
       var u=JSON.parse(ss);
       if(u&&u.email){
-        var userToken=localStorage.getItem('cp4_auth_token')||SB_KEY;
-        // Siempre obtener usuarios frescos de Supabase para garantizar rol correcto
-        fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
-          credentials:'omit',
-          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+userToken,'Content-Type':'application/json'}
-        }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows){
-          if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
-            S.users=rows[0].data.users;
-            localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-          }
-        }).catch(function(){
-          // Si falla el fetch, usar caché local
-          if(!S.users||!S.users.length){
+        // Entrar de inmediato con los datos de sesión guardados, sin esperar fetch
+        // El pull de la nube actualizará S.users y S.proyectos etc. al entrar
+        var sessionData={id:u.id,nombre:u.nombre,email:u.email.toLowerCase(),rol:u.rol};
+
+        // Refrescar token si es necesario, luego entrar
+        var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
+        var hasToken=!!localStorage.getItem('cp4_auth_token');
+        var needsRefresh=!hasToken||(tokenExp&&Date.now()>tokenExp-5*60*1000);
+
+        function _enterWithSession(){
+          // Cargar usuarios frescos en background sin bloquear entrada
+          var userToken=localStorage.getItem('cp4_auth_token')||SB_KEY;
+          fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+            credentials:'omit',
+            headers:{'apikey':SB_KEY,'Authorization':'Bearer '+userToken,'Content-Type':'application/json'}
+          }).then(function(r){ return r.ok?r.json():null; }).then(function(rows){
+            if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
+              S.users=rows[0].data.users;
+              localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+              // Actualizar sessionData con rol más reciente de la nube
+              var found=(S.users||[]).find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
+              if(found) sessionData.rol=found.rol;
+            }
+          }).catch(function(){
+            // Si falla la red, usar backup local de usuarios
             var bk=localStorage.getItem('cp4_users_backup');
             if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
-          }
-        }).finally(function(){
-          var found=(S.users||[]).find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
-          if(found){
-            // Rol siempre de S.users — nunca del localStorage
-            var sessionData={id:found.id,nombre:found.nombre,email:found.email.toLowerCase(),rol:found.rol};
-            var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
-            var needsRefresh=!localStorage.getItem('cp4_auth_token')||(tokenExp&&Date.now()>tokenExp-5*60*1000);
-            if(needsRefresh&&localStorage.getItem('cp4_refresh_token')){
-              // Esperar al refresh antes de entrar — garantiza token válido
-              refreshAuthToken().then(function(){ enterApp(found,sessionData); })
-                .catch(function(){ enterApp(found,sessionData); });
-            } else {
-              enterApp(found, sessionData);
-            }
-          } else {
-            // No encontrado ni en Supabase ni en caché — pedir login de nuevo
-            showLoginScreen();
-          }
-        });
+          });
+          // Entrar a la app sin esperar — el pull de enterApp traerá todo
+          enterApp(sessionData, sessionData);
+        }
+
+        if(needsRefresh&&localStorage.getItem('cp4_refresh_token')){
+          refreshAuthToken().then(function(){ _enterWithSession(); })
+            .catch(function(){ _enterWithSession(); }); // entrar igual aunque falle el refresh
+        } else {
+          _enterWithSession();
+        }
         return;
       }
     }catch(e){}
   }
 
-  // 3. No local session — check Supabase imza_sessions (for PWA/Safari bridge)
-  // Sessions are stored by email as key so PWA can find them without device_id
-  var users=S.users||[];
-  if(!users.length){
-    var bk2=localStorage.getItem('cp4_users_backup');
-    if(bk2) try{ users=JSON.parse(bk2); S.users=users; }catch(e){}
-  }
-  var emails=users.map(function(u){ return (u.email||'').toLowerCase(); }).filter(Boolean);
+  // 3. Sin sesión local — buscar en Supabase imza_sessions (puente PWA/Safari)
+  var _filterEmail=_inviteEmail||localStorage.getItem('cp4_last_email')||'';
 
-  if(!emails.length){
-    // Sin usuarios en caché — cargar de Supabase y luego reintentar checar sesión
-    // (Esto es lo que pasa en Android PWA la primera vez: no hay backup local)
-    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+  // Primero cargar usuarios (necesarios para validar la sesión)
+  var usersBk=localStorage.getItem('cp4_users_backup');
+  if(usersBk) try{ S.users=JSON.parse(usersBk); }catch(e){}
+
+  function _checkRemoteSession(){
+    var sessionUrl=_filterEmail
+      ? SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(_filterEmail)+'&select=session_data,updated_at&order=updated_at.desc&limit=5'
+      : SB_URL+'/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20';
+    fetch(sessionUrl,{
       credentials:'omit',
       headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
     }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows){
-      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
-        S.users=rows[0].data.users;
-        localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-        // Reintentar el flujo completo con los usuarios ya cargados
-        initAuth();
-      } else {
-        showLoginScreen();
-      }
-    }).catch(function(){ showLoginScreen(); });
-    return;
-  }
-
-  // Check Supabase sessions — buscar SOLO la sesión del email invitado o del dispositivo actual
-  // NUNCA entrar como otro usuario por tener una sesión más reciente en la misma BD
-  var _filterEmail=_inviteEmail||localStorage.getItem('cp4_last_email')||'';
-  var sessionUrl=_filterEmail
-    ? SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(_filterEmail)+'&select=session_data,updated_at&order=updated_at.desc&limit=5'
-    : SB_URL+'/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20';
-  fetch(sessionUrl,{
-    credentials:'omit',
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
-  }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows){
-    if(!rows||!rows.length){ showLoginScreen(); return; }
-    for(var i=0;i<rows.length;i++){
-      try{
-        var sd=JSON.parse(rows[i].session_data||'{}');
-        if(!sd.email) continue;
-        // Si hay email filtrado, solo aceptar esa sesión exacta
-        if(_filterEmail&&sd.email.toLowerCase()!==_filterEmail.toLowerCase()) continue;
-        var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
-        if(match){
+      if(!rows||!rows.length){ showLoginScreen(); return; }
+      var users=S.users||[];
+      for(var i=0;i<rows.length;i++){
+        try{
+          var sd=JSON.parse(rows[i].session_data||'{}');
+          if(!sd.email) continue;
+          if(_filterEmail&&sd.email.toLowerCase()!==_filterEmail.toLowerCase()) continue;
           var age=Date.now()-new Date(rows[i].updated_at).getTime();
           if(age>7*24*60*60*1000) continue;
-          // Usar rol y datos de S.users (fuente de verdad), no del session_data guardado
-          var matchSession={id:match.id,nombre:match.nombre,email:match.email.toLowerCase(),rol:match.rol};
+          // Buscar usuario en lista local; si no hay lista aún, usar datos del session_data
+          var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
+          var matchSession=match
+            ? {id:match.id,nombre:match.nombre,email:match.email.toLowerCase(),rol:match.rol}
+            : {id:sd.id||'',nombre:sd.nombre||sd.email,email:sd.email.toLowerCase(),rol:sd.rol||'editor'};
           var rt=sd.refresh_token||'';
           if(rt){
             localStorage.setItem('cp4_refresh_token',rt);
             refreshAuthToken().then(function(newToken){
               if(newToken){
                 localStorage.setItem('cp4_auth_token',newToken);
-                enterApp(match, matchSession);
+                localStorage.setItem('cp4_session',JSON.stringify(matchSession));
+                enterApp(matchSession, matchSession);
               } else {
-                // Token no renovable — pedir login, no entrar sin autenticación
                 showLoginScreen();
               }
-            }).catch(function(){
-              // Error renovando token — pedir login
-              showLoginScreen();
-            });
+            }).catch(function(){ showLoginScreen(); });
           } else {
-            // Sin refresh_token — pedir login
             showLoginScreen();
           }
           return;
-        }
-      }catch(e){}
-    }
-    showLoginScreen();
-  }).catch(function(){ showLoginScreen(); });
+        }catch(e){}
+      }
+      showLoginScreen();
+    }).catch(function(){ showLoginScreen(); });
+  }
+
+  // Si no hay usuarios en caché, cargarlos primero
+  if(!S.users||!S.users.length){
+    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+      credentials:'omit',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
+    }).then(function(r){ return r.ok?r.json():null; }).then(function(rows){
+      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
+        S.users=rows[0].data.users;
+        localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+      }
+      _checkRemoteSession();
+    }).catch(function(){ _checkRemoteSession(); });
+  } else {
+    _checkRemoteSession();
+  }
 }
 
 function showLoginScreen(){
