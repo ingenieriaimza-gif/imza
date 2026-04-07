@@ -1232,6 +1232,7 @@ function renderSyncHistory(){
 function updateSyncUI(ok){
   _isOnline=!!ok;
   updateSyncDot(ok);
+
   var badge=document.getElementById('sync-status-badge');
   if(badge){
     badge.textContent=ok?'En línea':'Sin conexión';
@@ -6442,7 +6443,8 @@ window.addEventListener('online',function(){
   }
 });
 window.addEventListener('offline',function(){
-  updateSyncUI(false);
+  // iOS Safari dispara 'offline' aunque haya red (bug conocido en PWA)
+  // No marcamos Sin conexión aquí — el polling HTTP es quien determina el estado real
 });
 
 // Push immediately when app is closed or hidden
