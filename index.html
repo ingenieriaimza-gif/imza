@@ -1413,7 +1413,7 @@ function pullFromCloud(){
 function pushToCloud(){
   if(_isPushing) return Promise.resolve(false);
   _isPushing=true;
-  var _pt=setTimeout(function(){ _isPushing=false; },15000);
+  var _pt=setTimeout(function(){ _isPushing=false; },20000);
 
   var device=detectDevice();
   var now=new Date().toISOString();
@@ -1427,31 +1427,55 @@ function pushToCloud(){
   }
   if(S.users&&S.users.length) localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
 
-  // Capturar el cambio local ANTES de cualquier pull
+  // Capturar snapshot local ANTES del fetch remoto
   var localSnapshot=getLocalData();
-  localSnapshot._device=device; localSnapshot._user=userName; localSnapshot._action=action;
 
-  return sbFetch('/rest/v1/imza_data?id=eq.main',{
-    method:'PATCH',
-    body:JSON.stringify({
-      data:localSnapshot, updated_at:now, device:device,
-      user_name:userName, last_action:action, changelog:loadChangeLog()
-    })
-  }).then(function(){
-    clearTimeout(_pt);
-    _isPushing=false;
-    _lastSyncInfo={time:now,device:device,user:userName,action:action};
-    addToHistory(now,userName,action);
-    renderHistory();
-    addToSyncHistory(_lastSyncInfo);
-    localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
-    updateSyncUI(true);
-    _remoteUpdatedAt=now;
-    return true;
+  function doPatch(dataToSend){
+    dataToSend._device=device; dataToSend._user=userName; dataToSend._action=action;
+    return sbFetch('/rest/v1/imza_data?id=eq.main',{
+      method:'PATCH',
+      body:JSON.stringify({
+        data:dataToSend, updated_at:now, device:device,
+        user_name:userName, last_action:action, changelog:loadChangeLog()
+      })
+    }).then(function(){
+      clearTimeout(_pt);
+      _isPushing=false;
+      _lastSyncInfo={time:now,device:device,user:userName,action:action};
+      addToHistory(now,userName,action);
+      renderHistory();
+      addToSyncHistory(_lastSyncInfo);
+      localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
+      updateSyncUI(true);
+      _remoteUpdatedAt=now;
+      persistLocal();
+      return true;
+    });
+  }
+
+  // Fetch-merge-push: traer estado actual de la nube, fusionar con local, subir resultado
+  // Evita que dos equipos que guardan al mismo tiempo se sobreescriban mutuamente
+  return sbFetch('/rest/v1/imza_data?id=eq.main&select=data')
+  .then(function(rows){
+    if(rows&&rows.length&&rows[0].data&&rows[0].data.proyectos){
+      var cloud=rows[0].data;
+      var del=Object.assign({},localSnapshot.deleted||{},cloud.deleted||{});
+      var mergedActs=_mergeActividades(cloud.actividades,localSnapshot.actividades,del);
+      var finalActs={};
+      Object.keys(mergedActs).forEach(function(d){
+        if(d==='_hadLocalOnly') return;
+        if(mergedActs[d].length) finalActs[d]=mergedActs[d];
+      });
+      var mergedEH=_mergeEstadoHistorial(cloud.estadoHistorial||{},localSnapshot.estadoHistorial||{});
+      var merged=Object.assign({},localSnapshot,{actividades:finalActs,estadoHistorial:mergedEH,deleted:del});
+      // Actualizar S en memoria con el resultado fusionado
+      S.actividades=finalActs; S.estadoHistorial=mergedEH; S.deleted=del;
+      return doPatch(merged);
+    }
+    return doPatch(localSnapshot);
   }).catch(function(){
-    clearTimeout(_pt);
-    _isPushing=false;
-    return false;
+    // Si el fetch falla, push directo como fallback para no perder cambios locales
+    return doPatch(localSnapshot).catch(function(){ clearTimeout(_pt); _isPushing=false; return false; });
   });
 }
 
