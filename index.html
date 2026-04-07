@@ -1393,6 +1393,7 @@ function pushToCloud(){
     method:'PATCH',
     body:JSON.stringify({data:patch,updated_at:now,device:device,user_name:userName,last_action:action,changelog:changelog})
   }).then(function(){
+    toast('✅ Push OK: '+now.slice(11,19),'ok');
     _lastAction=''; // Clear after successful push
     _lastSyncInfo={time:now,device:device,user:userName,action:action};
     addToHistory(now,userName,action);
@@ -1449,6 +1450,7 @@ function startLiveSync(){
       if(!rows||!rows.length){ return; }
       var t=rows[0].updated_at||'';
       updateSyncUI(true);
+      toast('🔄 Poll: '+(t!==_remoteUpdatedAt?'CAMBIO DETECTADO':'sin cambio'),'ok');
       if(t&&t!==_remoteUpdatedAt){
         _remoteUpdatedAt=t;
         pullFromCloud().then(function(updated){ if(updated) rAll(true); });
