@@ -1458,8 +1458,8 @@ function startLiveSync(){
       return;
     }
     if(_isPushing) return;
-    // Siempre bajar datos frescos en cada tick
-    pullFromCloud().then(function(updated){
+    toast('🔄 poll','ok');
+    pullFromCloud().then(function(){
       rAll(true);
     });
   },10000);
