@@ -77,6 +77,14 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
   50%  { background-position:0% 0; }
   100% { background-position:100% 0; }
 }
+@keyframes pulse {
+  0%,100% { opacity:1; }
+  50%      { opacity:0.65; }
+}
+@keyframes splashDot {
+  0%,80%,100% { transform:scale(0.6); opacity:0.3; }
+  40%         { transform:scale(1); opacity:1; }
+}
 .cal-btn { width:38px; height:38px; border-radius:12px; background:var(--golddim); border:1px solid rgba(240,201,74,0.2); display:flex; align-items:center; justify-content:center; cursor:pointer; position:relative; overflow:hidden; }
 .cal-btn svg { width:18px; height:18px; color:var(--gold); pointer-events:none; }
 .cal-btn input[type=date] { position:absolute; inset:0; opacity:0; cursor:pointer; font-size:16px; }
@@ -1067,14 +1075,117 @@ function detectDevice(){
 // ── API ───────────────────────────────────────────────────────────────────────
 function sbFetch(path,opts){
   opts=opts||{};
+  var userToken=localStorage.getItem('cp4_auth_token')||SB_KEY;
   return fetch(SB_URL+path,Object.assign({},opts,{
     credentials:'omit',
-    headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
+    headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+userToken,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
   })).then(function(res){
+    // Si el token expiró, intentar renovarlo automáticamente
+    if(res.status===401){
+      return refreshAuthToken().then(function(newToken){
+        if(!newToken) throw new Error('Session expired');
+        return fetch(SB_URL+path,Object.assign({},opts,{
+          credentials:'omit',
+          headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+newToken,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
+        })).then(function(res2){
+          if(!res2.ok) return res2.text().then(function(t){ throw new Error(t); });
+          return res2.text().then(function(t){ return t?JSON.parse(t):null; });
+        });
+      }).catch(function(){
+        // refresh_token local falló — intentar obtenerlo fresco de imza_sessions
+        if(!_currentUser||!_currentUser.email) throw new Error('Session expired');
+        var email=_currentUser.email.toLowerCase();
+        return fetch(SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(email)+'&select=session_data&order=updated_at.desc&limit=1',{
+          credentials:'omit',
+          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
+        }).then(function(r){ return r.ok?r.json():Promise.reject(); })
+        .then(function(rows){
+          if(!rows||!rows.length) throw new Error('Session expired');
+          var sd=JSON.parse(rows[0].session_data||'{}');
+          var rt=sd.refresh_token||'';
+          if(!rt) throw new Error('Session expired');
+          localStorage.setItem('cp4_refresh_token',rt);
+          return refreshAuthToken();
+        }).then(function(newToken){
+          if(!newToken) throw new Error('Session expired');
+          localStorage.setItem('cp4_auth_token',newToken);
+          return fetch(SB_URL+path,Object.assign({},opts,{
+            credentials:'omit',
+            headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+newToken,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
+          })).then(function(res2){
+            if(!res2.ok) return res2.text().then(function(t){ throw new Error(t); });
+            return res2.text().then(function(t){ return t?JSON.parse(t):null; });
+          });
+        }).catch(function(){
+          throw new Error('Session expired');
+        });
+      });
+    }
     if(!res.ok) return res.text().then(function(t){ throw new Error(t); });
     return res.text().then(function(t){ return t?JSON.parse(t):null; });
   });
 }
+
+// Renovar token usando el refresh_token guardado
+function refreshAuthToken(){
+  var refreshToken=localStorage.getItem('cp4_refresh_token');
+  if(!refreshToken) return Promise.resolve(null);
+  return fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/token?grant_type=refresh_token',{
+    method:'POST',
+    credentials:'omit',
+    headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({refresh_token:refreshToken})
+  }).then(function(res){ return res.json(); }).then(function(data){
+    if(data&&data.access_token){
+      localStorage.setItem('cp4_auth_token',data.access_token);
+      if(data.refresh_token) localStorage.setItem('cp4_refresh_token',data.refresh_token);
+      // Actualizar sesión en Supabase con tokens frescos para el puente PWA
+      if(_currentUser&&_currentUser.email){
+        var ss=localStorage.getItem('cp4_session');
+        var sessionData=ss?JSON.parse(ss):{};
+        var sessionDataWithTokens=Object.assign({},sessionData,{
+          auth_token:data.access_token,
+          refresh_token:data.refresh_token||''
+        });
+        fetch(SB_URL+'/rest/v1/imza_sessions',{
+          method:'POST',
+          credentials:'omit',
+          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+data.access_token,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},
+          body:JSON.stringify({
+            device_id:_currentUser.email.toLowerCase(),
+            session_data:JSON.stringify(sessionDataWithTokens),
+            updated_at:new Date().toISOString()
+          })
+        }).catch(function(){});
+      }
+      return data.access_token;
+    }
+    return null;
+  }).catch(function(){ return null; });
+}
+
+// Forzar re-login cuando el token no se puede renovar
+function forceRelogin(){
+  if(document.getElementById('login-screen')&&document.getElementById('login-screen').style.display!=='flex'){
+    localStorage.removeItem('cp4_auth_token');
+    localStorage.removeItem('cp4_refresh_token');
+    localStorage.removeItem('cp4_session');
+    document.getElementById('app').style.display='none';
+    document.getElementById('login-screen').style.display='flex';
+    toast('Sesión expirada — inicia sesión de nuevo','err');
+  }
+}
+
+// Renovar token proactivamente cada 45 minutos (expira en 1 hora)
+(function startTokenRefreshTimer(){
+  setInterval(function(){
+    var token=localStorage.getItem('cp4_auth_token');
+    var refresh=localStorage.getItem('cp4_refresh_token');
+    if(token&&refresh){
+      refreshAuthToken().catch(function(){});
+    }
+  }, 45*60*1000);
+})();
 
 // ── UI ────────────────────────────────────────────────────────────────────────
 function fmtSyncTime(iso){
@@ -1127,16 +1238,27 @@ function updateSyncUI(ok){
     badge.style.color=ok?'var(--green)':'var(--red)';
     badge.style.background=ok?'rgba(61,214,140,0.12)':'rgba(240,96,96,0.12)';
   }
-  // Always update time from latest _lastSyncInfo
+  var mini=document.getElementById('sync-mini');
+  if(mini){
+    var nombre=_currentUser?_currentUser.nombre:'';
+    if(ok){
+      mini.textContent=nombre?(nombre+' · En línea'):('En línea');
+      mini.style.color='var(--green)';
+    } else {
+      // Offline: solo mostrar nombre, el badge ya indica Sin conexión
+      mini.textContent=nombre||'';
+      mini.style.color='var(--txt2)';
+    }
+  }
+  // sync-mini (hora junto al punto) lo actualiza SOLO el polling con la hora del chequeo
+  // Aquí solo actualizamos el panel expandido con info del último cambio
   if(_lastSyncInfo&&_lastSyncInfo.time){
     var t=fmtSyncTime(_lastSyncInfo.time);
     var user=_lastSyncInfo.user?(' · '+_lastSyncInfo.user):'';
     var action=_lastSyncInfo.action?(' — '+_lastSyncInfo.action):'';
-    var mini=document.getElementById('sync-mini');
     var last=document.getElementById('sync-last');
     var cfgLast=document.getElementById('cfg-sync-last');
     var devEl=document.getElementById('sync-device');
-    if(mini) mini.textContent=t.mini+user;
     if(last) last.textContent=t.full+user+action;
     if(cfgLast) cfgLast.textContent=t.full+user+action;
     if(devEl) devEl.textContent=(_lastSyncInfo.device||'')+user+action;
@@ -1153,11 +1275,10 @@ function refreshSyncTime(){
     var t=fmtSyncTime(_lastSyncInfo.time);
     var user=_lastSyncInfo.user?(' · '+_lastSyncInfo.user):'';
     var action=_lastSyncInfo.action?(' — '+_lastSyncInfo.action):'';
-    var mini=document.getElementById('sync-mini');
+    // sync-mini lo maneja exclusivamente el polling — no tocarlo aquí
     var last=document.getElementById('sync-last');
     var cfgLast=document.getElementById('cfg-sync-last');
     var devEl=document.getElementById('sync-device');
-    if(mini) mini.textContent=t.mini+user;
     if(last) last.textContent=t.full+user+action;
     if(cfgLast) cfgLast.textContent=t.full+user+action;
     if(devEl) devEl.textContent=(_lastSyncInfo.device||'')+user+action;
@@ -1204,6 +1325,20 @@ function pullFromCloud(){
     try{
       var del=remote.deleted||{};
       S.proyectos=(remote.proyectos||[]).filter(function(p){ return !del['proj_'+p.id]; });
+      // Asignar completadoEn a proyectos completados que no lo tengan
+      var needsPush=false;
+      var hoy=td();
+      S.proyectos.forEach(function(p){
+        if(p.estado==='completado'){
+          if(!p.completadoEn||p.completadoEn>hoy){
+            // Si no tiene fecha o tiene fecha futura (bug UTC): asignar hoy
+            // No usar _upd porque es la fecha de última actividad, no de cuando se completó
+            p.completadoEn=hoy;
+            needsPush=true;
+          }
+        }
+      });
+      if(needsPush) setTimeout(function(){ if(!_isPushing) pushToCloud(); },1000);
       S.personal=(remote.personal||[]).filter(function(p){ return !del['pers_'+p.id]; });
       S.actividades={};
       Object.keys(remote.actividades||{}).forEach(function(d){
@@ -1217,16 +1352,26 @@ function pullFromCloud(){
       // Cloud is source of truth for estadoHistorial
       S.estadoHistorial=remote.estadoHistorial||{};
       // Sync today's historial to p.estado
+      // Si no hay entrada para hoy → resetear a 'activo' (nuevo día limpio)
       var todayH=S.estadoHistorial[td()]||{};
       S.personal.forEach(function(p){
-        if(todayH[p.id]) p.estado=todayH[p.id];
+        if(p.estado==='inactivo') return; // inactivo permanente nunca se toca
+        if(todayH[p.id]){
+          p.estado=todayH[p.id]; // usar lo registrado hoy
+        } else {
+          p.estado='activo'; // nuevo día: arrancar como activo
+        }
       });
       // Never reset S.date — keep user's selected date
       if(!S.date) S.date=td();
       persistLocal();
     }finally{ _applyingCloudData=false; }
     return true;
-  }).catch(function(){ updateSyncUI(false); return false; });
+  }).catch(function(err){
+    var msg=(err&&err.message)||'';
+    if(msg==='Failed to fetch') updateSyncUI(false);
+    return false;
+  });
 }
 
 // ── PUSH TO CLOUD ─────────────────────────────────────────────────────────────
@@ -1263,9 +1408,10 @@ function pushToCloud(){
     _isPushing=false;
     updateSyncUI(true);
     return true;
-  }).catch(function(){
+  }).catch(function(err){
     _isPushing=false;
-    updateSyncUI(false);
+    var msg=(err&&err.message)||'';
+    if(msg==='Failed to fetch') updateSyncUI(false);
     return false;
   });
 }
@@ -1283,14 +1429,17 @@ function save(){
     addToChangeLog(new Date().toISOString(),_currentUser.nombre,logAction);
     renderChangeLog();
   }
-  // NO limpiar _lastAction aquí — pushToCloud() la necesita para enviar la acción al servidor
-  // pushToCloud() ya la limpia después de un push exitoso
-  if(!_isOnline){
-    showNoConnection();
-    return; // saved locally, will push when back online
-  }
+  _lastAction=''; // limpiar DESPUÉS de loguear
+  // Siempre intentar push aunque _isOnline sea false:
+  // en iPhone el token puede estar expirado y sbFetch ya maneja el refresh automático
+  // Si el push funciona, actualiza a En línea; si falla de verdad, muestra error
   pushToCloud().then(function(ok){
-    if(!ok) showNoConnection();
+    if(ok){
+      updateSyncUI(true);
+      toast('✅ Guardado','ok');
+    } else {
+      toast('❌ No se pudo guardar — revisa conexión','err');
+    }
   });
 }
 
@@ -1303,16 +1452,23 @@ function startLiveSync(){
     if(!_currentUser||_applyingCloudData) return;
     if(document.hidden) return; // no hacer fetch cuando la app está en background
     sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
-      if(!rows||!rows.length){ updateSyncUI(false); return; }
+      if(!rows||!rows.length){ return; }
       var t=rows[0].updated_at||'';
       updateSyncUI(true);
-      // Hacer pull si: el timestamp cambió O si hay actualización pendiente y ya cerró la sheet
-      if(t&&(t!==_remoteUpdatedAt||(_pendingRemoteUpdate&&!isSheetOpen()))){
+      if(t&&t!==_remoteUpdatedAt){
         _remoteUpdatedAt=t;
-        _pendingRemoteUpdate=false;
         pullFromCloud().then(function(updated){ if(updated) rAll(true); });
       }
-    }).catch(function(){ updateSyncUI(false); });
+    }).catch(function(err){
+      // Solo marcar Sin conexión si es error de red, no de token
+      var msg=(err&&err.message)||'';
+      if(msg==='Session expired'||msg==='Failed to fetch') {
+        // Session expired: sbFetch ya intentó el refresh, no hay nada más que hacer
+        // Failed to fetch: error de red real
+        if(msg==='Failed to fetch') updateSyncUI(false);
+        // Si expiró sesión no tocar el badge — el usuario sigue teniendo red
+      }
+    });
   },10000); // 10s en lugar de 2s — el WS cubre las actualizaciones inmediatas
 }
 
@@ -1320,8 +1476,6 @@ function startPing(){ startLiveSync(); }
 function syncNow(){ pullFromCloud().then(function(u){ if(u) rAll(true); }); }
 
 // ── WEBSOCKET ─────────────────────────────────────────────────────────────────
-var _pendingRemoteUpdate=false; // true cuando llega evento WS con sheet abierta
-
 function startRealtime(){
   if(_realtimeWs&&(_realtimeWs.readyState===0||_realtimeWs.readyState===1)) return;
   try{
@@ -1339,16 +1493,15 @@ function startRealtime(){
         if(!isChange||_applyingCloudData) return;
         var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device)||'';
         if(dev&&dev===detectDevice()) return;
-        // Si hay sheet abierta: marcar pendiente pero NO tocar los datos
-        // closeS() hará pull automáticamente al cerrar
-        if(isSheetOpen()){ _pendingRemoteUpdate=true; return; }
-        _pendingRemoteUpdate=false;
+        // No actualizar estado S si el usuario tiene una sheet abierta (podría estar editando)
+        if(isSheetOpen()) return;
         pullFromCloud().then(function(u){ if(u){ rAll(true); updateSyncUI(true); } });
       }catch(e){}
     };
     _realtimeWs.onclose=function(){
       if(_realtimeHb){ clearInterval(_realtimeHb); _realtimeHb=null; }
-      updateSyncUI(false);
+      // No marcar Sin conexión aquí — el WS se cierra frecuentemente en Android
+      // El polling HTTP es quien determina el estado de conexión real
       setTimeout(startRealtime,3000);
     };
     _realtimeWs.onerror=function(){ _realtimeWs.close(); };
@@ -1362,9 +1515,20 @@ function load(){
   if(d){ try{ Object.assign(S,JSON.parse(d)); }catch(e){} }
   // Restore saved date or use today
   if(!S.date) S.date=td();
+  // Resetear estado al arrancar si no hay historial para hoy
+  var todayH=(S.estadoHistorial&&S.estadoHistorial[td()])||{};
+  (S.personal||[]).forEach(function(p){
+    if(p.estado==='inactivo') return;
+    if(todayH[p.id]){
+      p.estado=todayH[p.id];
+    } else {
+      p.estado='activo';
+    }
+  });
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
-  updateSyncUI(false);
+  // No marcar "Sin conexión" en el arranque — se resuelve tras el auth
+  // (En Android, pullFromCloud falla antes de tener token y pintaba el badge en rojo)
   pullFromCloud().then(function(updated){
     if(updated) rAll();
     initAuth();
@@ -1464,7 +1628,17 @@ function openActM(eid=null,edate=null){
   document.getElementById('sact-title').textContent=eid?'Editar actividad':'Nueva actividad';
   const sel=document.getElementById('a-p');
   sel.innerHTML='<option value="">— Selecciona proyecto —</option>';
-  S.proyectos.forEach((p,i)=>{sel.innerHTML+=`<option value="${p.id}">A${i+1} — ${p.nombre}</option>`;});
+  S.proyectos.forEach((p,i)=>{
+    // Al editar, mostrar siempre el proyecto actual aunque esté completado
+    // Al crear, excluir proyectos completados
+    if(p.estado==='completado' && eid){
+      const existingAct=(S.actividades[edate||S.date]||[]).find(a=>a.id===eid);
+      if(!existingAct||existingAct.proyectoId!==p.id) return;
+    } else if(p.estado==='completado') {
+      return;
+    }
+    sel.innerHTML+=`<option value="${p.id}">A${i+1} — ${p.nombre}${p.estado==='pausado'?' (Pausado)':''}</option>`;
+  });
   // Actualizar título del sheet al instante cuando cambia el proyecto
   sel.onchange=function(){
     const nombre=this.value?gpn(this.value):'';
@@ -1571,7 +1745,21 @@ function chgHrs(id,delta){
 function bldWG(){
   const date=S.eADate||S.date;const dActs=S.actividades[date]||[];const eid=S.eAId;
   const g=document.getElementById('wg');
-  const ac=S.personal.filter(p=>p.estado==='activo');
+  const hoy=td();
+  const histDate=(S.estadoHistorial&&S.estadoHistorial[date])||{};
+  const ac=S.personal.filter(p=>{
+    if(p.estado==='inactivo') return false; // inactivo permanente: nunca aparece
+    // Para la fecha de la actividad usar el historial de ESE día
+    // Si no hay historial para ese día y es una fecha pasada → asumir activo
+    // Solo usar p.estado (hoy) si estamos editando una actividad de HOY
+    var estDia;
+    if(date===hoy){
+      estDia=histDate[p.id]||p.estado||'activo';
+    } else {
+      estDia=histDate[p.id]||'activo'; // fecha pasada/futura: historial del día o activo
+    }
+    return estDia==='activo';
+  });
   if(!ac.length){g.innerHTML='<div style="grid-column:1/-1;color:var(--txt3);text-align:center;padding:24px;font-size:13px">Sin personal activo.</div>';return;}
   g.innerHTML=ac.map(p=>{
     const aa=dActs.find(a=>a.id!==eid&&a.trabajadores?.includes(p.id));
@@ -1611,7 +1799,9 @@ function saveAct(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permi
     var actDate=S.eADate||S.date;
     var savedAct=S.eAId?(S.actividades[actDate]||[]).find(function(a){ return a.id===S.eAId; }):(S.actividades[actDate]||[]).slice(-1)[0];
     _lastSaveType='act'; _lastSaveItem=savedAct; _lastSaveExtra={date:actDate};
-    setAction(S.eAId?'Editó actividad':'Nueva actividad');
+    var _pNom=gpn(pId);var _nW=selW.length;var _nG=gastos.length;var _gT=gastos.reduce(function(s,g){return s+(g.monto||0);},0);
+    var _desc=(S.eAId?'Editó':'Nueva')+' actividad · '+_pNom+' · '+fmtDate(date)+' · '+_nW+' trabajador'+(_nW!==1?'es':'')+(_nG?' · $'+_gT.toLocaleString()+' gastos':'')+((document.getElementById('a-n').value.trim())?' · "'+document.getElementById('a-n').value.trim().slice(0,40)+'"':'');
+    setAction(_desc);
     save();
   }catch(e){}
   document.getElementById('sov-act').classList.remove('open');
@@ -1676,13 +1866,22 @@ function saveProj(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
   const dup=S.proyectos.find(p=>p.folio===folio&&p.id!==id);
   if(dup){toast('El número "'+folio+'" ya está en uso','err');return;}
   const diasVal=parseInt(document.getElementById('pdias').value)||0;
+  const nuevoEstado=document.getElementById('pe').value;
+  const proyExistente=id?S.proyectos.find(p=>p.id===id):null;
   const d={
     folio,
     nombre:n,
     lider:document.getElementById('pd').value.trim(),
     inicio:document.getElementById('pi').value,
     diasEstimados:diasVal||null,
-    estado:document.getElementById('pe').value
+    estado:nuevoEstado,
+    // Si se marca como completado: siempre usar hoy (momento real de la decisión)
+    // Si ya estaba completado y se re-guarda sin cambiar estado: conservar fecha original
+    completadoEn: nuevoEstado==='completado'
+      ? (proyExistente&&proyExistente.estado==='completado'&&proyExistente.completadoEn
+         ? proyExistente.completadoEn  // ya estaba completado — conservar fecha original
+         : td())                        // se acaba de marcar como completado — poner hoy
+      : null
   };
   if(id){const i=S.proyectos.findIndex(p=>p.id===id);if(i!==-1)S.proyectos[i]={...S.proyectos[i],...d,_upd:Date.now()};}
   else S.proyectos.push({id:'p'+Date.now(),...d,_upd:Date.now()});
@@ -1690,7 +1889,9 @@ function saveProj(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
     var pid2=document.getElementById('pid').value;
     var savedProj=pid2?(S.proyectos.find(function(p){ return p.id===pid2; })):S.proyectos[S.proyectos.length-1];
     _lastSaveType='proj'; _lastSaveItem=savedProj;
-    setAction(pid2?('Editó proyecto '+(savedProj?savedProj.nombre||savedProj.folio:'')):'Nuevo proyecto');
+    var _pAcc=pid2?'Editó':'Nuevo';var _pSN=savedProj?(savedProj.folio?'['+savedProj.folio+'] ':'')+savedProj.nombre:'';
+    var _pEst=savedProj?savedProj.estado:'';var _pLid=savedProj&&savedProj.lider?' · 👷 '+savedProj.lider:'';
+    setAction(_pAcc+' proyecto · '+_pSN+_pLid+' · '+_pEst);
     save();
   }catch(e){}
   document.getElementById('sov-proj').classList.remove('open');
@@ -1720,7 +1921,7 @@ function confirmCancel(){
 function dProj(id){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permisos para eliminar','err');return;}markChanged('proyectos');const p=S.proyectos.find(x=>x.id===id);confirmShow('¿Eliminar proyecto?',p?'"'+p.nombre+'" será eliminado permanentemente.':'Esta acción no se puede deshacer.',()=>{var dP=S.proyectos.find(x=>x.id===id);
     S.proyectos=S.proyectos.filter(x=>x.id!==id);
     recordDeleted('proj',id);
-    setAction('Eliminó proyecto '+(dP?dP.nombre||dP.folio:''));
+    setAction('Eliminó proyecto · '+(dP?(dP.folio?'['+dP.folio+'] ':'')+dP.nombre:'')+(dP&&dP.lider?' · 👷 '+dP.lider:''));
     save();rAll();toast('Proyecto eliminado','ok');});}
 
 // PERSONAL
@@ -1777,7 +1978,8 @@ function savePers(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin perm
     if(!S.estadoHistorial[hDateP]) S.estadoHistorial[hDateP]={};
     if(savedPers) S.estadoHistorial[hDateP][savedPers.id]=savedPers.estado||'activo';
     _lastSaveType='pers'; _lastSaveItem=savedPers;
-    setAction(wid2?('Editó trabajador '+(savedPers?savedPers.nombre:'')):'Nuevo trabajador');
+    var _wAcc=wid2?'Editó':'Nuevo';var _wNom=savedPers?savedPers.nombre:'';var _wCar=savedPers&&savedPers.cargo?' · '+savedPers.cargo:'';var _wEst=savedPers?' · '+savedPers.estado:'';
+    setAction(_wAcc+' trabajador · '+_wNom+_wCar+_wEst);
     save();
   }catch(e){}
   document.getElementById('sov-pers').classList.remove('open');
@@ -1798,7 +2000,7 @@ function dPers(id){
     var dW=S.personal.find(x=>x.id===id);
     S.personal=S.personal.filter(x=>x.id!==id);
     recordDeleted('pers',id);
-    setAction('Eliminó trabajador '+(dW?dW.nombre:''));
+    setAction('Eliminó trabajador · '+(dW?dW.nombre+( dW.cargo?' · '+dW.cargo:''):''));
     save();rAll();toast('Trabajador eliminado','ok');
   });
 }
@@ -1837,7 +2039,8 @@ function dAct(id,date){
     S.actividades[date]=(S.actividades[date]||[]).filter(a=>a.id!==id);
     recordDeleted('act',id);
     _lastSaveType='act_delete'; _lastSaveItem=dAct2; _lastSaveExtra={date:date};
-    setAction('Eliminó actividad');
+    var _dPNom=dAct2?gpn(dAct2.proyectoId):'';var _dDate=date||'';
+    setAction('Eliminó actividad · '+_dPNom+(_dDate?' · '+fmtDate(_dDate):''));
     save();rAll();toast('Actividad eliminada','ok');
   });
 }
@@ -1886,8 +2089,6 @@ var _lastInteraction=0;
 var _applyingCloudData=false; // blocks save/push while applying cloud data
 
 var _rAllTimer=null;
-var _rAllRetries=0; // límite de reintentos para evitar loop infinito
-
 function isSheetOpen(){
   // Check if any overlay/sheet is open
   return document.querySelectorAll('.sov.open').length > 0 ||
@@ -1905,16 +2106,13 @@ function rAll(fromSync){
 
   if(fromSync){
     if(_rAllTimer) clearTimeout(_rAllTimer);
-    _rAllRetries=0;
-    _rAllTimer=setTimeout(function tryRender(){
-      // Si hay una sheet/modal abierta o el usuario interactuó en los últimos 3s,
-      // posponer el render — máx 20 reintentos (~10 segundos) para no quedarse en loop
-      if(isUserInteracting()&&_rAllRetries<20){
-        _rAllRetries++;
-        _rAllTimer=setTimeout(tryRender, 500);
+    _rAllTimer=setTimeout(function(){
+      // Si hay una sheet/modal abierta o el usuario interactuó en los últimos 4s,
+      // posponer el render hasta que termine — verificar cada 500ms
+      if(isUserInteracting()){
+        _rAllTimer=setTimeout(function(){ rAll(true); }, 500);
         return;
       }
-      _rAllRetries=0;
       _syncRendering=true;
       if(scroll) scroll.style.overflow='hidden';
       requestAnimationFrame(function(){
@@ -2149,8 +2347,9 @@ function togVac(id){
     markChanged('personal');
   }
   markChanged('estadoHistorial');
-  var estadoLabels={activo:'Activo',vacaciones:'Vacaciones',falta:'Falta',inactivo:'Inactivo'};
-  setAction((p.nombre||'Trabajador')+' → '+(estadoLabels[next]||next)+' ('+hDate+')');
+  var estadoLabels={activo:'✅ Activo',vacaciones:'🏖️ Vacaciones',falta:'❌ Falta',inactivo:'⏸️ Inactivo'};
+  var _cargoLbl=p.cargo?' · '+p.cargo:'';
+  setAction('Estado · '+(p.nombre||'Trabajador')+_cargoLbl+' → '+(estadoLabels[next]||next)+' · '+fmtDate(hDate));
   save();
   // Update immediately without debounce
   try{ renderVacList(); }catch(e){}
@@ -2402,42 +2601,54 @@ function rHistProj(){
   }
 
   const bm={activo:'bgr',pausado:'bg',completado:'bb'};
+  const todayStr=td();
 
   function buildProjCard(proj){
     const i=S.proyectos.indexOf(proj);
     const projColor=PC[i%PC.length];
-    const pCode='A'+(i+1);
+    const pCode=proj.folio||('A'+(i+1));
     const entries=(projMap[proj.id]||[]).sort((a,b)=>b.date.localeCompare(a.date));
     const totalDias=new Set(entries.map(e=>e.date)).size;
     const totalGastos=entries.reduce((s,e)=>s+sumG(e.a.gastos),0);
     const allWorkers=new Set(entries.flatMap(e=>e.a.trabajadores||[]));
+    const esCompletado=proj.estado==='completado';
+    const terminadoHoy=esCompletado&&proj.completadoEn===todayStr;
+    const cardBorder=terminadoHoy?'border:2px solid var(--gold);box-shadow:0 0 0 3px rgba(245,207,85,0.12)':'';
+    const badgeHtml=terminadoHoy
+      ?`<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,207,85,0.18);color:var(--gold);border:1px solid rgba(245,207,85,0.4);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:800;white-space:nowrap;animation:pulse 2s ease infinite">✅ Terminado hoy</span>`
+      :esCompletado
+        ?`<span style="background:rgba(91,156,246,0.12);color:var(--blue);border:1px solid rgba(91,156,246,0.25);border-radius:100px;padding:3px 10px;font-size:10px;font-weight:700;white-space:nowrap">${proj.completadoEn?'✓ '+fmtDate(proj.completadoEn):'✓ Completado'}</span>`
+        :'';
 
     if(!entries.length){
-      return`<div class="hday" style="opacity:0.55;margin-bottom:6px">
-        <div class="hday-h" style="cursor:default;padding:12px 14px">
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:34px;height:34px;border-radius:9px;background:${projColor}22;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${projColor};flex-shrink:0">${pCode}</div>
-            <div><div class="hday-date" style="font-size:14px">${proj.nombre}</div><div style="font-size:11px;color:var(--txt3);margin-top:1px">Sin actividades · inicio ${fmtDate(proj.inicio)}</div></div>
+      return`<div class="hday" style="opacity:${terminadoHoy?1:0.55};margin-bottom:6px;${cardBorder}${terminadoHoy?'background:rgba(245,207,85,0.03)':''}">
+        <div class="hday-h" style="cursor:default;padding:12px 14px${terminadoHoy?';background:rgba(245,207,85,0.05)':''}">
+          <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+            <div style="width:34px;height:34px;border-radius:9px;background:${terminadoHoy?'rgba(245,207,85,0.2)':projColor+'22'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${terminadoHoy?'var(--gold)':projColor};flex-shrink:0">${pCode}</div>
+            <div style="min-width:0"><div class="hday-date" style="font-size:14px;color:${terminadoHoy?'var(--gold)':''}">${proj.nombre}</div><div style="font-size:11px;color:var(--txt3);margin-top:1px">Sin actividades · inicio ${fmtDate(proj.inicio)}</div></div>
           </div>
-          <span class="b ${bm[proj.estado]||'bb'}" style="font-size:10px">${proj.estado}</span>
+          ${badgeHtml||`<span class="b ${bm[proj.estado]||'bb'}" style="font-size:10px">${proj.estado}</span>`}
         </div>
       </div>`;
     }
 
-    return`<div class="hday" data-hkey="proj-${proj.id}" style="margin-bottom:6px">
-      <div class="hday-h" onclick="togH(this)" style="padding:12px 14px">
+    return`<div class="hday" data-hkey="proj-${proj.id}" style="margin-bottom:6px;${cardBorder}${terminadoHoy?'background:rgba(245,207,85,0.03)':''}">
+      <div class="hday-h" onclick="togH(this)" style="padding:12px 14px${terminadoHoy?';background:rgba(245,207,85,0.05)':''}">
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
-          <div style="width:34px;height:34px;border-radius:9px;background:${projColor}22;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${projColor};flex-shrink:0">${pCode}</div>
+          <div style="width:34px;height:34px;border-radius:9px;background:${terminadoHoy?'rgba(245,207,85,0.2)':projColor+'22'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${terminadoHoy?'var(--gold)':projColor};flex-shrink:0">${pCode}</div>
           <div style="min-width:0">
-            <div class="hday-date" style="color:${projColor};font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${proj.nombre}</div>
+            <div class="hday-date" style="color:${terminadoHoy?'var(--gold)':projColor};font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${proj.nombre}</div>
             <div style="font-size:11px;color:var(--txt3);margin-top:1px">${totalDias}d trabajados · ${allWorkers.size} pers.${totalGastos?' · $'+totalGastos.toLocaleString():''}${entries.length?' · último: '+fmtDate(entries[0].date):''}</div>
           </div>
         </div>
-        <div class="hday-meta" style="flex-shrink:0;margin-left:8px;gap:4px">
-          <button style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(37,211,102,0.15);color:#25d166;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0" onclick="event.stopPropagation();shareProj('${proj.id}')" title="Copiar para WhatsApp">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-          </button>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>
+        <div class="hday-meta" style="flex-shrink:0;margin-left:8px;display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+          ${badgeHtml}
+          <div style="display:flex;gap:4px;align-items:center">
+            <button style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(37,211,102,0.15);color:#25d166;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0" onclick="event.stopPropagation();shareProj('${proj.id}')" title="Copiar para WhatsApp">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            </button>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
         </div>
       </div>
       <div class="hbody">
@@ -2453,7 +2664,6 @@ function rHistProj(){
   function buildGroup(icon,label,color,badgeCls,projects,subtitle,groupKey){
     const count=projects.length;
     const cards=projects.map(p=>buildProjCard(p)).join('');
-    // Si hay estado previo, respetarlo; si es primera vez, abrir por defecto
     const isOpen=prevOpen.size===0 ? true : prevOpen.has('group-'+groupKey);
     return`<div class="hday" data-hkey="group-${groupKey}" style="margin-bottom:12px;border-color:${color}40;overflow:visible">
       <div class="hday-h" onclick="togH(this)" style="background:${color}0a;border-radius:var(--r) var(--r) 0 0">
@@ -2476,15 +2686,23 @@ function rHistProj(){
   }
 
   const actPaus = sortByActivity(S.proyectos.filter(p=>p.estado==='activo'||p.estado==='pausado'));
+  // Completados: primero los terminados hoy, luego del más reciente al más viejo
   const completados = S.proyectos.filter(p=>p.estado==='completado')
-    .sort((a,b)=>(b.inicio||'').localeCompare(a.inicio||''));
+    .sort((a,b)=>{
+      const aHoy=a.completadoEn===todayStr?1:0;
+      const bHoy=b.completadoEn===todayStr?1:0;
+      if(bHoy!==aHoy) return bHoy-aHoy;
+      return (b.completadoEn||b.inicio||'').localeCompare(a.completadoEn||a.inicio||'');
+    });
 
+  const terminadosHoy=completados.filter(p=>p.completadoEn===todayStr).length;
   const apSubtitle = actPaus.filter(p=>p.estado==='activo').length+' activos · '+actPaus.filter(p=>p.estado==='pausado').length+' pausados';
-  const compSubtitle = completados.length+' proyecto'+(completados.length!==1?'s':'')+' terminados';
+  const compSubtitle = completados.length+' proyecto'+(completados.length!==1?'s':'')+' terminados'+(terminadosHoy?' · '+terminadosHoy+' hoy 🟡':'');
 
   c.innerHTML =
     buildGroup('🏗️','Activos y Pausados','var(--green)','bgr', actPaus, apSubtitle,'activos') +
     buildGroup('✅','Completados','var(--blue)','bb', completados, compSubtitle,'completados');
+
   // Restaurar acordeones que estaban abiertos antes del re-render
   restoreAccordionState(c, prevOpen);
 }
@@ -2506,7 +2724,20 @@ function restoreAccordionState(container, state){
   });
 }
 
-function togH(head){head.nextElementSibling.classList.toggle('open');}
+function togH(head){
+  var scroll=document.getElementById('scroll');
+  var headTop=head.getBoundingClientRect().top;
+  var body=head.nextElementSibling;
+  var wasOpen=body.classList.contains('open');
+  body.classList.toggle('open');
+  if(wasOpen&&scroll){
+    requestAnimationFrame(function(){
+      var headTopAfter=head.getBoundingClientRect().top;
+      var diff=headTopAfter-headTop;
+      if(Math.abs(diff)>2) scroll.scrollTop=scroll.scrollTop-diff;
+    });
+  }
+}
 
 // ── Helper: imprime o abre reporte según plataforma ──────────────────────────
 function _printBlob(pdfName, blob){
@@ -2523,19 +2754,24 @@ function _printBlob(pdfName, blob){
   fr.onload=function(){
     try{
       fr.contentWindow.focus();
+      // Cambiar document.title en todos los navegadores — es lo que usan para nombrar el PDF
+      var orig=document.title;
+      document.title=pdfName;
+      var restore=function(){ document.title=orig; };
       if(isIOS){
-        // Safari iOS usa el <title> del documento padre para nombrar el PDF.
-        // Cambiamos document.title antes de imprimir y lo restauramos al recuperar foco.
-        var orig=document.title;
-        document.title=pdfName;
         setTimeout(function(){
           fr.contentWindow.print();
-          var restore=function(){ document.title=orig; };
           window.addEventListener('focus',restore,{once:true});
           setTimeout(restore,8000);
         },100);
       } else {
-        fr.contentWindow.print();
+        // PC: pequeño delay para que el título se aplique antes del diálogo de impresión
+        setTimeout(function(){
+          fr.contentWindow.print();
+          // Restaurar título después de que cierre el diálogo
+          window.addEventListener('focus',restore,{once:true});
+          setTimeout(restore,30000);
+        },80);
       }
     }catch(e){
       var a=document.createElement('a');
@@ -2770,18 +3006,24 @@ function _doShareProj(projId){
   if(!proj) return;
   var pCode=gcode(projId), pNom=gpn(projId), pLider=gpl(projId)||'';
 
-  // ── Recopilar datos ───────────────────────────────────────────────────────
+  // ── Recopilar datos — guardar actividades individuales ───────────────────────
   var diasData={};
+  var diasActs={}; // actividades individuales por día
   Object.keys(S.actividades).sort().forEach(function(date){
     (S.actividades[date]||[]).forEach(function(a){
       if(a.proyectoId!==projId) return;
-      if(!diasData[date]) diasData[date]={workers:new Set(),he:{},gastos:[],notas:[]};
+      if(!diasData[date]) diasData[date]={workers:new Set(),he:{},gastos:[],notas:[],maquinaria:[]};
+      if(!diasActs[date]) diasActs[date]=[];
+      diasActs[date].push(a);
       (a.trabajadores||[]).forEach(function(wid){ diasData[date].workers.add(wid); });
       Object.entries(a.horasExtras||{}).forEach(function(e){
         diasData[date].he[e[0]]=(diasData[date].he[e[0]]||0)+e[1];
       });
       diasData[date].gastos=diasData[date].gastos.concat(a.gastos||[]);
       if(a.notas) diasData[date].notas.push(a.notas);
+      (a.maquinaria||[]).forEach(function(m){
+        if(m&&diasData[date].maquinaria.indexOf(m)===-1) diasData[date].maquinaria.push(m);
+      });
     });
   });
 
@@ -2790,6 +3032,7 @@ function _doShareProj(projId){
 
   // Totales globales
   var allWorkers=new Set(), totalHE=0, totalGastos=0;
+  var allMaquinaria=new Set();
   var workerStats={};
   fechas.forEach(function(date){
     var dd=diasData[date];
@@ -2804,6 +3047,7 @@ function _doShareProj(projId){
       totalHE+=e[1];
     });
     totalGastos+=dd.gastos.reduce(function(s,g){return s+Number(g.monto||0);},0);
+    (dd.maquinaria||[]).forEach(function(m){ if(m) allMaquinaria.add(m); });
   });
 
   var rankingW=Object.keys(workerStats).map(function(wid){
@@ -2924,6 +3168,7 @@ function _doShareProj(projId){
     '<div class="kpi kpi-b"><div class="kl">Trabajadores</div><div class="kv">'+allWorkers.size+'</div></div>'+
     (totalHE?'<div class="kpi kpi-b"><div class="kl">Horas Extras</div><div class="kv">+'+totalHE+'h</div></div>':'')+
     (totalGastos?'<div class="kpi kpi-g"><div class="kl">Gastos</div><div class="kv">'+_money(totalGastos)+'</div></div>':'')+
+    (allMaquinaria.size?'<div class="kpi" style="border-left:3px solid #7C3AED"><div class="kl">Maquinaria</div><div class="kv" style="color:#7C3AED">'+allMaquinaria.size+'</div></div>':'')+
   '</div>';
 
   // FILA: Timeline + Personal
@@ -3005,58 +3250,90 @@ function _doShareProj(projId){
     '</tr></thead><tbody>';
 
   fechas.forEach(function(date,i){
-    var dd=diasData[date];
+    var acts=diasActs[date]||[];
     var wknd=isWeekend(date)||isFestivo(date);
-    var dayHE=Object.values(dd.he).reduce(function(s,v){return s+v;},0);
-    var dayG=dd.gastos.reduce(function(s,g){return s+Number(g.monto||0);},0);
-    var wids=Array.from(dd.workers);
     var bg=wknd?'#FFF5F5':(i%2?'#FAFAFA':'#fff');
     var borderC=wknd?'#FECACA':'#F3F4F6';
+    var multiAct=acts.length>1;
 
-    // Pills con nombre COMPLETO del trabajador
-    var pills=wids.map(function(wid){
-      var nm=gwn(wid); // nombre completo
-      var he=dd.he[wid]||0;
-      var pillBg=wknd?'#FEE2E2':'#EFF6FF';
-      var pillBd=wknd?'#FECACA':'#DBEAFE';
-      var nmC=wknd?'#991B1B':'#374151';
-      return '<span style="display:inline-flex;align-items:center;gap:2px;background:'+pillBg+';border:1px solid '+pillBd+';border-radius:4px;padding:1px 6px;font-size:7.5px;margin:1px;white-space:nowrap;">'+
-        '<span style="color:'+nmC+';font-weight:500;">'+nm+'</span>'+
-        (he?'<span style="font-weight:700;color:#1D4ED8;margin-left:2px;">+'+he+'h</span>':'')+
-      '</span>';
-    }).join('');
+    acts.forEach(function(a, ai){
+      var actWids=a.trabajadores||[];
+      var actHE=Object.values(a.horasExtras||{}).reduce(function(s,v){return s+v;},0);
+      var actG=(a.gastos||[]).reduce(function(s,g){return s+Number(g.monto||0);},0);
 
-    // Sub-fila de gastos
-    var gastosInline='';
-    if(dd.gastos.length){
-      gastosInline='<tr style="background:'+(wknd?'#FEF9F9':'#F8FBFF')+';border-bottom:2px solid '+(wknd?'#FECACA':'#E2E8F0')+';">'+
-        '<td colspan="5" style="padding:2px 8px 3px 20px;">'+
-        dd.gastos.map(function(g){
-          return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:7px;">'+
-            '<span style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:2px;padding:0 3px;font-size:6.5px;font-weight:600;color:#2563EB;white-space:nowrap;">'+g.tipo+'</span>'+
-            '<span style="color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">'+g.desc+'</span>'+
-            '<span style="font-weight:700;color:#059669;white-space:nowrap;">'+_money(g.monto)+'</span>'+
-          '</span>';
-        }).join('')+
-        '</td></tr>';
-    }
+      var pills=actWids.map(function(wid){
+        var nm=gwn(wid);
+        var he=(a.horasExtras||{})[wid]||0;
+        var pillBg=wknd?'#FEE2E2':'#EFF6FF';
+        var pillBd=wknd?'#FECACA':'#DBEAFE';
+        var nmC=wknd?'#991B1B':'#374151';
+        return '<span style="display:inline-flex;align-items:center;gap:2px;background:'+pillBg+';border:1px solid '+pillBd+';border-radius:4px;padding:1px 6px;font-size:7.5px;margin:1px;white-space:nowrap;">'+
+          '<span style="color:'+nmC+';font-weight:500;">'+nm+'</span>'+
+          (he?'<span style="font-weight:700;color:#1D4ED8;margin-left:2px;">+'+he+'h</span>':'')+
+        '</span>';
+      }).join('');
 
-    html+=
-      '<tr style="background:'+bg+';border-bottom:1px solid '+borderC+';">'+
-      // Fecha: día semana + día + mes
-      '<td style="padding:4px 8px;font-size:8px;font-weight:'+(wknd?'700':'500')+';color:'+(wknd?'#DC2626':'#0F172A')+';white-space:nowrap;">'+
-        fmtFechaCompleta(date)+(wknd?' 🔴':'')+
-      '</td>'+
-      '<td style="padding:4px 4px;text-align:center;font-size:8.5px;font-weight:700;color:#374151;">'+wids.length+'</td>'+
-      '<td style="padding:4px 4px;text-align:center;">'+
-        (dayHE?'<span style="font-size:8px;font-weight:700;color:#1D4ED8;">+'+dayHE+'h</span>':'<span style="font-size:7px;color:#CBD5E1;">—</span>')+
-      '</td>'+
-      '<td style="padding:4px 4px;text-align:right;font-size:8px;font-weight:'+(dayG?'700':'400')+';color:'+(dayG?'#059669':'#CBD5E1')+';">'+
-        (dayG?_money(dayG):'—')+
-      '</td>'+
-      '<td style="padding:4px 8px;"><div style="display:flex;flex-wrap:wrap;gap:1px;">'+pills+'</div></td>'+
-      '</tr>'+
-      gastosInline;
+      // Nota de la actividad
+      var notaInline='';
+      if(a.notas){
+        notaInline='<tr style="background:'+(wknd?'#FFF8F8':'#FAFEFF')+';border-bottom:1px solid '+borderC+';">'+
+          '<td colspan="5" style="padding:1px 8px 2px 20px;font-size:7px;color:#64748B;font-style:italic;">📝 '+a.notas+'</td></tr>';
+      }
+
+      // Maquinaria de esta actividad
+      var maqInline='';
+      if(a.maquinaria&&a.maquinaria.length){
+        maqInline='<tr style="background:'+(wknd?'#FEF5FF':'#F5F3FF')+';border-bottom:1px solid '+(wknd?'#FECACA':'#DDD6FE')+';">'+
+          '<td colspan="5" style="padding:2px 8px 3px 20px;">'+
+          '<span style="font-size:6.5px;font-weight:700;text-transform:uppercase;color:#7C3AED;margin-right:6px;">⚙️ Maq:</span>'+
+          a.maquinaria.map(function(m){
+            return '<span style="display:inline-flex;align-items:center;background:#EDE9FE;border:1px solid #DDD6FE;border-radius:3px;padding:0 5px;font-size:7px;font-weight:500;color:#5B21B6;margin-right:4px;white-space:nowrap;">'+m+'</span>';
+          }).join('')+
+          '</td></tr>';
+      }
+
+      // Gastos de esta actividad
+      var gastosInline='';
+      if(a.gastos&&a.gastos.length){
+        gastosInline='<tr style="background:'+(wknd?'#FEF9F9':'#F8FBFF')+';border-bottom:1px solid '+(wknd?'#FECACA':'#E2E8F0')+';">'+
+          '<td colspan="5" style="padding:2px 8px 3px 20px;">'+
+          a.gastos.map(function(g){
+            return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:7px;">'+
+              '<span style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:2px;padding:0 3px;font-size:6.5px;font-weight:600;color:#2563EB;white-space:nowrap;">'+g.tipo+'</span>'+
+              '<span style="color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">'+g.desc+'</span>'+
+              '<span style="font-weight:700;color:#059669;white-space:nowrap;">'+_money(g.monto)+'</span>'+
+            '</span>';
+          }).join('')+
+          '</td></tr>';
+      }
+
+      // Celda de fecha: solo en la primera actividad del día
+      var fechaCell=ai===0
+        ?'<td rowspan="'+acts.length+'" style="padding:4px 8px;font-size:8px;font-weight:'+(wknd?'700':'500')+';color:'+(wknd?'#DC2626':'#0F172A')+';white-space:nowrap;vertical-align:top;">'+
+            fmtFechaCompleta(date)+(wknd?' 🔴':'')+
+            (multiAct?'<div style="font-size:6px;color:#94A3B8;margin-top:1px;">Act. '+(ai+1)+'/'+acts.length+'</div>':'')+
+          '</td>'
+        :'';
+
+      // Indicador de actividad múltiple
+      var actLabel=multiAct?'<div style="font-size:6px;color:#94A3B8;margin-bottom:1px;">Actividad '+(ai+1)+'</div>':'';
+
+      html+=
+        '<tr style="background:'+bg+';border-bottom:1px solid '+borderC+(ai<acts.length-1?';border-bottom:1px dashed #E2E8F0':'')+'">'+ 
+        (ai===0?fechaCell:'')+
+        '<td style="padding:4px 4px;text-align:center;font-size:8.5px;font-weight:700;color:#374151;">'+actWids.length+'</td>'+
+        '<td style="padding:4px 4px;text-align:center;">'+
+          (actHE?'<span style="font-size:8px;font-weight:700;color:#1D4ED8;">+'+actHE+'h</span>':'<span style="font-size:7px;color:#CBD5E1;">—</span>')+
+        '</td>'+
+        '<td style="padding:4px 4px;text-align:right;font-size:8px;font-weight:'+(actG?'700':'400')+';color:'+(actG?'#059669':'#CBD5E1')+';">'+
+          (actG?_money(actG):'—')+
+        '</td>'+
+        '<td style="padding:4px 8px;"><div style="display:flex;flex-wrap:wrap;gap:1px;">'+actLabel+pills+'</div></td>'+
+        '</tr>'+
+        notaInline+
+        maqInline+
+        gastosInline;
+    });
   });
 
   // Fila totales
@@ -3068,6 +3345,17 @@ function _doShareProj(projId){
     '<td style="padding:5px 8px;font-size:7px;color:#475569;">'+fechas.length+' días trabajados</td>'+
   '</tr>';
   html+='</tbody></table></div>';
+
+  // Maquinaria utilizada en el proyecto
+  if(allMaquinaria.size){
+    html+='<div style="background:#F5F3FF;border-radius:8px;border:1px solid #DDD6FE;padding:10px 12px;margin-bottom:10px;">'+
+      '<div style="font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#5B21B6;margin-bottom:6px;">⚙️ Maquinaria utilizada en el proyecto</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:4px;">'+
+      Array.from(allMaquinaria).map(function(m){
+        return '<span style="background:#EDE9FE;border:1px solid #DDD6FE;border-radius:4px;padding:2px 8px;font-size:8px;font-weight:500;color:#5B21B6;">'+m+'</span>';
+      }).join('')+
+      '</div></div>';
+  }
 
   // Notas
   var notasAll=[];
@@ -3116,14 +3404,26 @@ function _doShareProj(projId){
 function projCard(p,i){
   const code=p.folio||('A'+(i+1)); const clr=PC[i%PC.length];
   const bm={activo:'bgr',pausado:'bg',completado:'bb'};
-  return `<div class="li">
-    <div class="liav" style="background:${clr}22;color:${clr};font-size:13px;font-weight:900;letter-spacing:-0.5px">${code}</div>
+  const hoy=td();
+  const esCompletado=p.estado==='completado';
+  const terminadoHoy=esCompletado&&p.completadoEn===hoy;
+  const cardBorder=terminadoHoy?'border-color:var(--gold);border-width:2px;background:rgba(245,207,85,0.03)':'';
+  const avBg=terminadoHoy?'rgba(245,207,85,0.2)':clr+'22';
+  const avClr=terminadoHoy?'var(--gold)':clr;
+  const nameClr=terminadoHoy?'color:var(--gold)':'';
+  const badgeHtml=terminadoHoy
+    ?`<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(245,207,85,0.18);color:var(--gold);border:1px solid rgba(245,207,85,0.4);border-radius:100px;padding:3px 9px;font-size:10px;font-weight:800;white-space:nowrap;animation:pulse 2s ease infinite">✅ Hoy</span>`
+    :esCompletado
+      ?`<span class="b bb" style="font-size:10px;white-space:nowrap">${p.completadoEn?'✓ '+fmtDate(p.completadoEn):'✓ Listo'}</span>`
+      :`<span class="b ${bm[p.estado]||'bb'}">${p.estado}</span>`;
+  return `<div class="li" style="${cardBorder}">
+    <div class="liav" style="background:${avBg};color:${avClr};font-size:13px;font-weight:900;letter-spacing:-0.5px">${code}</div>
     <div class="lib">
-      <div class="liname">${p.nombre}</div>
+      <div class="liname" style="${nameClr}">${p.nombre}</div>
       <div class="lisub">${p.lider?'👷 '+p.lider:'Sin líder'}${p.inicio?' · '+fmtDate(p.inicio):''}${p.diasEstimados?' · '+p.diasEstimados+'d est.':''}</div>
     </div>
     <div class="lir" style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
-      <span class="b ${bm[p.estado]||'bb'}">${p.estado}</span>
+      ${badgeHtml}
       <div style="display:flex;gap:6px">
         <button class="ibtn ibe" onclick="openProjM('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
         <button class="ibtn ibd" onclick="dProj('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></button>
@@ -3159,45 +3459,36 @@ function rProj(){
   const c=document.getElementById('proj-list');
   if(!S.proyectos.length){c.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/></svg><p>Sin proyectos. Toca "+ Nuevo".</p></div>';return;}
 
-  const byDate=(a,b)=>(b.inicio||'').localeCompare(a.inicio||'');
+  const hoy=td();
+  // Terminados hoy primero, luego por completadoEn desc
+  const byCompletado=(a,b)=>{
+    const aHoy=a.completadoEn===hoy?1:0, bHoy=b.completadoEn===hoy?1:0;
+    if(bHoy!==aHoy) return bHoy-aHoy;
+    return (b.completadoEn||b.inicio||'').localeCompare(a.completadoEn||a.inicio||'');
+  };
 
   const activPaus = S.proyectos
     .filter(p=>p.estado==='activo'||p.estado==='pausado')
-    .sort(byDate);
+    .sort((a,b)=>(b.inicio||'').localeCompare(a.inicio||''));
 
   const completados = S.proyectos
     .filter(p=>p.estado==='completado')
-    .sort(byDate);
+    .sort(byCompletado);
 
   let html='';
-
-  // Group 1: Activos + Pausados
-  html += projGroup(
-    'grp-ap', '🏗️',
-    'Activos y Pausados',
-    'bgr',
-    'var(--green)',
-    activPaus,
-    true   // open by default
-  );
-
-  // Group 2: Completados
-  html += projGroup(
-    'grp-done', '✅',
-    'Terminados',
-    'bb',
-    'var(--blue)',
-    completados,
-    false  // closed by default
-  );
-
+  html += projGroup('grp-ap','🏗️','Activos y Pausados','bgr','var(--green)',activPaus,true);
+  html += projGroup('grp-done','✅','Terminados','bb','var(--blue)',completados,false);
   c.innerHTML = html;
 }
 
 function persCard(p,i,estOverride){
   const est=estOverride||p.estado||'activo';
   const bm={activo:'bgr',inactivo:'bb',vacaciones:'bg',falta:'br'};
-  return`<div class="li">
+  const isVisor=_currentUser&&_currentUser.rol==='visor';
+  return`<div class="li pers-sortable" data-pid="${p.id}" style="user-select:none">
+    ${!isVisor?`<div class="pers-drag-handle" style="width:28px;height:36px;display:flex;align-items:center;justify-content:center;cursor:grab;flex-shrink:0;opacity:0.3;touch-action:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px;color:var(--txt3)"><line x1="5" y1="6" x2="19" y2="6"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="5" y1="18" x2="19" y2="18"/></svg>
+    </div>`:''}
     <div class="liav" style="background:${WC[i%WC.length]}22;color:${WC[i%WC.length]}">${inits(p.nombre)}</div>
     <div class="lib">
       <div class="liname">${p.nombre}</div>
@@ -3211,6 +3502,102 @@ function persCard(p,i,estOverride){
       </div>
     </div>
   </div>`;
+}
+
+// ── DRAG & DROP REORDER PERSONAL ─────────────────────────────────────────────
+var _dragEl=null,_dragClone=null,_dragStartY=0,_dragCloneTop=0,_dragPlaceholder=null;
+
+function initPersDrag(container){
+  if(_currentUser&&_currentUser.rol==='visor') return;
+  var rows=Array.from(container.querySelectorAll('.pers-sortable'));
+  if(!rows.length) return;
+
+  rows.forEach(function(row){
+    var handle=row.querySelector('.pers-drag-handle');
+    if(!handle) return;
+
+    function onStart(e){
+      e.preventDefault();
+      var clientY=e.touches?e.touches[0].clientY:e.clientY;
+      _dragEl=row;
+      _dragStartY=clientY;
+
+      var rect=row.getBoundingClientRect();
+      _dragCloneTop=rect.top;
+
+      _dragClone=row.cloneNode(true);
+      _dragClone.style.cssText='position:fixed;left:'+rect.left+'px;top:'+rect.top+'px;width:'+rect.width+'px;z-index:9999;opacity:0.95;box-shadow:0 8px 32px rgba(0,0,0,0.6);border-radius:12px;pointer-events:none;background:var(--card2);border:1.5px solid var(--gold);transition:none';
+      document.body.appendChild(_dragClone);
+
+      _dragPlaceholder=document.createElement('div');
+      _dragPlaceholder.style.cssText='height:'+rect.height+'px;border-radius:12px;background:rgba(245,207,85,0.07);border:1.5px dashed rgba(245,207,85,0.3);margin-bottom:8px';
+      row.parentNode.insertBefore(_dragPlaceholder,row);
+      row.style.visibility='hidden';
+
+      document.addEventListener('mousemove',onMove);
+      document.addEventListener('touchmove',onMove,{passive:false});
+      document.addEventListener('mouseup',onEnd);
+      document.addEventListener('touchend',onEnd);
+    }
+
+    function onMove(e){
+      if(!_dragClone) return;
+      e.preventDefault();
+      var clientY=e.touches?e.touches[0].clientY:e.clientY;
+      var dy=clientY-_dragStartY;
+      _dragStartY=clientY;
+      _dragCloneTop+=dy;
+      _dragClone.style.top=_dragCloneTop+'px';
+
+      var cloneH=_dragClone.getBoundingClientRect().height;
+      var cloneMid=_dragCloneTop+cloneH/2;
+
+      var allRows=Array.from(container.querySelectorAll('.pers-sortable'));
+      var target=null, insertBefore=true;
+      allRows.forEach(function(r){
+        if(r===_dragEl) return;
+        var rr=r.getBoundingClientRect();
+        if(cloneMid>rr.top&&cloneMid<rr.bottom){
+          target=r;
+          insertBefore=cloneMid<rr.top+rr.height/2;
+        }
+      });
+      if(target){
+        if(insertBefore) target.parentNode.insertBefore(_dragPlaceholder,target);
+        else target.parentNode.insertBefore(_dragPlaceholder,target.nextSibling);
+      }
+    }
+
+    function onEnd(){
+      if(!_dragClone) return;
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('touchmove',onMove);
+      document.removeEventListener('mouseup',onEnd);
+      document.removeEventListener('touchend',onEnd);
+
+      _dragEl.style.visibility='';
+      _dragPlaceholder.parentNode.insertBefore(_dragEl,_dragPlaceholder);
+      _dragPlaceholder.remove();
+      _dragClone.remove();
+      _dragClone=null; _dragPlaceholder=null; _dragEl=null;
+
+      // Reconstruir S.personal según nuevo orden DOM
+      var newOrder=Array.from(container.querySelectorAll('.pers-sortable')).map(function(r){return r.dataset.pid;});
+      var map={};
+      S.personal.forEach(function(p){map[p.id]=p;});
+      var sorted=newOrder.filter(function(id){return map[id];}).map(function(id){return map[id];});
+      S.personal.forEach(function(p){if(!sorted.find(function(x){return x.id===p.id;}))sorted.push(p);});
+      S.personal=sorted;
+      markChanged('personal');
+      setAction('Reordenó personal');
+      save();
+      toast('Orden guardado ✓','ok');
+      rPers();
+    }
+
+    handle.addEventListener('mousedown',onStart);
+    handle.addEventListener('touchstart',onStart,{passive:false});
+  });
 }
 
 function persGroup(label, emoji, color, badgeCls, workers, openByDefault, estMap){
@@ -3245,13 +3632,22 @@ function rPers(){
   var today=td();
   var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
   var activos=[], vacaciones=[], faltas=[], inactivos=[];
+  var estMap={};
   S.personal.forEach(function(p){
     var est;
-    if(selDate===today){
+    if(p.estado==='inactivo'){
+      // Inactivo siempre es inactivo, sin importar la fecha ni el historial del día
+      est='inactivo';
+    } else if(selDate===today){
       est=historial[p.id]||p.estado||'activo';
     } else {
-      est=historial[p.id]||'activo';
+      est=historial[p.id]||p.estado||'activo';
     }
+    estMap[p.id]=est;
+  });
+  var activos=[], vacaciones=[], faltas=[], inactivos=[];
+  S.personal.forEach(function(p){
+    var est=estMap[p.id];
     if(est==='activo') activos.push(p);
     else if(est==='vacaciones') vacaciones.push(p);
     else if(est==='falta') faltas.push(p);
@@ -3259,21 +3655,13 @@ function rPers(){
     else activos.push(p);
   });
   let html='';
-  var estMap={};
-  S.personal.forEach(function(p){
-    var est;
-    if(selDate===today){
-      est=historial[p.id]||p.estado||'activo';
-    } else {
-      est=historial[p.id]||'activo';
-    }
-    estMap[p.id]=est;
-  });
   html += persGroup('Activos',    '✅', 'var(--green)', 'bgr', activos,    true,  estMap);
   html += persGroup('Vacaciones', '🏖️', 'var(--gold)',  'bg',  vacaciones, true,  estMap);
   html += persGroup('Falta',      '❌', 'var(--red)',   'br',  faltas,     true,  estMap);
   html += persGroup('Inactivos',  '⏸️', 'var(--txt2)',  'bb',  inactivos,  true,  estMap);
   c.innerHTML=html||'<div class="empty"><p>Sin trabajadores</p></div>';
+  // Activar drag & drop para reordenar
+  requestAnimationFrame(function(){ initPersDrag(c); });
 }
 
 let _nomTab='personal';
@@ -4774,16 +5162,30 @@ function getSbClient(){
 function enterApp(found, sessionData){
   _currentUser=found;
   localStorage.setItem('cp4_session',JSON.stringify(sessionData));
+  // Guardar email para que futuros arranques sin sesión local sepan qué usuario buscar
+  if(found&&found.email) localStorage.setItem('cp4_last_email',found.email.toLowerCase());
+  var splash=document.getElementById('splash-screen');
+  if(splash) splash.style.display='none';
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
   applyRoleRestrictions();
+  // En Android la PWA llega aquí sin haber hecho un pull exitoso aún
+  // Forzar pull fresco y marcar conexión correctamente
+  pullFromCloud().then(function(updated){
+    updateSyncUI(true);
+    if(updated) rAll(true);
+  }).catch(function(){
+    refreshAuthToken().then(function(t){
+      if(t) pullFromCloud().then(function(u){ updateSyncUI(true); if(u) rAll(true); }).catch(function(){ updateSyncUI(false); });
+      else updateSyncUI(false);
+    }).catch(function(){ updateSyncUI(false); });
+  });
 }
 
 function initAuth(){
   var n=localStorage.getItem('cp4_appname')||'IMZA';
   var el=document.getElementById('login-appname');
   if(el) el.textContent=n;
-  checkInviteParam();
 
   // 1. Magic link in URL (Safari just processed it)
   if(window.location.hash&&window.location.hash.includes('access_token')){
@@ -4797,14 +5199,38 @@ function initAuth(){
     try{
       var u=JSON.parse(ss);
       if(u&&u.email){
-        var users=S.users||[];
-        if(!users.length){
-          var bk=localStorage.getItem('cp4_users_backup');
-          if(bk) try{ users=JSON.parse(bk); S.users=users; }catch(e){}
-        }
-        var found=users.find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
-        if(!found) found={id:u.id||'u1',nombre:u.nombre||'Usuario',rol:u.rol||'editor',email:u.email};
-        enterApp(found, u);
+        var userToken=localStorage.getItem('cp4_auth_token')||SB_KEY;
+        // Siempre obtener usuarios frescos de Supabase para garantizar rol correcto
+        fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+          credentials:'omit',
+          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+userToken,'Content-Type':'application/json'}
+        }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows){
+          if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
+            S.users=rows[0].data.users;
+            localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+          }
+        }).catch(function(){
+          // Si falla el fetch, usar caché local
+          if(!S.users||!S.users.length){
+            var bk=localStorage.getItem('cp4_users_backup');
+            if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
+          }
+        }).finally(function(){
+          var found=(S.users||[]).find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
+          if(found){
+            // Rol siempre de S.users — nunca del localStorage
+            var sessionData={id:found.id,nombre:found.nombre,email:found.email.toLowerCase(),rol:found.rol};
+            var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
+            var needsRefresh=!localStorage.getItem('cp4_auth_token')||(tokenExp&&Date.now()>tokenExp-5*60*1000);
+            if(needsRefresh&&localStorage.getItem('cp4_refresh_token')){
+              refreshAuthToken().catch(function(){});
+            }
+            enterApp(found, sessionData);
+          } else {
+            // No encontrado ni en Supabase ni en caché — pedir login de nuevo
+            showLoginScreen();
+          }
+        });
         return;
       }
     }catch(e){}
@@ -4820,31 +5246,66 @@ function initAuth(){
   var emails=users.map(function(u){ return (u.email||'').toLowerCase(); }).filter(Boolean);
 
   if(!emails.length){
-    // Try fetching users from Supabase first, then retry
-    sbFetch('/rest/v1/imza_data?id=eq.main&select=data').then(function(rows){
+    // Sin usuarios en caché — cargar de Supabase y luego reintentar checar sesión
+    // (Esto es lo que pasa en Android PWA la primera vez: no hay backup local)
+    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+      credentials:'omit',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
+    }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows){
       if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
         S.users=rows[0].data.users;
         localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+        // Reintentar el flujo completo con los usuarios ya cargados
+        initAuth();
+      } else {
+        showLoginScreen();
       }
-      showLoginScreen();
     }).catch(function(){ showLoginScreen(); });
     return;
   }
 
-  // Check Supabase sessions for any of our registered emails
-  sbFetch('/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20').then(function(rows){
+  // Check Supabase sessions — buscar SOLO la sesión del email invitado o del dispositivo actual
+  // NUNCA entrar como otro usuario por tener una sesión más reciente en la misma BD
+  var _filterEmail=_inviteEmail||localStorage.getItem('cp4_last_email')||'';
+  var sessionUrl=_filterEmail
+    ? SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(_filterEmail)+'&select=session_data,updated_at&order=updated_at.desc&limit=5'
+    : SB_URL+'/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20';
+  fetch(sessionUrl,{
+    credentials:'omit',
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
+  }).then(function(r){ return r.ok?r.json():Promise.reject(); }).then(function(rows){
     if(!rows||!rows.length){ showLoginScreen(); return; }
-    // Find a session that matches one of our registered users
     for(var i=0;i<rows.length;i++){
       try{
         var sd=JSON.parse(rows[i].session_data||'{}');
         if(!sd.email) continue;
+        // Si hay email filtrado, solo aceptar esa sesión exacta
+        if(_filterEmail&&sd.email.toLowerCase()!==_filterEmail.toLowerCase()) continue;
         var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
         if(match){
-          // Check session is not too old (7 days)
           var age=Date.now()-new Date(rows[i].updated_at).getTime();
           if(age>7*24*60*60*1000) continue;
-          enterApp(match, sd);
+          // Usar rol y datos de S.users (fuente de verdad), no del session_data guardado
+          var matchSession={id:match.id,nombre:match.nombre,email:match.email.toLowerCase(),rol:match.rol};
+          var rt=sd.refresh_token||'';
+          if(rt){
+            localStorage.setItem('cp4_refresh_token',rt);
+            refreshAuthToken().then(function(newToken){
+              if(newToken){
+                localStorage.setItem('cp4_auth_token',newToken);
+                enterApp(match, matchSession);
+              } else {
+                // Token no renovable — pedir login, no entrar sin autenticación
+                showLoginScreen();
+              }
+            }).catch(function(){
+              // Error renovando token — pedir login
+              showLoginScreen();
+            });
+          } else {
+            // Sin refresh_token — pedir login
+            showLoginScreen();
+          }
           return;
         }
       }catch(e){}
@@ -4857,10 +5318,7 @@ function showLoginScreen(){
   if(!S.users||!S.users.length){
     var bk=localStorage.getItem('cp4_users_backup');
     if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
-    if(!S.users||!S.users.length){
-      S.users=[{id:'u1',nombre:'Admin',rol:'admin',email:'ingenieriaimza@gmail.com'}];
-      localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-    }
+    // No crear usuario Admin falso — dejar vacío y que el login cargue los reales
   }
   showLogin();
 }
@@ -4891,81 +5349,102 @@ function handleAuthSession(session){
 // ── MAGIC LINK AUTH ──────────────────────────────────────────────────────────
 
 function handleMagicLinkCallback(){
-  // Check URL for magic link token from Supabase
   var hash=window.location.hash;
   var params=new URLSearchParams(hash.replace('#',''));
   var accessToken=params.get('access_token');
-  var type=params.get('type');
   if(!accessToken) return false;
-  // Exchange token for user info
+
+  var refreshToken=params.get('refresh_token')||'';
+  var expiresIn=Number(params.get('expires_in')||3600);
+
+  // Siempre ocultar splash y mostrar login si algo falla
+  function showErr(msg){
+    var splash=document.getElementById('splash-screen');
+    if(splash) splash.style.display='none';
+    var errEl=document.getElementById('login-error');
+    if(errEl) errEl.textContent=msg||'Error al verificar. Intenta de nuevo.';
+    document.getElementById('login-step-email').style.display='block';
+    document.getElementById('login-step-sent').style.display='none';
+    document.getElementById('login-screen').style.display='flex';
+  }
+
+  function finishLogin(found){
+    var email=(found.email||'').toLowerCase();
+    var sessionData={id:found.id,nombre:found.nombre,email:email,rol:found.rol};
+    localStorage.setItem('cp4_session',JSON.stringify(sessionData));
+    localStorage.setItem('cp4_auth_token',accessToken);
+    localStorage.setItem('cp4_last_email',email);
+    if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
+    localStorage.setItem('cp4_token_exp',String(Date.now()+expiresIn*1000));
+
+    // Guardar sesión en Supabase para el puente PWA (no bloqueante)
+    function saveSession(at, rt){
+      sbFetch('/rest/v1/imza_sessions',{
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates'},
+        body:JSON.stringify({
+          device_id:email,
+          session_data:JSON.stringify(Object.assign({},sessionData,{auth_token:at,refresh_token:rt})),
+          updated_at:new Date().toISOString()
+        })
+      }).catch(function(){});
+    }
+    if(refreshToken){
+      refreshAuthToken().then(function(newToken){
+        saveSession(newToken||accessToken, localStorage.getItem('cp4_refresh_token')||refreshToken);
+      }).catch(function(){ saveSession(accessToken, refreshToken); });
+    } else {
+      saveSession(accessToken,'');
+    }
+
+    window.history.replaceState(null,'',window.location.pathname);
+    var splash=document.getElementById('splash-screen');
+    if(splash) splash.style.display='none';
+    document.getElementById('login-screen').style.display='none';
+    _currentUser=found;
+    document.getElementById('app').style.display='flex';
+    applyRoleRestrictions();
+    rAll();
+    toast('Bienvenido, '+found.nombre+' 👋','ok');
+  }
+
+  // Paso 1: obtener email del token
   fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/user',{
     credentials:'omit',
-    headers:{
-      'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',
-      'Authorization':'Bearer '+accessToken
-    }
-  }).then(function(res){ return res.json(); }).then(function(user){
-    if(!user||!user.email) return;
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+accessToken}
+  }).then(function(res){
+    if(!res.ok) throw new Error('auth_fail');
+    return res.json();
+  }).then(function(user){
+    if(!user||!user.email) throw new Error('no_email');
     var email=user.email.toLowerCase();
-    // Always fetch fresh users from Supabase before matching
-    fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
+
+    // Paso 2: cargar usuarios frescos de Supabase
+    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
       credentials:'omit',
-      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY'}
-    }).then(function(r){ return r.json(); }).then(function(rows){
-      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users) S.users=rows[0].data.users;
-      var found=(S.users||[]).find(function(u){
-        return (u.email||'').toLowerCase()===email;
-      });
-      if(found){
-        _currentUser=found;
-        var sessionData={id:found.id,nombre:found.nombre,email:(found.email||email).toLowerCase(),rol:found.rol};
-        localStorage.setItem('cp4_session',JSON.stringify(sessionData));
-        localStorage.setItem('cp4_auth_token',accessToken);
-        var refreshToken=params.get('refresh_token');
-        if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
-        // Save session to Supabase by email so PWA can restore it
-        sbFetch('/rest/v1/imza_sessions',{
-          method:'POST',
-          headers:{'Prefer':'resolution=merge-duplicates'},
-          body:JSON.stringify({
-            device_id:(found.email||email).toLowerCase(),
-            session_data:JSON.stringify(sessionData),
-            updated_at:new Date().toISOString()
-          })
-        }).catch(function(){});
-        window.history.replaceState(null,'',window.location.pathname);
-        document.getElementById('login-screen').style.display='none';
-        document.getElementById('app').style.display='flex';
-        applyRoleRestrictions();
-        rAll();
-        toast('Bienvenido, '+found.nombre+' 👋','ok');
-      } else {
-        document.getElementById('login-error').textContent='Correo no registrado. Contacta al administrador.';
-        document.getElementById('login-step-email').style.display='block';
-        document.getElementById('login-step-sent').style.display='none';
-        document.getElementById('login-screen').style.display='flex';
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+accessToken,'Content-Type':'application/json'}
+    }).then(function(r){ return r.ok?r.json():Promise.reject('data_fail'); })
+    .then(function(rows){
+      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
+        S.users=rows[0].data.users;
+        localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
       }
     }).catch(function(){
-      // Fallback: try with cached users
+      // Si falla usar caché local
+      if(!S.users||!S.users.length){
+        var bk=localStorage.getItem('cp4_users_backup');
+        if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
+      }
+    }).finally(function(){
       var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
       if(found){
-        _currentUser=found;
-        localStorage.setItem('cp4_session',JSON.stringify({id:found.id,nombre:found.nombre,email:(found.email||email).toLowerCase(),rol:found.rol}));
-        localStorage.setItem('cp4_auth_token',accessToken);
-        window.history.replaceState(null,'',window.location.pathname);
-        document.getElementById('login-screen').style.display='none';
-        document.getElementById('app').style.display='flex';
-        applyRoleRestrictions();
-        rAll();
-        toast('Bienvenido, '+found.nombre+' 👋','ok');
+        finishLogin(found);
       } else {
-        document.getElementById('login-error').textContent='Sin conexión. Intenta de nuevo.';
-        document.getElementById('login-step-email').style.display='block';
-        document.getElementById('login-step-sent').style.display='none';
+        showErr('Correo no registrado. Contacta al administrador.');
       }
     });
   }).catch(function(){
-    document.getElementById('login-error').textContent='Error al verificar. Intenta de nuevo.';
+    showErr('Error al verificar. Intenta de nuevo.');
   });
   return true;
 }
@@ -4976,13 +5455,24 @@ var _loginUser=null;
 function showLogin(){
   _currentUser=null;
   _loginUser=null;
+  var splash=document.getElementById('splash-screen');
+  if(splash) splash.style.display='none';
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('login-step-email').style.display='block';
   document.getElementById('login-step-sent').style.display='none';
   var errEl=document.getElementById('login-error');
   if(errEl) errEl.textContent='';
   var inp=document.getElementById('login-email-input');
-  if(inp){ inp.value=''; setTimeout(function(){ inp.focus(); },300); }
+  // Si hay email de invitación, pre-llenarlo y no borrarlo
+  if(inp){
+    if(_inviteEmail){
+      inp.value=_inviteEmail;
+      setTimeout(function(){ inp.focus(); },300);
+    } else {
+      inp.value='';
+      setTimeout(function(){ inp.focus(); },300);
+    }
+  }
 }
 
 function loginBack(){
@@ -4997,40 +5487,40 @@ function sendMagicLink(){
   var errEl=document.getElementById('login-error');
   if(!email||!email.includes('@')){ errEl.textContent='Ingresa un correo válido'; return; }
   var btn=document.querySelector('#login-step-email button');
-
   function resetBtn(){ if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; } }
-
   if(btn){ btn.disabled=true; btn.textContent='Verificando...'; }
   errEl.textContent='';
 
-  // Primero verificar en usuarios cacheados localmente para respuesta inmediata
-  var cachedUsers=S.users||[];
-  var cachedFound=cachedUsers.find(function(u){ return (u.email||'').toLowerCase()===email; });
-
-  fetch('https://vcdwtlwnbztausmwzwla.supabase.co/rest/v1/imza_data?id=eq.main&select=data',{
-    credentials:'omit',
-    headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Authorization':'Bearer sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY'}
-  }).then(function(r){ return r.json(); }).then(function(rows){
+  // Si viene de link de invitación — enviar directamente sin verificar
+  if(_inviteEmail&&email===_inviteEmail){
     resetBtn();
-    var users=(rows&&rows[0]&&rows[0].data&&rows[0].data.users)||[];
-    if(users.length) S.users=users;
-    var found=users.find(function(u){ return (u.email||'').toLowerCase()===email; });
-    if(!found){
-      errEl.textContent='Este correo no está registrado. Contacta al administrador.';
-      return;
-    }
     _doSendMagicLink(email,errEl,btn);
-  }).catch(function(){
+    return;
+  }
+
+  // Verificar contra caché local si existe
+  var cachedUsers=S.users||[];
+  if(!cachedUsers.length){
+    var bk=localStorage.getItem('cp4_users_backup');
+    if(bk) try{ cachedUsers=JSON.parse(bk); }catch(e){}
+  }
+
+  // Sin caché — enviar directamente (dispositivo nuevo, primera vez)
+  if(!cachedUsers.length){
     resetBtn();
-    // Fallback a usuarios cacheados si Supabase no responde
-    if(cachedFound){
-      _doSendMagicLink(email,errEl,btn);
-    } else if(!navigator.onLine){
-      errEl.textContent='Sin internet. Conéctate para iniciar sesión.';
-    } else {
-      errEl.textContent='Error de conexión. Intenta de nuevo.';
-    }
-  });
+    _doSendMagicLink(email,errEl,btn);
+    return;
+  }
+
+  // Con caché — verificar que el correo esté registrado
+  var found=cachedUsers.find(function(u){ return (u.email||'').toLowerCase()===email; });
+  if(!found){
+    resetBtn();
+    errEl.textContent='Este correo no está registrado. Contacta al administrador.';
+    return;
+  }
+  resetBtn();
+  _doSendMagicLink(email,errEl,btn);
 }
 
 function _doSendMagicLink(email,errEl,btn){
@@ -5040,11 +5530,13 @@ function _doSendMagicLink(email,errEl,btn){
   function resetBtn(){ if(btn){ btn.disabled=false; btn.textContent='✉️ Enviar link de acceso'; } }
 
   // Supabase usa /auth/v1/otp para magic links (magiclink fue deprecado)
+  // redirect_to apunta a la misma app para que el link abra en el contexto correcto
+  var redirectTo=window.location.origin+window.location.pathname;
   fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/otp',{
     method:'POST',
     credentials:'omit',
     headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Content-Type':'application/json'},
-    body:JSON.stringify({email:email, create_user:false})
+    body:JSON.stringify({email:email, create_user:false, options:{emailRedirectTo:redirectTo}})
   }).then(function(res){
     resetBtn();
     if(res.ok||res.status===200||res.status===204){
@@ -5422,18 +5914,40 @@ function shareInviteLink(){
 }
 
 // Detectar ?invite=email al cargar y pre-llenar el login
+var _inviteEmail='';
 function checkInviteParam(){
   var params=new URLSearchParams(window.location.search);
   var inv=params.get('invite');
   if(!inv) return;
+  _inviteEmail=decodeURIComponent(inv).toLowerCase();
+
+  // Cerrar sesión activa completamente — timers, WebSocket y Supabase Auth
+  if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
+  if(_liveTimer){ clearInterval(_liveTimer); _liveTimer=null; }
+  if(_presenceTimer){ clearInterval(_presenceTimer); _presenceTimer=null; }
+  if(_onlineRefreshTimer){ clearInterval(_onlineRefreshTimer); _onlineRefreshTimer=null; }
+  if(_realtimeWs){ _realtimeWs.onclose=null; _realtimeWs.onerror=null; _realtimeWs.close(); _realtimeWs=null; }
+  if(_realtimeHb){ clearInterval(_realtimeHb); _realtimeHb=null; }
+  _currentUser=null;
+
+  // Cerrar sesión en Supabase Auth (no bloqueante)
+  var oldToken=localStorage.getItem('cp4_auth_token')||'';
+  if(oldToken){
+    fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/logout',{
+      method:'POST', credentials:'omit',
+      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',
+               'Authorization':'Bearer '+oldToken}
+    }).catch(function(){});
+  }
+
+  // Borrar todos los datos de sesión local
+  ['cp4_session','cp4_auth_token','cp4_refresh_token','cp4_token_exp','cp4_last_email'].forEach(function(k){
+    localStorage.removeItem(k);
+  });
+
   // Limpiar la URL sin recargar
-  var clean=window.location.pathname;
-  window.history.replaceState({},'',clean);
-  // Pre-llenar el email en el login
-  setTimeout(function(){
-    var inp=document.getElementById('login-email-input');
-    if(inp){ inp.value=decodeURIComponent(inv); inp.focus(); }
-  },300);
+  window.history.replaceState({},'',window.location.pathname);
+  // El email se pre-llena en showLogin() que respeta _inviteEmail
 }
 
 function togSnapsPanel(){
@@ -5946,7 +6460,12 @@ document.addEventListener('visibilitychange',function(){
     setTimeout(function(){
       if(!_isPushing){
         pullFromCloud().then(function(u){ if(u) rAll(true); updateSyncUI(true); })
-        .catch(function(){ updateSyncUI(false); });
+        .catch(function(){
+          refreshAuthToken().then(function(t){
+            if(t) pullFromCloud().then(function(u){ if(u) rAll(true); updateSyncUI(true); }).catch(function(){ updateSyncUI(false); });
+            else updateSyncUI(false);
+          }).catch(function(){ updateSyncUI(false); });
+        });
       }
     }, 300);
   }
@@ -5960,6 +6479,9 @@ window.addEventListener('pagehide',function(){
 
 // ── LOAD ─────────────────────────────────────────────────────────────────────
 
+// Detectar invitación ANTES de cargar sesión — así se limpia la sesión anterior
+// antes de que load() e initAuth() la encuentren y entren como el usuario equivocado
+checkInviteParam();
 load();updDates();rAll();
 // Load custom app name
 (function(){
@@ -5967,10 +6489,25 @@ load();updDates();rAll();
   const c=localStorage.getItem('cp4_logocolor')||'linear-gradient(90deg,#64a0ff 0%,#a78bfa 50%,#64a0ff 100%)';
   const sz=localStorage.getItem('cp4_logosize')||'19px';
   applyLogoStyle(n,c,sz);
+  // Aplicar nombre también al splash
+  var splash=document.getElementById('splash-appname');
+  if(splash) splash.textContent=n;
 })();
 </script>
 
-<div id="login-screen" style="display:flex">
+<div id="splash-screen" style="position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999">
+  <div style="width:56px;height:56px;background:linear-gradient(135deg,#1a1f2e,#252b3b);border-radius:16px;border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 0 24px rgba(100,160,255,0.2)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#6aaaff" stroke-width="2" style="width:24px;height:24px"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+  </div>
+  <div id="splash-appname" style="font-size:26px;font-weight:900;letter-spacing:0.08em;background:linear-gradient(90deg,#64a0ff,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">IMZA</div>
+  <div style="margin-top:32px;display:flex;gap:6px;align-items:center">
+    <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);animation:splashDot 1.2s ease infinite"></div>
+    <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);animation:splashDot 1.2s ease 0.2s infinite"></div>
+    <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);animation:splashDot 1.2s ease 0.4s infinite"></div>
+  </div>
+</div>
+
+<div id="login-screen" style="display:none">
   <div style="width:48px;height:48px;background:linear-gradient(135deg,#1a1f2e,#252b3b);border-radius:14px;border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;margin-bottom:14px">
     <svg viewBox="0 0 24 24" fill="none" stroke="#6aaaff" stroke-width="2" style="width:20px;height:20px"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
   </div>
@@ -5978,6 +6515,9 @@ load();updDates();rAll();
 
   <!-- STEP 1: Enter email -->
   <div id="login-step-email" style="width:100%;max-width:300px;margin-top:20px">
+    <div id="login-pwa-hint" style="display:none;background:rgba(100,170,255,0.1);border:1px solid rgba(100,170,255,0.25);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--blue);line-height:1.5;text-align:center">
+      📱 <b>iPhone:</b> Al tocar el link del correo se abrirá Safari. Después regresa a esta app desde tu pantalla de inicio.
+    </div>
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--txt3);margin-bottom:8px;text-align:center">Ingresa tu correo</div>
     <input id="login-email-input" type="email" inputmode="email" autocomplete="email" autocapitalize="off" autocorrect="off" placeholder="tu@correo.com" style="width:100%;box-sizing:border-box;padding:14px 16px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt);font-size:15px;font-family:inherit;outline:none;margin-bottom:12px">
     <div id="login-error" style="font-size:13px;color:var(--red);margin-bottom:10px;min-height:18px;text-align:center"></div>
@@ -5988,7 +6528,13 @@ load();updDates();rAll();
   <div id="login-step-sent" style="display:none;width:100%;max-width:300px;margin-top:20px;text-align:center">
     <div style="font-size:48px;margin-bottom:16px">📬</div>
     <div style="font-size:16px;font-weight:800;color:var(--txt);margin-bottom:8px">Revisa tu correo</div>
-    <div id="login-sent-msg" style="font-size:13px;color:var(--txt2);line-height:1.6;margin-bottom:20px"></div>
+    <div id="login-sent-msg" style="font-size:13px;color:var(--txt2);line-height:1.6;margin-bottom:16px"></div>
+    <div id="login-pwa-step2" style="display:none;background:rgba(245,207,85,0.1);border:1px solid rgba(245,207,85,0.25);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--gold);line-height:1.6;text-align:left">
+      <b>Pasos en iPhone:</b><br>
+      1. Toca el link en tu correo<br>
+      2. Se abrirá Safari — espera que cargue<br>
+      3. Regresa a esta app desde tu pantalla de inicio ↩
+    </div>
     <button onclick="loginBack()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt2);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">← Usar otro correo</button>
   </div>
 </div>
@@ -5996,6 +6542,18 @@ load();updDates();rAll();
 document.addEventListener('touchstart',function(){ window._lastInteraction=Date.now(); },true);
 document.addEventListener('mousedown',function(){ window._lastInteraction=Date.now(); },true);
 document.addEventListener('keydown',function(){ window._lastInteraction=Date.now(); },true);
+
+// Detectar si corre como PWA en iPhone y mostrar hints de login
+(function(){
+  var isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent);
+  var isPWA=window.navigator.standalone===true;
+  if(isIOS&&isPWA){
+    var h1=document.getElementById('login-pwa-hint');
+    var h2=document.getElementById('login-pwa-step2');
+    if(h1) h1.style.display='block';
+    if(h2) h2.style.display='block';
+  }
+})();
 </script>
 </body>
 </html>
