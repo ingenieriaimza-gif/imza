@@ -1322,10 +1322,34 @@ function pullFromCloud(){
       S.deleted=del;
       S.exPersonal=remote.exPersonal||{};
       S.deletedUsers=remote.deletedUsers||{};
-      // Cloud is source of truth for estadoHistorial
-      S.estadoHistorial=remote.estadoHistorial||{};
-      // Sync today's historial to p.estado
-      // Si no hay entrada para hoy → resetear a 'activo' (nuevo día limpio)
+      // Merge estadoHistorial: combinar nube + local para no perder cambios de ningún dispositivo
+      // La nube tiene prioridad por fecha — pero si hay entrada local más reciente, se conserva
+      var remoteHist=remote.estadoHistorial||{};
+      var localHist=S.estadoHistorial||{};
+      var mergedHist={};
+      // Primero copiar todo lo de la nube
+      Object.keys(remoteHist).forEach(function(date){
+        mergedHist[date]=Object.assign({},remoteHist[date]);
+      });
+      // Luego aplicar entradas locales — el timestamp más reciente gana el conflicto
+      Object.keys(localHist).forEach(function(date){
+        if(!mergedHist[date]) mergedHist[date]={};
+        var remoteTs=(remoteHist[date]&&remoteHist[date]._ts)||{};
+        var localTs=(localHist[date]&&localHist[date]._ts)||{};
+        Object.keys(localHist[date]).forEach(function(pid){
+          if(pid==='_ts') return;
+          var rt=remoteTs[pid]||0;
+          var lt=localTs[pid]||0;
+          // Si local es más reciente o la nube no tiene esta entrada, usar local
+          if(lt>rt||!remoteHist[date]||!(pid in remoteHist[date])){
+            mergedHist[date][pid]=localHist[date][pid];
+            if(!mergedHist[date]._ts) mergedHist[date]._ts={};
+            mergedHist[date]._ts[pid]=lt||rt;
+          }
+        });
+      });
+      S.estadoHistorial=mergedHist;
+      // Sync today historial to p.estado
       var todayH=S.estadoHistorial[td()]||{};
       S.personal.forEach(function(p){
         if(p.estado==='inactivo') return; // inactivo permanente nunca se toca
@@ -2312,7 +2336,9 @@ function togVac(id){
   // Save to historial for selected date
   if(!S.estadoHistorial) S.estadoHistorial={};
   if(!S.estadoHistorial[hDate]) S.estadoHistorial[hDate]={};
+  if(!S.estadoHistorial[hDate]._ts) S.estadoHistorial[hDate]._ts={};
   S.estadoHistorial[hDate][id]=next;
+  S.estadoHistorial[hDate]._ts[id]=Date.now(); // timestamp para resolver conflictos
   // Only update p.estado if changing today's date
   if(hDate===today){
     p.estado=next;
