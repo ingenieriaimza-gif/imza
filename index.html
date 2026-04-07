@@ -1419,7 +1419,8 @@ function _applyRemoteData(remote){
   if(needsPush) setTimeout(function(){ if(!_isPushing) pushToCloud(); },2000);
 }
 
-function pullFromCloud(){
+function pullFromCloud(retries){
+  retries=retries||0;
   var mini=document.getElementById('sync-mini');
   function restoreMini(){ if(mini){ mini.textContent=_currentUser?_currentUser.nombre:''; mini.style.color='var(--txt2)'; } }
   if(mini){ mini.textContent='Actualizando...'; mini.style.color='var(--gold)'; }
@@ -1430,10 +1431,10 @@ function pullFromCloud(){
     if(!rows||!rows.length) return false;
     var row=rows[0];
     var remote=row.data||{};
-    if(!remote||!remote.proyectos) return false;
+    if(!remote||typeof remote!=='object') return false;
 
     // Actualizar timestamp de referencia
-    _remoteUpdatedAt=row.updated_at||'';;
+    _remoteUpdatedAt=row.updated_at||'';
 
     // Guardar info de sync
     var userName=row.user_name||(remote._user)||'';
@@ -1444,14 +1445,22 @@ function pullFromCloud(){
     updateSyncUI(true);
     refreshSyncTime();
 
-    // Aplicar datos — proteger con flag para evitar saves concurrentes
+    // Aplicar datos
     _applyingCloudData=true;
     try{ _applyRemoteData(remote); }
     finally{ _applyingCloudData=false; _applyingCloudDataSince=0; }
 
     return true;
-  }).catch(function(){
+  }).catch(function(err){
     restoreMini();
+    // Retry automático hasta 3 veces con 2s de espera
+    if(retries<3){
+      return new Promise(function(resolve){
+        setTimeout(function(){ resolve(pullFromCloud(retries+1)); }, 2000);
+      });
+    }
+    updateSyncDot(false);
+    if(mini){ mini.textContent='Error de conexión'; mini.style.color='var(--red)'; }
     return false;
   });
 }
@@ -5294,22 +5303,34 @@ function initAuth(){
             if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
               S.users=rows[0].data.users;
               localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-              // Actualizar sessionData con rol más reciente de la nube
               var found=(S.users||[]).find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
               if(found) sessionData.rol=found.rol;
             }
           }).catch(function(){
-            // Si falla la red, usar backup local de usuarios
             var bk=localStorage.getItem('cp4_users_backup');
             if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
           });
-          // Entrar a la app sin esperar — el pull de enterApp traerá todo
           enterApp(sessionData, sessionData);
         }
 
         if(needsRefresh&&localStorage.getItem('cp4_refresh_token')){
-          refreshAuthToken().then(function(){ _enterWithSession(); })
-            .catch(function(){ _enterWithSession(); }); // entrar igual aunque falle el refresh
+          refreshAuthToken().then(function(newToken){
+            if(newToken){
+              _enterWithSession();
+            } else {
+              // Token no renovable — limpiar sesión y pedir login de nuevo
+              localStorage.removeItem('cp4_auth_token');
+              localStorage.removeItem('cp4_refresh_token');
+              localStorage.removeItem('cp4_session');
+              showLoginScreen();
+            }
+          }).catch(function(){
+            // Error de red al renovar — intentar entrar de todas formas (offline posible)
+            _enterWithSession();
+          });
+        } else if(!hasToken&&!localStorage.getItem('cp4_refresh_token')){
+          // Sin token ni refresh — pedir login
+          showLoginScreen();
         } else {
           _enterWithSession();
         }
