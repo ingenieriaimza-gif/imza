@@ -5165,10 +5165,11 @@ function enterApp(found, sessionData){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
   applyRoleRestrictions();
-  // Pull inicial después de entrar para mostrar datos frescos
+  // Siempre bajar datos frescos al entrar — ignorar _remoteUpdatedAt
+  _remoteUpdatedAt='';
   pullFromCloud().then(function(updated){
     updateSyncUI(true);
-    if(updated) rAll(true);
+    rAll(true); // siempre renderizar con lo que vino de la nube
   }).catch(function(){});
 }
 
@@ -6439,19 +6440,17 @@ document.addEventListener('visibilitychange',function(){
     }
   }
   if(document.visibilityState==='visible'){
-    // Al volver al frente — push pendiente + pull fresco
+    // Al volver al frente — push pendiente + pull fresco siempre
     _remoteUpdatedAt='';
     setTimeout(function(){
-      if(!_isPushing){
-        if(localStorage.getItem('cp4_pending_push')){
-          localStorage.removeItem('cp4_pending_push');
-          pushToCloud().catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
-        }
-        pullFromCloud().then(function(u){
-          if(u) rAll(true);
-          updateSyncUI(true);
-        }).catch(function(){});
+      if(localStorage.getItem('cp4_pending_push')&&!_isPushing){
+        localStorage.removeItem('cp4_pending_push');
+        pushToCloud().catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
       }
+      pullFromCloud().then(function(){
+        updateSyncUI(true);
+        rAll(true);
+      }).catch(function(){});
     }, 300);
   }
 });
