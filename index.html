@@ -1466,17 +1466,18 @@ function startLiveSync(){
     if(_isPushing) return;
     // Verificar cambios por timestamp O por version counter
     sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at,data').then(function(rows){
-      if(!rows||!rows.length) return;
+      if(!rows||!rows.length){ toast('poll: sin rows','err'); return; }
       updateSyncUI(true);
       var t=rows[0].updated_at||'';
       var serverVersion=(rows[0].data&&rows[0].data._v2)||0;
       var changed=(t&&t!==_remoteUpdatedAt)||(serverVersion&&serverVersion!==_remoteVersion);
+      toast('poll t='+t.slice(11,19)+' sv='+serverVersion+' lv='+_remoteVersion+' chg='+changed,'ok');
       if(changed){
         _remoteUpdatedAt=t;
         _remoteVersion=serverVersion;
         pullFromCloud().then(function(updated){ if(updated) rAll(true); });
       }
-    }).catch(function(){});
+    }).catch(function(e){ toast('poll err:'+e,'err'); });
   },10000);
 }
 
