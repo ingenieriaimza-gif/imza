@@ -5514,10 +5514,10 @@ function handleMagicLinkCallback(){
     if(!user||!user.email) throw new Error('no_email');
     var email=user.email.toLowerCase();
 
-    // Paso 2: cargar usuarios frescos de Supabase — obligatorio, sin caché
+    // Paso 2: cargar usuarios frescos de Supabase con anon key
     fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
       credentials:'omit',
-      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+accessToken,'Content-Type':'application/json'}
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
     }).then(function(r){ return r.ok?r.json():Promise.reject('data_fail'); })
     .then(function(rows){
       if(!rows||!rows[0]||!rows[0].data||!rows[0].data.users){
