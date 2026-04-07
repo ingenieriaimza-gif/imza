@@ -925,6 +925,7 @@ const APP_VERSION='2026.0401.1300';
 // ── STATE ─────────────────────────────────────────────────────────────────────
 var _lastSyncInfo=null;
 var _applyingCloudData=false;
+var _applyingCloudDataSince=0;
 var _isOnline=false;
 var _isPushing=false;
 var _realtimeWs=null;
@@ -1073,56 +1074,33 @@ function detectDevice(){
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
-function sbFetch(path,opts){
-  opts=opts||{};
-  var userToken=localStorage.getItem('cp4_auth_token')||SB_KEY;
-  return fetch(SB_URL+path,Object.assign({},opts,{
-    credentials:'omit',
-    headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+userToken,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
+function _doFetch(path, opts, token){
+  return fetch(SB_URL+path, Object.assign({}, opts, {
+    credentials: 'omit',
+    headers: Object.assign({
+      'apikey': SB_KEY,
+      'Authorization': 'Bearer '+token,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    }, opts.headers||{})
   })).then(function(res){
-    // Si el token expiró, intentar renovarlo automáticamente
-    if(res.status===401){
+    if(res.status===401) throw new Error('UNAUTHORIZED');
+    if(!res.ok) return res.text().then(function(t){ throw new Error(t||String(res.status)); });
+    return res.text().then(function(t){ return t ? JSON.parse(t) : null; });
+  });
+}
+
+function sbFetch(path, opts){
+  opts = opts||{};
+  var token = localStorage.getItem('cp4_auth_token')||SB_KEY;
+  return _doFetch(path, opts, token).catch(function(err){
+    if((err&&err.message)==='UNAUTHORIZED'){
       return refreshAuthToken().then(function(newToken){
-        if(!newToken) throw new Error('Session expired');
-        return fetch(SB_URL+path,Object.assign({},opts,{
-          credentials:'omit',
-          headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+newToken,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
-        })).then(function(res2){
-          if(!res2.ok) return res2.text().then(function(t){ throw new Error(t); });
-          return res2.text().then(function(t){ return t?JSON.parse(t):null; });
-        });
-      }).catch(function(){
-        // refresh_token local falló — intentar obtenerlo fresco de imza_sessions
-        if(!_currentUser||!_currentUser.email) throw new Error('Session expired');
-        var email=_currentUser.email.toLowerCase();
-        return fetch(SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(email)+'&select=session_data&order=updated_at.desc&limit=1',{
-          credentials:'omit',
-          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
-        }).then(function(r){ return r.ok?r.json():Promise.reject(); })
-        .then(function(rows){
-          if(!rows||!rows.length) throw new Error('Session expired');
-          var sd=JSON.parse(rows[0].session_data||'{}');
-          var rt=sd.refresh_token||'';
-          if(!rt) throw new Error('Session expired');
-          localStorage.setItem('cp4_refresh_token',rt);
-          return refreshAuthToken();
-        }).then(function(newToken){
-          if(!newToken) throw new Error('Session expired');
-          localStorage.setItem('cp4_auth_token',newToken);
-          return fetch(SB_URL+path,Object.assign({},opts,{
-            credentials:'omit',
-            headers:Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+newToken,'Content-Type':'application/json','Prefer':'return=representation'},opts.headers||{})
-          })).then(function(res2){
-            if(!res2.ok) return res2.text().then(function(t){ throw new Error(t); });
-            return res2.text().then(function(t){ return t?JSON.parse(t):null; });
-          });
-        }).catch(function(){
-          throw new Error('Session expired');
-        });
+        if(!newToken) throw new Error('no_token');
+        return _doFetch(path, opts, newToken);
       });
     }
-    if(!res.ok) return res.text().then(function(t){ throw new Error(t); });
-    return res.text().then(function(t){ return t?JSON.parse(t):null; });
+    throw err;
   });
 }
 
@@ -1299,15 +1277,14 @@ function persistLocal(){
 
 // ── PULL FROM CLOUD ───────────────────────────────────────────────────────────
 function pullFromCloud(){
-  if(_isPushing) return Promise.resolve(false);
+  // No bloquear pull por push en curso — son operaciones independientes
   // Mostrar indicador de actualización
   var mini=document.getElementById('sync-mini');
-  var _prevMini=mini?mini.textContent:'';
   if(mini){ mini.textContent='Actualizando...'; mini.style.color='var(--gold)'; }
   return sbFetch('/rest/v1/imza_data?id=eq.main&select=id,data,updated_at,device,user_name,last_action,changelog').then(function(rows){
     if(!rows||!rows.length){ if(mini){ mini.textContent=_currentUser?_currentUser.nombre:''; mini.style.color='var(--txt2)'; } return false; }
     var row=rows[0]; var remote=row.data||{};
-    if(!remote||!remote.proyectos) return false;
+    if(!remote||!remote.proyectos){ if(mini){ mini.textContent=_currentUser?_currentUser.nombre:''; mini.style.color='var(--txt2)'; } return false; }
     var userName=row.user_name||(row.data&&row.data._user)||'';
     var action=row.last_action||(row.data&&row.data._action)||'';
     _lastSyncInfo={time:row.updated_at,device:row.device,user:userName,action:action};
@@ -1373,9 +1350,10 @@ function pullFromCloud(){
 // Only called when user makes a change AND is online
 // Returns promise — resolves true if saved, false if failed
 function pushToCloud(){
-  if(_isPushing){ toast('⏳ Push bloqueado: isPushing','err'); return Promise.resolve(false); }
+  if(_isPushing) return Promise.resolve(false);
   _isPushing=true;
-  toast('📤 Enviando...','ok');
+  // Timeout de seguridad — desbloquear después de 15s por si acaso
+  var _pushTimeout=setTimeout(function(){ _isPushing=false; },15000);
   if(!S.users||!S.users.length){
     var bk=localStorage.getItem('cp4_users_backup');
     if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
@@ -1385,6 +1363,7 @@ function pushToCloud(){
   var now=new Date().toISOString();
   var userName=_currentUser?_currentUser.nombre:'';
   var action=_lastAction||'';
+  _lastAction=''; // limpiar aquí — después de capturar, antes del fetch
   var patch=getLocalData();
   patch._device=device;
   patch._user=userName;
@@ -1394,8 +1373,7 @@ function pushToCloud(){
     method:'PATCH',
     body:JSON.stringify({data:patch,updated_at:now,device:device,user_name:userName,last_action:action,changelog:changelog})
   }).then(function(){
-    toast('✅ Push OK','ok');
-    _lastAction='';
+    clearTimeout(_pushTimeout);
     _lastSyncInfo={time:now,device:device,user:userName,action:action};
     addToHistory(now,userName,action);
     renderHistory();
@@ -1405,10 +1383,9 @@ function pushToCloud(){
     _isPushing=false;
     updateSyncUI(true);
     return true;
-  }).catch(function(err){
+  }).catch(function(){
+    clearTimeout(_pushTimeout);
     _isPushing=false;
-    var msg=(err&&err.message)||'desconocido';
-    toast('❌ Push falló: '+msg,'err');
     return false;
   });
 }
@@ -1417,16 +1394,14 @@ function pushToCloud(){
 // If online: save to cloud immediately, then update all screens
 // If offline: block the edit with a message
 function save(){
-  if(_applyingCloudData) return;
-  // Always save locally first
+  // Guardar localmente siempre, sin importar estado de sync
   persistLocal();
-  // Log to changelog — capturar acción ANTES de limpiarla
   if(_currentUser){
     var logAction=_lastAction||'Cambio realizado';
     addToChangeLog(new Date().toISOString(),_currentUser.nombre,logAction);
     renderChangeLog();
   }
-  _lastAction=''; // limpiar DESPUÉS de loguear
+  // Push a la nube — si falla, marcar pendiente para reintentar
   pushToCloud().then(function(ok){
     if(!ok) localStorage.setItem('cp4_pending_push','1');
   }).catch(function(){
@@ -1440,18 +1415,27 @@ function save(){
 function startLiveSync(){
   if(_liveTimer) clearInterval(_liveTimer);
   _liveTimer=setInterval(function(){
-    if(!_currentUser||_applyingCloudData) return;
-    if(document.hidden) return; // no hacer fetch cuando la app está en background
-    // Si hay cambio pendiente por falta de red, intentar push primero
-    if(localStorage.getItem('cp4_pending_push')){
+    if(!_currentUser) return;
+    if(document.hidden) return;
+    // Desbloquear _applyingCloudData si lleva más de 10s atorado
+    if(_applyingCloudData){
+      if(!_applyingCloudDataSince) _applyingCloudDataSince=Date.now();
+      if(Date.now()-_applyingCloudDataSince>10000){ _applyingCloudData=false; _applyingCloudDataSince=0; }
+      else return;
+    } else { _applyingCloudDataSince=0; }
+    // Si hay push pendiente, enviarlo primero y esperar antes de hacer el poll
+    if(localStorage.getItem('cp4_pending_push')&&!_isPushing){
       localStorage.removeItem('cp4_pending_push');
-      pushToCloud().catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
+      pushToCloud().then(function(ok){
+        if(!ok) localStorage.setItem('cp4_pending_push','1');
+      }).catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
+      return; // el próximo tick del polling hará el fetch
     }
+    if(_isPushing) return; // esperar a que termine el push antes de comparar timestamps
     sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
       if(!rows||!rows.length){ return; }
       var t=rows[0].updated_at||'';
       updateSyncUI(true);
-      toast('🔄 Poll: '+(t!==_remoteUpdatedAt?'CAMBIO DETECTADO':'sin cambio'),'ok');
       if(t&&t!==_remoteUpdatedAt){
         _remoteUpdatedAt=t;
         pullFromCloud().then(function(updated){ if(updated) rAll(true); });
@@ -1515,12 +1499,8 @@ function load(){
   });
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
-  // No marcar "Sin conexión" en el arranque — se resuelve tras el auth
-  // (En Android, pullFromCloud falla antes de tener token y pintaba el badge en rojo)
-  pullFromCloud().then(function(updated){
-    if(updated) rAll();
-    initAuth();
-  }).catch(function(){ initAuth(); });
+  // Primero auth, luego pull — así siempre tenemos token antes de llamar Supabase
+  initAuth();
 }
 
 // ── LEGACY ALIASES ────────────────────────────────────────────────────────────
@@ -5157,16 +5137,11 @@ function enterApp(found, sessionData){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
   applyRoleRestrictions();
-  // En Android la PWA llega aquí sin haber hecho un pull exitoso aún
-  // Forzar pull fresco y marcar conexión correctamente
+  // Pull inicial después de entrar para mostrar datos frescos
   pullFromCloud().then(function(updated){
     updateSyncUI(true);
     if(updated) rAll(true);
-  }).catch(function(){
-    refreshAuthToken().then(function(t){
-      if(t) pullFromCloud().then(function(u){ updateSyncUI(true); if(u) rAll(true); }).catch(function(){});
-    }).catch(function(){});
-  });
+  }).catch(function(){});
 }
 
 function initAuth(){
@@ -5210,9 +5185,12 @@ function initAuth(){
             var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
             var needsRefresh=!localStorage.getItem('cp4_auth_token')||(tokenExp&&Date.now()>tokenExp-5*60*1000);
             if(needsRefresh&&localStorage.getItem('cp4_refresh_token')){
-              refreshAuthToken().catch(function(){});
+              // Esperar al refresh antes de entrar — garantiza token válido
+              refreshAuthToken().then(function(){ enterApp(found,sessionData); })
+                .catch(function(){ enterApp(found,sessionData); });
+            } else {
+              enterApp(found, sessionData);
             }
-            enterApp(found, sessionData);
           } else {
             // No encontrado ni en Supabase ni en caché — pedir login de nuevo
             showLoginScreen();
@@ -6441,12 +6419,10 @@ document.addEventListener('visibilitychange',function(){
           localStorage.removeItem('cp4_pending_push');
           pushToCloud().catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
         }
-        pullFromCloud().then(function(u){ if(u) rAll(true); updateSyncUI(true); })
-        .catch(function(){
-          refreshAuthToken().then(function(t){
-            if(t) pullFromCloud().then(function(u){ if(u) rAll(true); updateSyncUI(true); }).catch(function(){});
-          }).catch(function(){});
-        });
+        pullFromCloud().then(function(u){
+          if(u) rAll(true);
+          updateSyncUI(true);
+        }).catch(function(){});
       }
     }, 300);
   }
