@@ -1404,7 +1404,8 @@ function pushToCloud(){
       data:patch, updated_at:now, device:device,
       user_name:userName, last_action:action, changelog:loadChangeLog()
     })
-  }).then(function(){
+  }).then(function(res){
+    toast('PATCH ok: '+(res?JSON.stringify(res).slice(0,40):'null'),'ok');
     clearTimeout(_pt);
     _isPushing=false;
     _lastSyncInfo={time:now,device:device,user:userName,action:action};
