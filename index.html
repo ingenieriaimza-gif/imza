@@ -2349,6 +2349,18 @@ function renderVacList(){
   var today2=td();
   var historialVac=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
   // Build with DOM nodes — no inline onclick
+  // Proyectos del día por trabajador
+  var actsHoy=S.actividades[selDate]||[];
+  var proyByWorker={};
+  actsHoy.forEach(function(a){
+    (a.trabajadores||[]).forEach(function(wid){
+      if(!proyByWorker[wid]) proyByWorker[wid]=[];
+      var code=gcode(a.proyectoId);
+      var label=code?('['+code+']'):gpn(a.proyectoId);
+      if(!proyByWorker[wid].includes(label)) proyByWorker[wid].push(label);
+    });
+  });
+
   c.innerHTML=S.personal.filter(function(p){ return p.estado!=='inactivo'; }).map((p,i)=>{
     // Use historial for date — never fall back to p.estado for other dates
     var st;
@@ -2358,11 +2370,18 @@ function renderVacList(){
       st=historialVac[p.id]||'activo';
     }
     const cfg=VAC_CFG[st]||VAC_CFG.activo;
+    // Subtítulo: proyectos del día o cargo si no hay actividad
+    var proySub='';
+    if(proyByWorker[p.id]&&proyByWorker[p.id].length){
+      proySub='<span style="color:var(--gold);font-weight:700">'+proyByWorker[p.id].join(' · ')+'</span>';
+    } else {
+      proySub='<span style="color:var(--txt3)">'+( p.cargo||'Sin asignación')+'</span>';
+    }
     return `<div class="li" data-wid="${p.id}" style="cursor:pointer;border-color:${cfg.border};background:${cfg.bg}">
       <div class="liav" style="background:${WC[i%WC.length]}22;color:${WC[i%WC.length]}">${inits(p.nombre)}</div>
       <div class="lib">
         <div class="liname">${p.nombre}</div>
-        <div class="lisub">${p.cargo||'Sin cargo'}</div>
+        <div class="lisub">${proySub}</div>
       </div>
       <div class="lir" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
         <span class="b ${cfg.cls}" style="font-size:12px">${cfg.emoji} ${cfg.label}</span>
