@@ -1374,14 +1374,19 @@ function pushToCloud(){
     body:JSON.stringify({data:patch,updated_at:now,device:device,user_name:userName,last_action:action,changelog:changelog})
   }).then(function(){
     clearTimeout(_pushTimeout);
+    _isPushing=false;
     _lastSyncInfo={time:now,device:device,user:userName,action:action};
     addToHistory(now,userName,action);
     renderHistory();
     addToSyncHistory(_lastSyncInfo);
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
-    _remoteUpdatedAt=now;
-    _isPushing=false;
     updateSyncUI(true);
+    // Leer el updated_at real de Supabase para sincronizar correctamente
+    // (Supabase puede tener trigger que sobreescribe el updated_at)
+    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
+      if(rows&&rows[0]) _remoteUpdatedAt=rows[0].updated_at||now;
+      else _remoteUpdatedAt=now;
+    }).catch(function(){ _remoteUpdatedAt=now; });
     return true;
   }).catch(function(){
     clearTimeout(_pushTimeout);
