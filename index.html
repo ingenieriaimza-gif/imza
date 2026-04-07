@@ -1307,6 +1307,7 @@ function _applyRemoteData(remote){
   var del=remote.deleted||{};
   // Proyectos
   S.proyectos=(remote.proyectos||[]).filter(function(p){ return !del['proj_'+p.id]; });
+  toast('apply: proj='+S.proyectos.length+' pers='+(remote.personal||[]).length,'ok');
   // Asignar completadoEn si falta
   var hoy=td(); var needsPush=false;
   S.proyectos.forEach(function(p){
@@ -1464,8 +1465,11 @@ function startLiveSync(){
       return;
     }
     if(_isPushing) return;
-    // Siempre bajar datos frescos en cada tick — sin comparar timestamps
-    pullFromCloud().then(function(updated){ if(updated) rAll(true); });
+    // Siempre bajar datos frescos en cada tick
+    pullFromCloud().then(function(updated){
+      toast('pull updated='+updated,'ok');
+      rAll(true);
+    });
   },10000);
 }
 
@@ -2079,7 +2083,7 @@ var _lastInteraction=0;
 ['touchstart','touchend','mousedown','click','keydown'].forEach(function(evt){
   document.addEventListener(evt, function(){ _lastInteraction=Date.now(); }, {passive:true, capture:true});
 });
-var _applyingCloudData=false; // blocks save/push while applying cloud data
+// _applyingCloudData declarado al inicio del script
 
 var _rAllTimer=null;
 function isSheetOpen(){
