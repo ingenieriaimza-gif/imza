@@ -1230,26 +1230,16 @@ function renderSyncHistory(){
 }
 
 function updateSyncUI(ok){
-  _isOnline=!!ok;
+  _isOnline=true;
   updateSyncDot(ok);
 
   var badge=document.getElementById('sync-status-badge');
-  if(badge){
-    badge.textContent=ok?'En línea':'Sin conexión';
-    badge.style.color=ok?'var(--green)':'var(--red)';
-    badge.style.background=ok?'rgba(61,214,140,0.12)':'rgba(240,96,96,0.12)';
-  }
+  if(badge){ badge.style.display='none'; }
   var mini=document.getElementById('sync-mini');
   if(mini){
     var nombre=_currentUser?_currentUser.nombre:'';
-    if(ok){
-      mini.textContent=nombre?(nombre+' · En línea'):('En línea');
-      mini.style.color='var(--green)';
-    } else {
-      // Offline: solo mostrar nombre, el badge ya indica Sin conexión
-      mini.textContent=nombre||'';
-      mini.style.color='var(--txt2)';
-    }
+    mini.textContent=nombre;
+    mini.style.color='var(--txt2)';
   }
   // sync-mini (hora junto al punto) lo actualiza SOLO el polling con la hora del chequeo
   // Aquí solo actualizamos el panel expandido con info del último cambio
@@ -1310,8 +1300,12 @@ function persistLocal(){
 // ── PULL FROM CLOUD ───────────────────────────────────────────────────────────
 function pullFromCloud(){
   if(_isPushing) return Promise.resolve(false);
+  // Mostrar indicador de actualización
+  var mini=document.getElementById('sync-mini');
+  var _prevMini=mini?mini.textContent:'';
+  if(mini){ mini.textContent='Actualizando...'; mini.style.color='var(--gold)'; }
   return sbFetch('/rest/v1/imza_data?id=eq.main&select=id,data,updated_at,device,user_name,last_action,changelog').then(function(rows){
-    if(!rows||!rows.length) return false;
+    if(!rows||!rows.length){ if(mini){ mini.textContent=_currentUser?_currentUser.nombre:''; mini.style.color='var(--txt2)'; } return false; }
     var row=rows[0]; var remote=row.data||{};
     if(!remote||!remote.proyectos) return false;
     var userName=row.user_name||(row.data&&row.data._user)||'';
@@ -1322,6 +1316,7 @@ function pullFromCloud(){
     _remoteUpdatedAt=row.updated_at||'';
     updateSyncUI(true);
     refreshSyncTime();
+    if(mini){ mini.textContent=_currentUser?_currentUser.nombre:''; mini.style.color='var(--txt2)'; }
     _applyingCloudData=true;
     try{
       var del=remote.deleted||{};
@@ -1369,8 +1364,7 @@ function pullFromCloud(){
     }finally{ _applyingCloudData=false; }
     return true;
   }).catch(function(err){
-    var msg=(err&&err.message)||'';
-    if(msg==='Failed to fetch') updateSyncUI(false);
+    if(mini){ mini.textContent=_currentUser?_currentUser.nombre:''; mini.style.color='var(--txt2)'; }
     return false;
   });
 }
@@ -1412,7 +1406,7 @@ function pushToCloud(){
   }).catch(function(err){
     _isPushing=false;
     var msg=(err&&err.message)||'';
-    if(msg==='Failed to fetch') updateSyncUI(false);
+    if(msg==='Failed to fetch')
     return false;
   });
 }
@@ -1431,16 +1425,10 @@ function save(){
     renderChangeLog();
   }
   _lastAction=''; // limpiar DESPUÉS de loguear
-  // Siempre intentar push aunque _isOnline sea false:
-  // en iPhone el token puede estar expirado y sbFetch ya maneja el refresh automático
-  // Si el push funciona, actualiza a En línea; si falla de verdad, muestra error
   pushToCloud().then(function(ok){
-    if(ok){
-      updateSyncUI(true);
-      toast('✅ Guardado','ok');
-    } else {
-      toast('❌ No se pudo guardar — revisa conexión','err');
-    }
+    if(!ok) localStorage.setItem('cp4_pending_push','1');
+  }).catch(function(){
+    localStorage.setItem('cp4_pending_push','1');
   });
 }
 
@@ -1452,6 +1440,11 @@ function startLiveSync(){
   _liveTimer=setInterval(function(){
     if(!_currentUser||_applyingCloudData) return;
     if(document.hidden) return; // no hacer fetch cuando la app está en background
+    // Si hay cambio pendiente por falta de red, intentar push primero
+    if(localStorage.getItem('cp4_pending_push')){
+      localStorage.removeItem('cp4_pending_push');
+      pushToCloud().catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
+    }
     sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
       if(!rows||!rows.length){ return; }
       var t=rows[0].updated_at||'';
@@ -1460,16 +1453,7 @@ function startLiveSync(){
         _remoteUpdatedAt=t;
         pullFromCloud().then(function(updated){ if(updated) rAll(true); });
       }
-    }).catch(function(err){
-      // Solo marcar Sin conexión si es error de red, no de token
-      var msg=(err&&err.message)||'';
-      if(msg==='Session expired'||msg==='Failed to fetch') {
-        // Session expired: sbFetch ya intentó el refresh, no hay nada más que hacer
-        // Failed to fetch: error de red real
-        if(msg==='Failed to fetch') updateSyncUI(false);
-        // Si expiró sesión no tocar el badge — el usuario sigue teniendo red
-      }
-    });
+    }).catch(function(){});
   },10000); // 10s en lugar de 2s — el WS cubre las actualizaciones inmediatas
 }
 
@@ -5177,9 +5161,8 @@ function enterApp(found, sessionData){
     if(updated) rAll(true);
   }).catch(function(){
     refreshAuthToken().then(function(t){
-      if(t) pullFromCloud().then(function(u){ updateSyncUI(true); if(u) rAll(true); }).catch(function(){ updateSyncUI(false); });
-      else updateSyncUI(false);
-    }).catch(function(){ updateSyncUI(false); });
+      if(t) pullFromCloud().then(function(u){ updateSyncUI(true); if(u) rAll(true); }).catch(function(){});
+    }).catch(function(){});
   });
 }
 
@@ -6435,17 +6418,7 @@ fixHeight();
 window.addEventListener('resize',fixHeight);
 window.addEventListener('orientationchange',function(){ setTimeout(fixHeight,100); });
 
-window.addEventListener('online',function(){
-  updateSyncUI(true);
-  if(_currentUser){
-    toast('📶 Conexión restaurada','ok');
-    setTimeout(function(){ pushToCloud().then(function(){ pullFromCloud().then(function(u){ if(u) rAll(true); }); }); },300);
-  }
-});
-window.addEventListener('offline',function(){
-  // iOS Safari dispara 'offline' aunque haya red (bug conocido en PWA)
-  // No marcamos Sin conexión aquí — el polling HTTP es quien determina el estado real
-});
+// Sin modo offline — la app requiere internet para funcionar
 
 // Push immediately when app is closed or hidden
 document.addEventListener('visibilitychange',function(){
@@ -6457,16 +6430,19 @@ document.addEventListener('visibilitychange',function(){
     }
   }
   if(document.visibilityState==='visible'){
-    // Al volver al frente — forzar pull fresco
+    // Al volver al frente — push pendiente + pull fresco
     _remoteUpdatedAt='';
     setTimeout(function(){
       if(!_isPushing){
+        if(localStorage.getItem('cp4_pending_push')){
+          localStorage.removeItem('cp4_pending_push');
+          pushToCloud().catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
+        }
         pullFromCloud().then(function(u){ if(u) rAll(true); updateSyncUI(true); })
         .catch(function(){
           refreshAuthToken().then(function(t){
-            if(t) pullFromCloud().then(function(u){ if(u) rAll(true); updateSyncUI(true); }).catch(function(){ updateSyncUI(false); });
-            else updateSyncUI(false);
-          }).catch(function(){ updateSyncUI(false); });
+            if(t) pullFromCloud().then(function(u){ if(u) rAll(true); updateSyncUI(true); }).catch(function(){});
+          }).catch(function(){});
         });
       }
     }, 300);
