@@ -343,38 +343,35 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 }">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230c0e12'/><polygon points='50,10 10,30 50,50 90,30' fill='none' stroke='%2364a0ff' stroke-width='5'/><polyline points='10,70 50,90 90,70' fill='none' stroke='%2364a0ff' stroke-width='5'/><polyline points='10,50 50,70 90,50' fill='none' stroke='%23a78bfa' stroke-width='5'/></svg>">
 <script>
-// ── SERVICE WORKER (inline via blob) ──────────────────────────────────────────
-// Caches the entire app on first load so it works completely offline
+// ── SERVICE WORKER ────────────────────────────────────────────────────────────
+// Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-v1';
+    const CACHE='imza-shell-v3';
+    const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
-      e.waitUntil(
-        caches.open(CACHE).then(cache=>{
-          // Cache the page itself
-          return cache.add(self.location.href.replace(/\/sw\.js$/,''));
-        }).catch(()=>{})
-      );
+      e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
       self.skipWaiting();
     });
     self.addEventListener('activate', e=>{
-      e.waitUntil(caches.keys().then(keys=>
-        Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))
-      ));
+      e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));
       self.clients.claim();
     });
     self.addEventListener('fetch', e=>{
+      const url=e.request.url;
+      const isApi=NEVER_CACHE.some(s=>url.includes(s));
+      if(isApi){
+        e.respondWith(fetch(e.request).catch(()=>new Response(JSON.stringify({error:'offline'}),{status:503,headers:{'Content-Type':'application/json'}})));
+        return;
+      }
       e.respondWith(
-        caches.match(e.request).then(cached=>{
-          if(cached) return cached;
-          return fetch(e.request).then(resp=>{
-            if(resp&&resp.status===200){
-              const clone=resp.clone();
-              caches.open(CACHE).then(cache=>cache.put(e.request,clone));
-            }
-            return resp;
-          }).catch(()=>cached||new Response('Offline',{status:503}));
-        })
+        fetch(e.request).then(resp=>{
+          if(resp&&resp.status===200&&e.request.method==='GET'){
+            const clone=resp.clone();
+            caches.open(CACHE).then(c=>c.put(e.request,clone));
+          }
+          return resp;
+        }).catch(()=>caches.match(e.request).then(c=>c||new Response('Sin conexion',{status:503})))
       );
     });
   `;
@@ -1209,7 +1206,7 @@ function renderSyncHistory(){
 }
 
 function updateSyncUI(ok){
-  _isOnline=true;
+  if(ok) _isOnline=true;
   updateSyncDot(ok);
 
   var badge=document.getElementById('sync-status-badge');
@@ -1220,8 +1217,6 @@ function updateSyncUI(ok){
     mini.textContent=nombre;
     mini.style.color='var(--txt2)';
   }
-  // sync-mini (hora junto al punto) lo actualiza SOLO el polling con la hora del chequeo
-  // Aquí solo actualizamos el panel expandido con info del último cambio
   if(_lastSyncInfo&&_lastSyncInfo.time){
     var t=fmtSyncTime(_lastSyncInfo.time);
     var user=_lastSyncInfo.user?(' · '+_lastSyncInfo.user):'';
@@ -1257,8 +1252,58 @@ function refreshSyncTime(){
 }
 
 // ── NO CONNECTION OVERLAY ─────────────────────────────────────────────────────
+var _offlineOverlay=null;
+
+function showOfflineOverlay(){
+  if(_offlineOverlay) return;
+  _offlineOverlay=document.createElement('div');
+  _offlineOverlay.id='offline-overlay';
+  _offlineOverlay.style.cssText='position:fixed;inset:0;background:rgba(10,12,16,0.92);z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)';
+  _offlineOverlay.innerHTML=
+    '<div style="width:64px;height:64px;border-radius:18px;background:rgba(240,96,96,0.12);border:1px solid rgba(240,96,96,0.25);display:flex;align-items:center;justify-content:center">'+
+      '<svg viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2" style="width:30px;height:30px"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0112 10c-2.4 0-4.62.82-6.38 2.18"/><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1"/></svg>'+
+    '</div>'+
+    '<div style="text-align:center;padding:0 32px">'+
+      '<div style="font-size:18px;font-weight:800;color:var(--txt);margin-bottom:8px">Sin conexión</div>'+
+      '<div style="font-size:13px;color:var(--txt3);line-height:1.6">La app requiere internet para funcionar.<br>Verifica tu red y espera...</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:6px;margin-top:8px">'+
+      '<div style="width:8px;height:8px;border-radius:50%;background:var(--red);animation:splashDot 1.2s ease infinite"></div>'+
+      '<div style="width:8px;height:8px;border-radius:50%;background:var(--red);animation:splashDot 1.2s ease 0.2s infinite"></div>'+
+      '<div style="width:8px;height:8px;border-radius:50%;background:var(--red);animation:splashDot 1.2s ease 0.4s infinite"></div>'+
+    '</div>';
+  document.body.appendChild(_offlineOverlay);
+}
+
+function hideOfflineOverlay(){
+  if(_offlineOverlay){ _offlineOverlay.remove(); _offlineOverlay=null; }
+}
+
+function handleOnline(){
+  _isOnline=true;
+  hideOfflineOverlay();
+  updateSyncDot(true);
+  if(_currentUser){
+    pullFromCloud().then(function(u){ if(u){ rAll(true); updateSyncUI(true); } });
+  }
+}
+
+function handleOffline(){
+  _isOnline=false;
+  updateSyncDot(false);
+  // Solo mostrar overlay si ya estamos en la app (no en login)
+  var app=document.getElementById('app');
+  if(app&&app.style.display!=='none') showOfflineOverlay();
+}
+
+window.addEventListener('online', handleOnline);
+window.addEventListener('offline', handleOffline);
+
+// Verificar estado inicial
+if(!navigator.onLine){ _isOnline=false; }
+
 function showNoConnection(){
-  toast('⚠️ Sin conexión — verifica tu red para editar','err');
+  showOfflineOverlay();
 }
 
 // ── DELETED REGISTRY ──────────────────────────────────────────────────────────
@@ -1272,9 +1317,10 @@ function getLocalData(){
   return d;
 }
 function persistLocal(){
-  var d=getLocalData(); d._v=Date.now();
-  localStorage.setItem('cp4',JSON.stringify(d));
+  // NO guardar datos de negocio en localStorage — solo metadata de sync
+  // Todos los datos vienen de Supabase
 }
+
 
 // ── PULL FROM CLOUD ───────────────────────────────────────────────────────────
 // ── SYNC HELPERS ─────────────────────────────────────────────────────────────
@@ -1331,11 +1377,10 @@ function _mergeActividades(remote, local, del){
 }
 
 function _applyRemoteData(remote){
-  // Fusionar deleted local + remoto para preservar borrados pendientes de push
-  var del=Object.assign({},S.deleted||{},remote.deleted||{});
+  // La nube es la única fuente de verdad — aplicar directo sin merge con datos locales
+  var del=Object.assign({},remote.deleted||{});
   // Proyectos
   S.proyectos=(remote.proyectos||[]).filter(function(p){ return !del['proj_'+p.id]; });
-
   // Asignar completadoEn si falta
   var hoy=td(); var needsPush=false;
   S.proyectos.forEach(function(p){
@@ -1345,13 +1390,11 @@ function _applyRemoteData(remote){
   });
   // Personal
   S.personal=(remote.personal||[]).filter(function(p){ return !del['pers_'+p.id]; });
-  // Actividades — merge por timestamp: el cambio más reciente por actividad gana
-  var mergedActs=_mergeActividades(remote.actividades,S.actividades,del);
-  if(mergedActs._hadLocalOnly) needsPush=true;
+  // Actividades — directamente de la nube
   S.actividades={};
-  Object.keys(mergedActs).forEach(function(d){
-    if(d==='_hadLocalOnly') return;
-    if(mergedActs[d].length) S.actividades[d]=mergedActs[d];
+  Object.keys(remote.actividades||{}).forEach(function(d){
+    var acts=(remote.actividades[d]||[]).filter(function(a){ return !del['act_'+a.id]; });
+    if(acts.length) S.actividades[d]=acts;
   });
   // Users
   if(remote.users&&remote.users.length) S.users=remote.users;
@@ -1359,8 +1402,8 @@ function _applyRemoteData(remote){
   S.deleted=del;
   S.exPersonal=remote.exPersonal||{};
   S.deletedUsers=remote.deletedUsers||{};
-  // estadoHistorial — merge timestamps: el cambio más reciente por persona/fecha gana
-  S.estadoHistorial=_mergeEstadoHistorial(remote.estadoHistorial||{},S.estadoHistorial||{});
+  // estadoHistorial — directo de la nube
+  S.estadoHistorial=remote.estadoHistorial||{};
   // Sincronizar p.estado con el historial de hoy
   var todayH=S.estadoHistorial[td()]||{};
   S.personal.forEach(function(p){
@@ -1368,7 +1411,7 @@ function _applyRemoteData(remote){
     p.estado=todayH[p.id]||'activo';
   });
   if(!S.date) S.date=td();
-  persistLocal();
+  // NO persistLocal — la nube es la única fuente
   if(needsPush) setTimeout(function(){ if(!_isPushing) pushToCloud(); },2000);
 }
 
@@ -1457,14 +1500,17 @@ function pushToCloud(){
 
 // ── SAVE ─────────────────────────────────────────────────────────────────────
 function save(){
-  persistLocal();
+  if(!_isOnline){
+    toast('Sin conexión — cambios no guardados','err');
+    return;
+  }
   if(_currentUser){
     addToChangeLog(new Date().toISOString(),_currentUser.nombre,_lastAction||'Cambio');
     renderChangeLog();
   }
   pushToCloud().then(function(ok){
-    if(!ok) localStorage.setItem('cp4_pending_push','1');
-  }).catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
+    if(!ok) toast('Error al guardar — verifica tu conexión','err');
+  }).catch(function(){ toast('Error al guardar — verifica tu conexión','err'); });
 }
 
 // ── LIVE SYNC ─────────────────────────────────────────────────────────────────
@@ -1472,24 +1518,16 @@ function startLiveSync(){
   if(_liveTimer) clearInterval(_liveTimer);
   _liveTimer=setInterval(function(){
     if(!_currentUser||document.hidden) return;
+    if(!_isOnline) return;
     // Desbloquear _applyingCloudData si lleva atorado >10s
     if(_applyingCloudData){
       if(!_applyingCloudDataSince) _applyingCloudDataSince=Date.now();
       if(Date.now()-_applyingCloudDataSince>10000){ _applyingCloudData=false; _applyingCloudDataSince=0; }
       else return;
     } else { _applyingCloudDataSince=0; }
-    // Push pendiente primero
-    if(localStorage.getItem('cp4_pending_push')&&!_isPushing){
-      localStorage.removeItem('cp4_pending_push');
-      pushToCloud().then(function(ok){
-        if(!ok) localStorage.setItem('cp4_pending_push','1');
-      }).catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
-      return;
-    }
     if(_isPushing) return;
-    toast('🔄 poll','ok');
-    pullFromCloud().then(function(){
-      rAll(true);
+    pullFromCloud().then(function(u){
+      if(u) rAll(true);
     });
   },10000);
 }
@@ -1533,23 +1571,12 @@ function startRealtime(){
 // ── LOAD ──────────────────────────────────────────────────────────────────────
 function load(){
   loadSyncHistory();
-  var d=localStorage.getItem('cp4');
-  if(d){ try{ Object.assign(S,JSON.parse(d)); }catch(e){} }
-  // Restore saved date or use today
+  // NO cargar datos de negocio desde localStorage — solo vienen de Supabase
+  // Solo restaurar fecha de trabajo
   if(!S.date) S.date=td();
-  // Resetear estado al arrancar si no hay historial para hoy
-  var todayH=(S.estadoHistorial&&S.estadoHistorial[td()])||{};
-  (S.personal||[]).forEach(function(p){
-    if(p.estado==='inactivo') return;
-    if(todayH[p.id]){
-      p.estado=todayH[p.id];
-    } else {
-      p.estado='activo';
-    }
-  });
   var ls=localStorage.getItem('cp4_lastsync');
   if(ls) try{ _lastSyncInfo=JSON.parse(ls); }catch(e){}
-  // Primero auth, luego pull — así siempre tenemos token antes de llamar Supabase
+  // Auth y pull desde la nube
   initAuth();
 }
 
@@ -6170,71 +6197,8 @@ function dUser(uid){
 let tT;
 function toast(msg,type='ok'){const t=document.getElementById('toast');document.getElementById('tmsg').textContent=msg;t.className=`toast ${type} show`;clearTimeout(tT);tT=setTimeout(()=>t.classList.remove('show'),2800);}
 
-// INIT
-function seedDemo(){
-  if(localStorage.getItem('cp4_seeded_v2')) return;
-  const now=new Date();
-  function dStr(offset){const d=new Date(now);d.setDate(d.getDate()+offset);return d.toISOString().split('T')[0];}
-
-  S.proyectos=[
-    {id:'p1',folio:'A1',nombre:'Torre Residencial Norte',lider:'Carlos Ramírez',inicio:dStr(-60),diasEstimados:180,estado:'activo'},
-    {id:'p2',folio:'A2',nombre:'Bodega Industrial Km 5',lider:'Luis Torres',inicio:dStr(-45),diasEstimados:120,estado:'activo'},
-    {id:'p3',folio:'A3',nombre:'Remodelación Centro Comercial',lider:'Miguel Herrera',inicio:dStr(-30),diasEstimados:90,estado:'activo'},
-    {id:'p4',folio:'A4',nombre:'Puente Vehicular Río Verde',lider:'José Mendoza',inicio:dStr(-90),diasEstimados:200,estado:'activo'},
-    {id:'p5',folio:'A5',nombre:'Fraccionamiento Las Palmas',lider:'Roberto Flores',inicio:dStr(-20),diasEstimados:300,estado:'activo'},
-    {id:'p6',folio:'A6',nombre:'Planta de Tratamiento Agua',lider:'Antonio Gómez',inicio:dStr(-55),diasEstimados:60,estado:'pausado'},
-    {id:'p7',folio:'A7',nombre:'Ampliación Carretera Federal',lider:'Jorge Jiménez',inicio:dStr(-100),diasEstimados:150,estado:'completado'},
-    {id:'p8',folio:'A8',nombre:'Hospital Privado Zona Sur',lider:'Héctor Morales',inicio:dStr(-15),diasEstimados:400,estado:'activo'},
-    {id:'p9',folio:'A9',nombre:'Estacionamiento Subterráneo',lider:'Alejandro Cruz',inicio:dStr(-40),diasEstimados:160,estado:'activo'},
-    {id:'p10',folio:'A10',nombre:'Escuela Técnica Municipal',lider:'Carlos Ramírez',inicio:dStr(-70),diasEstimados:120,estado:'completado'},
-  ];
-
-  S.personal=[
-    {id:'w1',nombre:'Carlos Ramírez',cargo:'Maestro de obra',tel:'555-1001',salario:18000,ingreso:dStr(-200),estado:'activo'},
-    {id:'w2',nombre:'Luis Torres',cargo:'Albañil',tel:'555-1002',salario:12000,ingreso:dStr(-180),estado:'activo'},
-    {id:'w3',nombre:'Miguel Herrera',cargo:'Operador maquinaria',tel:'555-1003',salario:15000,ingreso:dStr(-150),estado:'activo'},
-    {id:'w4',nombre:'José Mendoza',cargo:'Electricista',tel:'555-1004',salario:14000,ingreso:dStr(-120),estado:'activo'},
-    {id:'w5',nombre:'Roberto Flores',cargo:'Plomero',tel:'555-1005',salario:13000,ingreso:dStr(-100),estado:'activo'},
-    {id:'w6',nombre:'Antonio Gómez',cargo:'Fierrero',tel:'555-1006',salario:12500,ingreso:dStr(-90),estado:'activo'},
-    {id:'w7',nombre:'Fernando Díaz',cargo:'Carpintero',tel:'555-1007',salario:11000,ingreso:dStr(-80),estado:'vacaciones'},
-    {id:'w8',nombre:'Jorge Jiménez',cargo:'Peón general',tel:'555-1008',salario:9500,ingreso:dStr(-70),estado:'activo'},
-    {id:'w9',nombre:'Héctor Morales',cargo:'Topógrafo',tel:'555-1009',salario:16000,ingreso:dStr(-60),estado:'activo'},
-    {id:'w10',nombre:'Alejandro Cruz',cargo:'Soldador',tel:'555-1010',salario:13500,ingreso:dStr(-50),estado:'activo'},
-  ];
-
-  const workDays=[];let dd=0;
-  while(workDays.length<10){const dt=new Date(now);dt.setDate(dt.getDate()+dd);if(dt.getDay()!==0)workDays.push(dStr(dd));dd--;}
-  workDays.reverse();
-
-  const actData=[
-    [{id:'a101',proyectoId:'p1',notas:'Colado losa nivel 3, 8 trabes principales',trabajadores:['w1','w2','w3','w6'],maquinaria:['Revolvedora 9p³','Vibradora eléctrica'],gastos:[{desc:'Almuerzo equipo',tipo:'Comida',monto:420},{desc:'Diesel revolvedora',tipo:'Transporte',monto:350}]},
-     {id:'a102',proyectoId:'p4',notas:'Colocación cimbra pilar central',trabajadores:['w4','w8'],maquinaria:['Andamio metálico'],gastos:[]}],
-    [{id:'a111',proyectoId:'p2',notas:'Trazo y nivelación terreno, inicio excavación',trabajadores:['w1','w3','w9'],maquinaria:['Excavadora CAT 320','Nivel óptico'],gastos:[{desc:'Comida campo',tipo:'Comida',monto:380}]},
-     {id:'a112',proyectoId:'p5',notas:'Levantamiento muros casas 3 y 4',trabajadores:['w2','w6','w8'],maquinaria:[],gastos:[{desc:'Flete block',tipo:'Transporte',monto:800}]}],
-    [{id:'a121',proyectoId:'p3',notas:'Demolición tabiques planta baja',trabajadores:['w2','w5','w8','w10'],maquinaria:['Rompedor neumático','Compresor 185 CFM'],gastos:[{desc:'Desayuno',tipo:'Comida',monto:260},{desc:'Gasolina camioneta',tipo:'Transporte',monto:500}]},
-     {id:'a122',proyectoId:'p8',notas:'Armado columnas nivel 1',trabajadores:['w1','w4','w6'],maquinaria:['Dobladora de varilla'],gastos:[]}],
-    [{id:'a131',proyectoId:'p1',notas:'Block fachada sur niveles 1-2',trabajadores:['w1','w2','w3','w8'],maquinaria:['Andamio tubular 6m'],gastos:[{desc:'Almuerzo',tipo:'Comida',monto:440}]},
-     {id:'a132',proyectoId:'p9',notas:'Excavación sótano nivel -1',trabajadores:['w5','w9','w10'],maquinaria:['Retroexcavadora JD 310','Camión volteo'],gastos:[{desc:'Diesel maquinaria',tipo:'Herramienta',monto:1200}]}],
-    [{id:'a141',proyectoId:'p5',notas:'Fundición castillos casas 5-8',trabajadores:['w1','w2','w6','w8'],maquinaria:['Revolvedora 11p³'],gastos:[{desc:'Comida obra',tipo:'Comida',monto:500},{desc:'Agua purificada',tipo:'Comida',monto:80}]},
-     {id:'a142',proyectoId:'p4',notas:'Cimbra metálica vano principal',trabajadores:['w3','w4','w10'],maquinaria:['Grúa pluma 5ton','Soldadora inverter'],gastos:[{desc:'Flete grúa',tipo:'Transporte',monto:2500}],horasExtras:{w3:5,w4:5,w10:5}}],
-    [{id:'a151',proyectoId:'p2',notas:'Colado losa cimentación bodega',trabajadores:['w1','w2','w3','w5','w8'],maquinaria:['Bomba de concreto','Vibrador 2"'],gastos:[{desc:'Almuerzo colado',tipo:'Comida',monto:650},{desc:'Combustible bomba',tipo:'Herramienta',monto:900}]},
-     {id:'a152',proyectoId:'p6',notas:'Tubería PVC 12" tramo A',trabajadores:['w4','w9'],maquinaria:['Cutter para tubo'],gastos:[]}],
-    [{id:'a161',proyectoId:'p8',notas:'Colado losa nivel 1 zona quirófanos',trabajadores:['w1','w3','w6','w10'],maquinaria:['Bomba estacionaria','Plana metálica'],gastos:[{desc:'Comida equipo',tipo:'Comida',monto:720},{desc:'Taxi técnico',tipo:'Transporte',monto:150}]},
-     {id:'a162',proyectoId:'p3',notas:'Pintura base fachada este',trabajadores:['w2','w5','w8'],maquinaria:['Compresor pistola'],gastos:[{desc:'Desayuno',tipo:'Comida',monto:300}]}],
-    [{id:'a171',proyectoId:'p9',notas:'Habilitado acero muros sótano',trabajadores:['w1','w4','w6','w10'],maquinaria:['Cortadora de varilla','Dobladora'],gastos:[{desc:'Almuerzo',tipo:'Comida',monto:480}]},
-     {id:'a172',proyectoId:'p1',notas:'Ventanas nivel 2 fachada norte',trabajadores:['w2','w8','w9'],maquinaria:['Taladro percutor','Niveleta láser'],gastos:[{desc:'Gasolina pickup',tipo:'Transporte',monto:600}]}],
-    [{id:'a181',proyectoId:'p5',notas:'Techado e impermeabilización casas 1-4',trabajadores:['w1','w2','w3','w5'],maquinaria:['Soplete industrial','Pistola selladora'],gastos:[{desc:'Comida techadores',tipo:'Comida',monto:410},{desc:'Gas LP soplete',tipo:'Herramienta',monto:280}],horasExtras:{w1:2,w2:2}},
-     {id:'a182',proyectoId:'p8',notas:'Instalación eléctrica subestación',trabajadores:['w4','w9','w10'],maquinaria:['Multímetro industrial','Prensadora hidráulica'],gastos:[{desc:'Transporte materiales',tipo:'Transporte',monto:700}],horasExtras:{w4:3,w9:2}}],
-    [{id:'a191',proyectoId:'p1',notas:'Aplanado interior departamentos piso 4',trabajadores:['w1','w2','w6','w8'],maquinaria:['Mezcladora de mortero'],gastos:[{desc:'Almuerzo equipo',tipo:'Comida',monto:460}],horasExtras:{w1:3,w6:2}},
-     {id:'a192',proyectoId:'p9',notas:'Colado muros sótano nivel -1',trabajadores:['w3','w5','w10'],maquinaria:['Bomba de concreto','Vibrador eléctrico'],gastos:[{desc:'Diesel bomba',tipo:'Herramienta',monto:950}],horasExtras:{w3:4,w10:4}},
-     {id:'a193',proyectoId:'p3',notas:'Pintura final fachada y señalética',trabajadores:['w4','w9'],maquinaria:[],gastos:[{desc:'Comida pintores',tipo:'Comida',monto:220}]}],
-  ];
-
-  workDays.forEach((date,i)=>{
-    S.actividades[date]=(actData[i]||[]).map(a=>({...a,cre:new Date().toISOString()}));
-  });
-  save();localStorage.setItem('cp4_seeded_v2','1');
-}
+// seedDemo deshabilitado — los datos siempre vienen de Supabase
+function seedDemo(){ /* no-op: datos vienen de la nube */ }
 
 // ── CALENDAR PICKER ────────────────────────────────────────────────────────
 // Use a named target string instead of passing callbacks via HTML attributes
@@ -6457,24 +6421,14 @@ window.addEventListener('orientationchange',function(){ setTimeout(fixHeight,100
 // Push immediately when app is closed or hidden
 document.addEventListener('visibilitychange',function(){
   if(!_currentUser) return;
-  if(document.visibilityState==='hidden'){
-    // Al ir a background — push cambios pendientes
-    if(_pendingPush||Object.keys(_changeLog||{}).length>0){
-      pushToCloud().catch(function(){});
-    }
-  }
   if(document.visibilityState==='visible'){
-    // Al volver al frente — pull fresco primero, luego push pendiente si hay
+    // Al volver al frente — pull datos frescos de la nube
+    if(!_isOnline) return;
     _remoteUpdatedAt='';
     setTimeout(function(){
-      pullFromCloud().then(function(){
+      pullFromCloud().then(function(updated){
         updateSyncUI(true);
-        rAll(true);
-        // Push pendiente DESPUÉS del pull — así no pisa datos recientes de la nube
-        if(localStorage.getItem('cp4_pending_push')&&!_isPushing){
-          localStorage.removeItem('cp4_pending_push');
-          pushToCloud().catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
-        }
+        if(updated) rAll(true);
       }).catch(function(){});
     }, 300);
   }
