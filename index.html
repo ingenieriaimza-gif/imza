@@ -1330,8 +1330,9 @@ function _applyRemoteData(remote){
   S.deleted=del;
   S.exPersonal=remote.exPersonal||{};
   S.deletedUsers=remote.deletedUsers||{};
-  // estadoHistorial — merge con local para no perder cambios de otros dispositivos
-  S.estadoHistorial=_mergeEstadoHistorial(remote.estadoHistorial, S.estadoHistorial);
+  // estadoHistorial — la nube es la fuente de verdad absoluta
+  // No hacer merge con local para evitar que datos viejos contaminen la vista
+  S.estadoHistorial=remote.estadoHistorial||{};
   // Sincronizar p.estado con el historial de hoy
   var todayH=S.estadoHistorial[td()]||{};
   S.personal.forEach(function(p){
@@ -1397,53 +1398,16 @@ function pushToCloud(){
   }
   if(S.users&&S.users.length) localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
 
-  // PULL antes de push para no pisar datos de otros dispositivos
-  return sbFetch('/rest/v1/imza_data?id=eq.main&select=id,data,updated_at')
-  .then(function(rows){
-    // Aplicar datos remotos sobre el estado local antes de subir
-    if(rows&&rows[0]&&rows[0].data&&rows[0].data.proyectos){
-      var remote=rows[0].data;
-      var del=remote.deleted||{};
-      // Solo sobrescribir lo que no cambió localmente — usar _upd para detectar
-      // proyectos: si el remoto tiene uno que el local no tiene, agregarlo
-      var localIds=S.proyectos.map(function(p){ return p.id; });
-      (remote.proyectos||[]).forEach(function(rp){
-        if(!del['proj_'+rp.id]&&localIds.indexOf(rp.id)===-1){
-          S.proyectos.push(rp);
-        }
-      });
-      // personal: igual
-      var localPIds=S.personal.map(function(p){ return p.id; });
-      (remote.personal||[]).forEach(function(rp){
-        if(!del['pers_'+rp.id]&&localPIds.indexOf(rp.id)===-1){
-          S.personal.push(rp);
-        }
-      });
-      // actividades: merge por fecha
-      Object.keys(remote.actividades||{}).forEach(function(d){
-        if(!S.actividades[d]){
-          var acts=(remote.actividades[d]||[]).filter(function(a){ return !del['act_'+a.id]; });
-          if(acts.length) S.actividades[d]=acts;
-        }
-      });
-      // estadoHistorial: merge con timestamps
-      S.estadoHistorial=_mergeEstadoHistorial(remote.estadoHistorial, S.estadoHistorial);
-      // users: siempre de la nube
-      if(remote.users&&remote.users.length) S.users=remote.users;
-      persistLocal();
-    }
+  // Capturar el cambio local ANTES de cualquier pull
+  var localSnapshot=getLocalData();
+  localSnapshot._device=device; localSnapshot._user=userName; localSnapshot._action=action;
 
-    var patch=getLocalData();
-    patch._device=device; patch._user=userName; patch._action=action;
-    patch._v2=((_remoteVersion||0)+1);
-
-    return sbFetch('/rest/v1/imza_data?id=eq.main',{
-      method:'PATCH',
-      body:JSON.stringify({
-        data:patch, updated_at:now, device:device,
-        user_name:userName, last_action:action, changelog:loadChangeLog()
-      })
-    });
+  return sbFetch('/rest/v1/imza_data?id=eq.main',{
+    method:'PATCH',
+    body:JSON.stringify({
+      data:localSnapshot, updated_at:now, device:device,
+      user_name:userName, last_action:action, changelog:loadChangeLog()
+    })
   }).then(function(){
     clearTimeout(_pt);
     _isPushing=false;
@@ -6471,16 +6435,17 @@ document.addEventListener('visibilitychange',function(){
     }
   }
   if(document.visibilityState==='visible'){
-    // Al volver al frente — push pendiente + pull fresco siempre
+    // Al volver al frente — pull fresco primero, luego push pendiente si hay
     _remoteUpdatedAt='';
     setTimeout(function(){
-      if(localStorage.getItem('cp4_pending_push')&&!_isPushing){
-        localStorage.removeItem('cp4_pending_push');
-        pushToCloud().catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
-      }
       pullFromCloud().then(function(){
         updateSyncUI(true);
         rAll(true);
+        // Push pendiente DESPUÉS del pull — así no pisa datos recientes de la nube
+        if(localStorage.getItem('cp4_pending_push')&&!_isPushing){
+          localStorage.removeItem('cp4_pending_push');
+          pushToCloud().catch(function(){ localStorage.setItem('cp4_pending_push','1'); });
+        }
       }).catch(function(){});
     }, 300);
   }
