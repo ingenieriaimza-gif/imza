@@ -1303,8 +1303,36 @@ function _mergeEstadoHistorial(remote, local){
   return merged;
 }
 
+function _mergeActividades(remote, local, del){
+  // Merge por _upd timestamp — la actividad más reciente por ID gana
+  var byId={};
+  Object.keys(remote||{}).forEach(function(date){
+    (remote[date]||[]).forEach(function(a){
+      if(del['act_'+a.id]) return;
+      byId[a.id]={act:a,date:date};
+    });
+  });
+  var hadLocalOnly=false;
+  Object.keys(local||{}).forEach(function(date){
+    (local[date]||[]).forEach(function(a){
+      if(del['act_'+a.id]) return;
+      if(!byId[a.id]){ byId[a.id]={act:a,date:date}; hadLocalOnly=true; }
+      else if((a._upd||0)>(byId[a.id].act._upd||0)){ byId[a.id]={act:a,date:date}; hadLocalOnly=true; }
+    });
+  });
+  var merged={};
+  Object.keys(byId).forEach(function(id){
+    var e=byId[id];
+    if(!merged[e.date]) merged[e.date]=[];
+    merged[e.date].push(e.act);
+  });
+  merged._hadLocalOnly=hadLocalOnly;
+  return merged;
+}
+
 function _applyRemoteData(remote){
-  var del=remote.deleted||{};
+  // Fusionar deleted local + remoto para preservar borrados pendientes de push
+  var del=Object.assign({},S.deleted||{},remote.deleted||{});
   // Proyectos
   S.proyectos=(remote.proyectos||[]).filter(function(p){ return !del['proj_'+p.id]; });
 
@@ -1315,14 +1343,15 @@ function _applyRemoteData(remote){
       p.completadoEn=hoy; needsPush=true;
     }
   });
-  if(needsPush) setTimeout(function(){ if(!_isPushing) pushToCloud(); },2000);
   // Personal
   S.personal=(remote.personal||[]).filter(function(p){ return !del['pers_'+p.id]; });
-  // Actividades
+  // Actividades — merge por timestamp: el cambio más reciente por actividad gana
+  var mergedActs=_mergeActividades(remote.actividades,S.actividades,del);
+  if(mergedActs._hadLocalOnly) needsPush=true;
   S.actividades={};
-  Object.keys(remote.actividades||{}).forEach(function(d){
-    var acts=(remote.actividades[d]||[]).filter(function(a){ return !del['act_'+a.id]; });
-    if(acts.length) S.actividades[d]=acts;
+  Object.keys(mergedActs).forEach(function(d){
+    if(d==='_hadLocalOnly') return;
+    if(mergedActs[d].length) S.actividades[d]=mergedActs[d];
   });
   // Users
   if(remote.users&&remote.users.length) S.users=remote.users;
@@ -1330,9 +1359,8 @@ function _applyRemoteData(remote){
   S.deleted=del;
   S.exPersonal=remote.exPersonal||{};
   S.deletedUsers=remote.deletedUsers||{};
-  // estadoHistorial — la nube es la fuente de verdad absoluta
-  // No hacer merge con local para evitar que datos viejos contaminen la vista
-  S.estadoHistorial=remote.estadoHistorial||{};
+  // estadoHistorial — merge timestamps: el cambio más reciente por persona/fecha gana
+  S.estadoHistorial=_mergeEstadoHistorial(remote.estadoHistorial||{},S.estadoHistorial||{});
   // Sincronizar p.estado con el historial de hoy
   var todayH=S.estadoHistorial[td()]||{};
   S.personal.forEach(function(p){
@@ -1341,6 +1369,7 @@ function _applyRemoteData(remote){
   });
   if(!S.date) S.date=td();
   persistLocal();
+  if(needsPush) setTimeout(function(){ if(!_isPushing) pushToCloud(); },2000);
 }
 
 function pullFromCloud(){
