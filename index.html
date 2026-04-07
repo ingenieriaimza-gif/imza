@@ -5584,36 +5584,30 @@ function sendMagicLink(){
   if(btn){ btn.disabled=true; btn.textContent='Verificando...'; }
   errEl.textContent='';
 
-  // Si viene de link de invitación — enviar directamente sin verificar
-  if(_inviteEmail&&email===_inviteEmail){
+  // Siempre cargar lista fresca de Supabase para validar
+  fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+    credentials:'omit',
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
+  }).then(function(r){ return r.ok?r.json():null; }).then(function(rows){
+    if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
+      var users=rows[0].data.users;
+      S.users=users;
+      localStorage.setItem('cp4_users_backup',JSON.stringify(users));
+      var found=users.find(function(u){ return (u.email||'').toLowerCase()===email; });
+      if(!found){
+        resetBtn();
+        errEl.textContent='Este correo no está registrado. Contacta al administrador.';
+        return;
+      }
+      _doSendMagicLink(email,errEl,btn);
+    } else {
+      resetBtn();
+      errEl.textContent='No se pudo verificar. Revisa tu conexión.';
+    }
+  }).catch(function(){
     resetBtn();
-    _doSendMagicLink(email,errEl,btn);
-    return;
-  }
-
-  // Verificar contra caché local si existe
-  var cachedUsers=S.users||[];
-  if(!cachedUsers.length){
-    var bk=localStorage.getItem('cp4_users_backup');
-    if(bk) try{ cachedUsers=JSON.parse(bk); }catch(e){}
-  }
-
-  // Sin caché — enviar directamente (dispositivo nuevo, primera vez)
-  if(!cachedUsers.length){
-    resetBtn();
-    _doSendMagicLink(email,errEl,btn);
-    return;
-  }
-
-  // Con caché — verificar que el correo esté registrado
-  var found=cachedUsers.find(function(u){ return (u.email||'').toLowerCase()===email; });
-  if(!found){
-    resetBtn();
-    errEl.textContent='Este correo no está registrado. Contacta al administrador.';
-    return;
-  }
-  resetBtn();
-  _doSendMagicLink(email,errEl,btn);
+    errEl.textContent='Sin conexión. Verifica tu internet.';
+  });
 }
 
 function _doSendMagicLink(email,errEl,btn){
@@ -5629,7 +5623,7 @@ function _doSendMagicLink(email,errEl,btn){
     method:'POST',
     credentials:'omit',
     headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY','Content-Type':'application/json'},
-    body:JSON.stringify({email:email, create_user:false, options:{emailRedirectTo:redirectTo}})
+    body:JSON.stringify({email:email, create_user:true, options:{emailRedirectTo:redirectTo}})
   }).then(function(res){
     resetBtn();
     if(res.ok||res.status===200||res.status===204){
