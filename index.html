@@ -1307,7 +1307,7 @@ function _applyRemoteData(remote){
   var del=remote.deleted||{};
   // Proyectos
   S.proyectos=(remote.proyectos||[]).filter(function(p){ return !del['proj_'+p.id]; });
-  toast('apply: proj='+S.proyectos.length+' pers='+(remote.personal||[]).length,'ok');
+
   // Asignar completadoEn si falta
   var hoy=td(); var needsPush=false;
   S.proyectos.forEach(function(p){
@@ -1383,13 +1383,7 @@ function pullFromCloud(){
 function pushToCloud(){
   if(_isPushing) return Promise.resolve(false);
   _isPushing=true;
-  var _pt=setTimeout(function(){ _isPushing=false; },15000); // safety timeout
-
-  if(!S.users||!S.users.length){
-    var bk=localStorage.getItem('cp4_users_backup');
-    if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
-  }
-  if(S.users&&S.users.length) localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+  var _pt=setTimeout(function(){ _isPushing=false; },15000);
 
   var device=detectDevice();
   var now=new Date().toISOString();
@@ -1397,18 +1391,59 @@ function pushToCloud(){
   var action=_lastAction||'';
   _lastAction='';
 
-  var patch=getLocalData();
-  patch._device=device; patch._user=userName; patch._action=action;
-  // Incrementar version counter para que otros dispositivos detecten el cambio
-  var newVersion=((_remoteVersion||0)+1);
-  patch._v2=newVersion;
+  if(!S.users||!S.users.length){
+    var bk=localStorage.getItem('cp4_users_backup');
+    if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
+  }
+  if(S.users&&S.users.length) localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
 
-  return sbFetch('/rest/v1/imza_data?id=eq.main',{
-    method:'PATCH',
-    body:JSON.stringify({
-      data:patch, updated_at:now, device:device,
-      user_name:userName, last_action:action, changelog:loadChangeLog()
-    })
+  // PULL antes de push para no pisar datos de otros dispositivos
+  return sbFetch('/rest/v1/imza_data?id=eq.main&select=id,data,updated_at')
+  .then(function(rows){
+    // Aplicar datos remotos sobre el estado local antes de subir
+    if(rows&&rows[0]&&rows[0].data&&rows[0].data.proyectos){
+      var remote=rows[0].data;
+      var del=remote.deleted||{};
+      // Solo sobrescribir lo que no cambió localmente — usar _upd para detectar
+      // proyectos: si el remoto tiene uno que el local no tiene, agregarlo
+      var localIds=S.proyectos.map(function(p){ return p.id; });
+      (remote.proyectos||[]).forEach(function(rp){
+        if(!del['proj_'+rp.id]&&localIds.indexOf(rp.id)===-1){
+          S.proyectos.push(rp);
+        }
+      });
+      // personal: igual
+      var localPIds=S.personal.map(function(p){ return p.id; });
+      (remote.personal||[]).forEach(function(rp){
+        if(!del['pers_'+rp.id]&&localPIds.indexOf(rp.id)===-1){
+          S.personal.push(rp);
+        }
+      });
+      // actividades: merge por fecha
+      Object.keys(remote.actividades||{}).forEach(function(d){
+        if(!S.actividades[d]){
+          var acts=(remote.actividades[d]||[]).filter(function(a){ return !del['act_'+a.id]; });
+          if(acts.length) S.actividades[d]=acts;
+        }
+      });
+      // estadoHistorial: merge con timestamps
+      S.estadoHistorial=_mergeEstadoHistorial(remote.estadoHistorial, S.estadoHistorial);
+      // users: siempre de la nube
+      if(remote.users&&remote.users.length) S.users=remote.users;
+      persistLocal();
+    }
+
+    var patch=getLocalData();
+    patch._device=device; patch._user=userName; patch._action=action;
+    patch._v2=((_remoteVersion||0)+1);
+
+    return sbFetch('/rest/v1/imza_data?id=eq.main',{
+      method:'PATCH',
+      body:JSON.stringify({
+        data:patch, updated_at:now, device:device,
+        user_name:userName, last_action:action, changelog:loadChangeLog()
+      })
+    });
   }).then(function(){
     clearTimeout(_pt);
     _isPushing=false;
@@ -1418,13 +1453,7 @@ function pushToCloud(){
     addToSyncHistory(_lastSyncInfo);
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     updateSyncUI(true);
-    // Confirmar updated_at real del servidor
-    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at,data')
-      .then(function(r){
-        _remoteUpdatedAt=(r&&r[0]&&r[0].updated_at)||now;
-        _remoteVersion=(r&&r[0]&&r[0].data&&r[0].data._v2)||newVersion;
-      })
-      .catch(function(){ _remoteUpdatedAt=now; _remoteVersion=newVersion; });
+    _remoteUpdatedAt=now;
     return true;
   }).catch(function(){
     clearTimeout(_pt);
@@ -1467,7 +1496,6 @@ function startLiveSync(){
     if(_isPushing) return;
     // Siempre bajar datos frescos en cada tick
     pullFromCloud().then(function(updated){
-      toast('pull updated='+updated,'ok');
       rAll(true);
     });
   },10000);
