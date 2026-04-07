@@ -1373,8 +1373,9 @@ function pullFromCloud(){
 // Only called when user makes a change AND is online
 // Returns promise — resolves true if saved, false if failed
 function pushToCloud(){
-  if(_isPushing) return Promise.resolve(false); // guard contra doble ejecución
+  if(_isPushing){ toast('⏳ Push bloqueado: isPushing','err'); return Promise.resolve(false); }
   _isPushing=true;
+  toast('📤 Enviando...','ok');
   if(!S.users||!S.users.length){
     var bk=localStorage.getItem('cp4_users_backup');
     if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
@@ -1393,8 +1394,8 @@ function pushToCloud(){
     method:'PATCH',
     body:JSON.stringify({data:patch,updated_at:now,device:device,user_name:userName,last_action:action,changelog:changelog})
   }).then(function(){
-    toast('✅ Push OK: '+now.slice(11,19),'ok');
-    _lastAction=''; // Clear after successful push
+    toast('✅ Push OK','ok');
+    _lastAction='';
     _lastSyncInfo={time:now,device:device,user:userName,action:action};
     addToHistory(now,userName,action);
     renderHistory();
@@ -1406,8 +1407,8 @@ function pushToCloud(){
     return true;
   }).catch(function(err){
     _isPushing=false;
-    var msg=(err&&err.message)||'';
-    if(msg==='Failed to fetch')
+    var msg=(err&&err.message)||'desconocido';
+    toast('❌ Push falló: '+msg,'err');
     return false;
   });
 }
