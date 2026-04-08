@@ -5450,9 +5450,11 @@ function handleMagicLinkCallback(){
   var refreshToken=params.get('refresh_token')||'';
   var expiresIn=Number(params.get('expires_in')||3600);
 
-  // Siempre ocultar splash y mostrar login si algo falla
+  // Mantener splash visible mientras procesa
+  var splash=document.getElementById('splash-screen');
+  if(splash) splash.style.display='flex';
+
   function showErr(msg){
-    var splash=document.getElementById('splash-screen');
     if(splash) splash.style.display='none';
     var errEl=document.getElementById('login-error');
     if(errEl) errEl.textContent=msg||'Error al verificar. Intenta de nuevo.';
@@ -5463,8 +5465,7 @@ function handleMagicLinkCallback(){
 
   function finishLogin(found){
     var email=(found.email||'').toLowerCase();
-    // El rol SIEMPRE viene del objeto found que llegó fresco de Supabase
-    var rol=found.rol||'visor'; // default visor si no tiene rol definido
+    var rol=found.rol||'visor';
     var sessionData={id:found.id,nombre:found.nombre,email:email,rol:rol};
     localStorage.setItem('cp4_session',JSON.stringify(sessionData));
     localStorage.setItem('cp4_auth_token',accessToken);
@@ -5472,8 +5473,7 @@ function handleMagicLinkCallback(){
     if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
     localStorage.setItem('cp4_token_exp',String(Date.now()+expiresIn*1000));
 
-    // Guardar sesión en Supabase para el puente PWA (no bloqueante)
-    function saveSession(at, rt){
+    function saveSession(at,rt){
       sbFetch('/rest/v1/imza_sessions',{
         method:'POST',
         headers:{'Prefer':'resolution=merge-duplicates'},
@@ -5486,14 +5486,13 @@ function handleMagicLinkCallback(){
     }
     if(refreshToken){
       refreshAuthToken().then(function(newToken){
-        saveSession(newToken||accessToken, localStorage.getItem('cp4_refresh_token')||refreshToken);
-      }).catch(function(){ saveSession(accessToken, refreshToken); });
+        saveSession(newToken||accessToken,localStorage.getItem('cp4_refresh_token')||refreshToken);
+      }).catch(function(){ saveSession(accessToken,refreshToken); });
     } else {
       saveSession(accessToken,'');
     }
 
     window.history.replaceState(null,'',window.location.pathname);
-    var splash=document.getElementById('splash-screen');
     if(splash) splash.style.display='none';
     document.getElementById('login-screen').style.display='none';
     _currentUser=found;
@@ -5503,25 +5502,23 @@ function handleMagicLinkCallback(){
     toast('Bienvenido, '+found.nombre+' 👋','ok');
   }
 
-  // Paso 1: obtener email del token
-  fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/user',{
-    credentials:'omit',
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+accessToken}
-  }).then(function(res){
-    if(!res.ok) throw new Error('auth_fail');
-    return res.json();
-  }).then(function(user){
-    if(!user||!user.email) throw new Error('no_email');
-    var email=user.email.toLowerCase();
+  // Intentar obtener email: primero del JWT (sin red), luego de la API
+  function getEmailFromToken(){
+    try{
+      var payload=JSON.parse(atob(accessToken.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+      return (payload.email||'').toLowerCase();
+    }catch(e){ return ''; }
+  }
 
-    // Paso 2: cargar usuarios frescos de Supabase con anon key
+  function loadUsersAndFinish(email, attempts){
     fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
       credentials:'omit',
       headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
-    }).then(function(r){ return r.ok?r.json():Promise.reject('data_fail'); })
+    }).then(function(r){ return r.ok?r.json():Promise.reject(r.status); })
     .then(function(rows){
       if(!rows||!rows[0]||!rows[0].data||!rows[0].data.users){
-        showErr('No se pudo verificar el acceso. Intenta de nuevo.');
+        if(attempts>1) return new Promise(function(res){ setTimeout(res,1500); }).then(function(){ return loadUsersAndFinish(email,attempts-1); });
+        showErr('Sin datos. Intenta de nuevo.');
         return;
       }
       S.users=rows[0].data.users;
@@ -5533,11 +5530,28 @@ function handleMagicLinkCallback(){
         showErr('Correo no registrado. Contacta al administrador.');
       }
     }).catch(function(){
-      showErr('Error al verificar acceso. Revisa tu conexión.');
+      if(attempts>1) return new Promise(function(res){ setTimeout(res,1500); }).then(function(){ return loadUsersAndFinish(email,attempts-1); });
+      showErr('Sin conexión. Verifica tu internet e intenta de nuevo.');
     });
-  }).catch(function(){
-    showErr('Error al verificar. Intenta de nuevo.');
-  });
+  }
+
+  // Intentar obtener email del JWT primero (sin necesidad de red)
+  var emailFromJwt=getEmailFromToken();
+  if(emailFromJwt){
+    loadUsersAndFinish(emailFromJwt,3);
+  } else {
+    // Fallback: obtener email de la API de Supabase
+    fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/user',{
+      credentials:'omit',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+accessToken}
+    }).then(function(res){ return res.ok?res.json():Promise.reject(); })
+    .then(function(user){
+      if(!user||!user.email) throw new Error('no_email');
+      loadUsersAndFinish(user.email.toLowerCase(),3);
+    }).catch(function(){
+      showErr('Error al verificar. Intenta de nuevo.');
+    });
+  }
   return true;
 }
 
