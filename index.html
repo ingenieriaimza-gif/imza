@@ -5272,8 +5272,20 @@ function initAuth(){
   var el=document.getElementById('login-appname');
   if(el) el.textContent=n;
 
-  // 1. Magic link en URL (Safari lo acaba de procesar)
-  if(window.location.hash&&window.location.hash.includes('access_token')){
+  // 1. Magic link — revisar tanto hash como query params (Android a veces usa query params)
+  var hashHasToken=window.location.hash&&window.location.hash.includes('access_token');
+  var searchParams=new URLSearchParams(window.location.search);
+  var queryHasToken=searchParams.get('access_token');
+  if(hashHasToken||(queryHasToken&&searchParams.get('type'))){
+    // Si el token viene en query params, moverlo al hash para que handleMagicLinkCallback lo lea
+    if(queryHasToken&&!hashHasToken){
+      var hashStr='access_token='+queryHasToken;
+      ['token_type','expires_in','refresh_token','type'].forEach(function(k){
+        var v=searchParams.get(k);
+        if(v) hashStr+='&'+k+'='+v;
+      });
+      window.location.hash=hashStr;
+    }
     handleMagicLinkCallback();
     return;
   }
@@ -5597,29 +5609,53 @@ function sendMagicLink(){
   if(btn){ btn.disabled=true; btn.textContent='Verificando...'; }
   errEl.textContent='';
 
-  // Siempre cargar lista fresca de Supabase para validar
+  // Cargar lista de usuarios desde Supabase para validar
   fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
     credentials:'omit',
     headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
-  }).then(function(r){ return r.ok?r.json():null; }).then(function(rows){
-    if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
-      var users=rows[0].data.users;
-      S.users=users;
-      localStorage.setItem('cp4_users_backup',JSON.stringify(users));
-      var found=users.find(function(u){ return (u.email||'').toLowerCase()===email; });
-      if(!found){
+  }).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(rows){
+    var users=(rows&&rows[0]&&rows[0].data&&rows[0].data.users)||[];
+    if(!users.length){
+      // Si Supabase no devuelve usuarios, intentar con backup local
+      var bk=localStorage.getItem('cp4_users_backup');
+      if(bk) try{ users=JSON.parse(bk); }catch(e){}
+    }
+    if(!users.length){
+      resetBtn();
+      errEl.textContent='No se pudo cargar la lista de usuarios. Intenta de nuevo.';
+      return;
+    }
+    S.users=users;
+    localStorage.setItem('cp4_users_backup',JSON.stringify(users));
+    var found=users.find(function(u){ return (u.email||'').toLowerCase()===email; });
+    if(!found){
+      resetBtn();
+      errEl.textContent='Este correo no está registrado. Contacta al administrador.';
+      return;
+    }
+    resetBtn();
+    _doSendMagicLink(email,errEl,btn);
+  }).catch(function(err){
+    // Sin red — intentar con backup local
+    var cached=[];
+    var bk=localStorage.getItem('cp4_users_backup');
+    if(bk) try{ cached=JSON.parse(bk); }catch(e){}
+    if(cached.length){
+      var found=cached.find(function(u){ return (u.email||'').toLowerCase()===email; });
+      if(found){
+        resetBtn();
+        _doSendMagicLink(email,errEl,btn);
+      } else {
         resetBtn();
         errEl.textContent='Este correo no está registrado. Contacta al administrador.';
-        return;
       }
-      _doSendMagicLink(email,errEl,btn);
     } else {
       resetBtn();
-      errEl.textContent='No se pudo verificar. Revisa tu conexión.';
+      errEl.textContent='Sin conexión. Verifica tu internet.';
     }
-  }).catch(function(){
-    resetBtn();
-    errEl.textContent='Sin conexión. Verifica tu internet.';
   });
 }
 
