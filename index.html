@@ -5272,12 +5272,64 @@ function initAuth(){
   var el=document.getElementById('login-appname');
   if(el) el.textContent=n;
 
-  // 1. Magic link — revisar tanto hash como query params (Android a veces usa query params)
+  // Supabase JS client detecta el magic link automáticamente en todos los navegadores
+  // incluyendo Android donde el hash puede perderse en el redirect
+  getSbClient().auth.onAuthStateChange(function(event, session){
+    if((event==='SIGNED_IN'||event==='TOKEN_REFRESHED')&&session&&session.user){
+      // Solo procesar si no estamos ya dentro de la app
+      if(_currentUser) return;
+      var email=session.user.email.toLowerCase();
+      var accessToken=session.access_token||'';
+      var refreshToken=session.refresh_token||'';
+      // Guardar tokens
+      if(accessToken) localStorage.setItem('cp4_auth_token',accessToken);
+      if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
+      localStorage.setItem('cp4_token_exp',String(Date.now()+3600*1000));
+      // Cargar usuarios y entrar
+      fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+        credentials:'omit',
+        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
+      }).then(function(r){ return r.ok?r.json():null; }).then(function(rows){
+        var users=(rows&&rows[0]&&rows[0].data&&rows[0].data.users)||[];
+        if(users.length){ S.users=users; localStorage.setItem('cp4_users_backup',JSON.stringify(users)); }
+        else {
+          var bk=localStorage.getItem('cp4_users_backup');
+          if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
+        }
+        var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
+        if(found){
+          var sessionData={id:found.id,nombre:found.nombre,email:email,rol:found.rol||'visor'};
+          localStorage.setItem('cp4_session',JSON.stringify(sessionData));
+          localStorage.setItem('cp4_last_email',email);
+          window.history.replaceState(null,'',window.location.pathname);
+          enterApp(found,sessionData);
+        } else {
+          getSbClient().auth.signOut();
+          var errEl=document.getElementById('login-error');
+          if(errEl) errEl.textContent='Correo no registrado. Contacta al administrador.';
+          showLogin();
+        }
+      }).catch(function(){
+        // Sin red — intentar con backup
+        var bk=localStorage.getItem('cp4_users_backup');
+        if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
+        var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
+        if(found){
+          var sessionData={id:found.id,nombre:found.nombre,email:email,rol:found.rol||'visor'};
+          localStorage.setItem('cp4_session',JSON.stringify(sessionData));
+          enterApp(found,sessionData);
+        } else {
+          showLogin();
+        }
+      });
+    }
+  });
+
+  // 1. Magic link manual — hash o query params (fallback para cuando onAuthStateChange no dispara)
   var hashHasToken=window.location.hash&&window.location.hash.includes('access_token');
   var searchParams=new URLSearchParams(window.location.search);
   var queryHasToken=searchParams.get('access_token');
   if(hashHasToken||(queryHasToken&&searchParams.get('type'))){
-    // Si el token viene en query params, moverlo al hash para que handleMagicLinkCallback lo lea
     if(queryHasToken&&!hashHasToken){
       var hashStr='access_token='+queryHasToken;
       ['token_type','expires_in','refresh_token','type'].forEach(function(k){
