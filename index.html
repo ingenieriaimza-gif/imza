@@ -2837,61 +2837,55 @@ function togH(head){
   }
 }
 
-// ── Helper: imprime o abre reporte según plataforma ──────────────────────────
+// ── Helper: imprime reporte en ventana nueva — sin URL en footer ──────────────
 function _printBlob(pdfName, blob){
   var isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||
             (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 
-  // Leer el HTML del blob y escribirlo directamente — sin blob:// URL en footer
   var reader=new FileReader();
   reader.onload=function(e){
     var htmlContent=e.target.result;
 
-    var prev=document.getElementById('__print_frame__');
-    if(prev) prev.parentNode.removeChild(prev);
-
-    var fr=document.createElement('iframe');
-    fr.id='__print_frame__';
-    fr.style.cssText='position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;';
-    document.body.appendChild(fr);
-
-    // Escribir HTML directamente en el iframe — el browser ve "about:blank" como URL
-    try{
-      fr.contentDocument.open();
-      fr.contentDocument.write(htmlContent);
-      fr.contentDocument.close();
-    }catch(e2){ return; }
-
-    setTimeout(function(){
+    if(isIOS){
+      // iOS: iframe oculto (window.open bloquea popups en PWA)
+      var prev=document.getElementById('__print_frame__');
+      if(prev) prev.parentNode.removeChild(prev);
+      var fr=document.createElement('iframe');
+      fr.id='__print_frame__';
+      fr.style.cssText='position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;';
+      document.body.appendChild(fr);
       try{
-        fr.contentWindow.focus();
-        var orig=document.title;
-        document.title=pdfName;
-        var restore=function(){ document.title=orig; };
-
-        if(isIOS){
-          setTimeout(function(){
-            fr.contentWindow.print();
-            window.addEventListener('focus',restore,{once:true});
-            setTimeout(restore,8000);
-          },300);
-        } else {
-          setTimeout(function(){
-            fr.contentWindow.print();
-            window.addEventListener('focus',restore,{once:true});
-            setTimeout(restore,30000);
-          },150);
-        }
-      }catch(e3){
-        // Fallback: descargar como archivo
-        var url=URL.createObjectURL(blob);
-        var a=document.createElement('a');
-        a.href=url; a.download=pdfName+'.html';
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        setTimeout(function(){ URL.revokeObjectURL(url); },5000);
-      }
-      setTimeout(function(){ if(fr.parentNode) fr.parentNode.removeChild(fr); },60000);
-    },100);
+        fr.contentDocument.open();
+        fr.contentDocument.write(htmlContent);
+        fr.contentDocument.close();
+      }catch(err){ return; }
+      setTimeout(function(){
+        try{
+          var orig=document.title; document.title=pdfName;
+          fr.contentWindow.print();
+          window.addEventListener('focus',function(){ document.title=orig; },{once:true});
+          setTimeout(function(){ document.title=orig; },8000);
+        }catch(err2){}
+        setTimeout(function(){ if(fr.parentNode) fr.parentNode.removeChild(fr); },60000);
+      },300);
+    } else {
+      // Android / PC: nueva ventana — browser muestra "about:blank", sin URL
+      var win=window.open('','_blank','width=900,height=700');
+      if(!win){ toast('Permite ventanas emergentes para imprimir','err'); return; }
+      win.document.open();
+      win.document.write(htmlContent);
+      win.document.close();
+      win.document.title=pdfName;
+      setTimeout(function(){
+        try{
+          win.focus();
+          win.print();
+          // Cerrar ventana después de imprimir
+          win.addEventListener('afterprint',function(){ win.close(); });
+          setTimeout(function(){ try{ win.close(); }catch(e){} },30000);
+        }catch(err){}
+      },300);
+    }
   };
   reader.readAsText(blob);
 }
