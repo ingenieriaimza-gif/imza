@@ -1115,6 +1115,9 @@ function refreshAuthToken(){
     if(data&&data.access_token){
       localStorage.setItem('cp4_auth_token',data.access_token);
       if(data.refresh_token) localStorage.setItem('cp4_refresh_token',data.refresh_token);
+      // Siempre actualizar la fecha de expiración
+      var expiresIn=Number(data.expires_in||3600);
+      localStorage.setItem('cp4_token_exp',String(Date.now()+expiresIn*1000));
       // Actualizar sesión en Supabase con tokens frescos para el puente PWA
       if(_currentUser&&_currentUser.email){
         var ss=localStorage.getItem('cp4_session');
@@ -1152,15 +1155,20 @@ function forceRelogin(){
   }
 }
 
-// Renovar token proactivamente cada 45 minutos (expira en 1 hora)
+// Renovar token proactivamente — checa cada 5 minutos si el token expira pronto
 (function startTokenRefreshTimer(){
   setInterval(function(){
+    if(!_currentUser) return; // Solo si estamos logueados
     var token=localStorage.getItem('cp4_auth_token');
     var refresh=localStorage.getItem('cp4_refresh_token');
-    if(token&&refresh){
+    if(!token||!refresh) return;
+    var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
+    // Refrescar si expira en menos de 15 minutos
+    var expiresIn=tokenExp-Date.now();
+    if(tokenExp===0||expiresIn<15*60*1000){
       refreshAuthToken().catch(function(){});
     }
-  }, 45*60*1000);
+  }, 5*60*1000); // checa cada 5 minutos
 })();
 
 // ── UI ────────────────────────────────────────────────────────────────────────
@@ -2943,8 +2951,8 @@ function _abrirReporteHistorial(subtitulo, fecha, htmlBody){
   '.ritem.rb .rv{color:#60A5FA;}.ritem.rg .rv{color:#34D399;}.ritem.ra .rv{color:#FBBF24;}'+
   // Print
   '@media print{'+
-  '@page{size:A4 portrait;margin:7mm 9mm;}'+
-  'body{background:#fff!important;}'+
+  '@page{size:A4 portrait;margin:0;}'+
+  'body{background:#fff!important;padding:7mm 9mm;}'+
   '.page{max-width:100%!important;padding:0!important;}'+
   '.hdr{margin-bottom:8px!important;}'+
   '.proj-card{page-break-inside:avoid;}'+
@@ -3482,7 +3490,7 @@ function _doShareProj(projId){
     '.kpi .kv{font-size:18px;font-weight:900;line-height:1;}'+
     '.kpi-b .kv{color:#1D4ED8;}.kpi-g .kv{color:#059669;}.kpi-s .kv{color:#0F172A;}'+
     '.proj-card{background:#fff;border-radius:8px;border:1px solid #E2E8F0;}'+
-    '@media print{@page{size:A4 portrait;margin:7mm 9mm;}body{background:#fff!important;}'+
+    '@media print{@page{size:A4 portrait;margin:0;}body{background:#fff!important;padding:7mm 9mm;}'+
     '.page{max-width:100%!important;padding:0!important;}tr{page-break-inside:avoid!important;}'+
     'thead{display:table-header-group!important;}'+
     '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}</style>'+
@@ -4341,8 +4349,8 @@ function _abrirReporteHTML(d){
   '.tf span{font-size:8px;color:rgba(255,255,255,.75);}.tf strong{font-size:12px;font-weight:900;color:#fff;}'+
   // PRINT
   '@media print{'+
-  '@page{size:A4 landscape;margin:5mm 6mm;}'+
-  'body{background:#fff!important;}'+
+  '@page{size:A4 landscape;margin:0;}'+
+  'body{background:#fff!important;padding:5mm 6mm;}'+
   '.page{width:100%!important;padding:0!important;}'+
   '.hdr{margin-bottom:6px!important;padding:8px 12px!important;}'+
   '.kpis{gap:5px!important;margin-bottom:6px!important;}'+
@@ -5276,18 +5284,26 @@ function initAuth(){
   // incluyendo Android donde el hash puede perderse en el redirect
   getSbClient().auth.onAuthStateChange(function(event, session){
     if((event==='SIGNED_IN'||event==='TOKEN_REFRESHED')&&session&&session.user){
-      // Si estamos esperando que el usuario pida su magic link desde una invitación,
-      // ignorar sesiones automáticas — el usuario debe autenticarse con su correo
+      // Si TOKEN_REFRESHED y ya estamos dentro — solo actualizar tokens
+      if(event==='TOKEN_REFRESHED'&&_currentUser){
+        if(session.access_token) localStorage.setItem('cp4_auth_token',session.access_token);
+        if(session.refresh_token) localStorage.setItem('cp4_refresh_token',session.refresh_token);
+        var exp=session.expires_at?session.expires_at*1000:Date.now()+3600*1000;
+        localStorage.setItem('cp4_token_exp',String(exp));
+        return;
+      }
+      // Si estamos esperando magic link de invitación — ignorar sesiones automáticas
       if(_waitingForMagicLink) return;
-      // Solo procesar si no estamos ya dentro de la app
+      // Solo procesar SIGNED_IN si no estamos ya dentro de la app
       if(_currentUser) return;
       var email=session.user.email.toLowerCase();
       var accessToken=session.access_token||'';
       var refreshToken=session.refresh_token||'';
-      // Guardar tokens
+      // Guardar tokens con fecha de expiración correcta
       if(accessToken) localStorage.setItem('cp4_auth_token',accessToken);
       if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
-      localStorage.setItem('cp4_token_exp',String(Date.now()+3600*1000));
+      var expAt=session.expires_at?session.expires_at*1000:Date.now()+3600*1000;
+      localStorage.setItem('cp4_token_exp',String(expAt));
       // Cargar usuarios y entrar
       fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
         credentials:'omit',
@@ -5358,7 +5374,9 @@ function initAuth(){
         // Refrescar token si es necesario, luego entrar
         var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
         var hasToken=!!localStorage.getItem('cp4_auth_token');
-        var needsRefresh=!hasToken||(tokenExp&&Date.now()>tokenExp-5*60*1000);
+        var hasRefresh=!!localStorage.getItem('cp4_refresh_token');
+        // needsRefresh: sin token, o token expira en menos de 10 minutos
+        var needsRefresh=!hasToken||(tokenExp>0&&Date.now()>tokenExp-10*60*1000);
 
         function _enterWithSession(){
           // Cargar usuarios frescos en background sin bloquear entrada
@@ -5380,22 +5398,27 @@ function initAuth(){
           enterApp(sessionData, sessionData);
         }
 
-        if(needsRefresh&&localStorage.getItem('cp4_refresh_token')){
+        if(needsRefresh&&hasRefresh){
           refreshAuthToken().then(function(newToken){
             if(newToken){
               _enterWithSession();
             } else {
-              // Token no renovable — limpiar sesión y pedir login de nuevo
-              localStorage.removeItem('cp4_auth_token');
-              localStorage.removeItem('cp4_refresh_token');
-              localStorage.removeItem('cp4_session');
-              showLoginScreen();
+              // Refresh falló — si hay token aún válido, entrar igual
+              // Solo pedir login si no hay absolutamente ningún token
+              if(hasToken&&tokenExp>Date.now()){
+                _enterWithSession();
+              } else {
+                localStorage.removeItem('cp4_auth_token');
+                localStorage.removeItem('cp4_refresh_token');
+                localStorage.removeItem('cp4_session');
+                showLoginScreen();
+              }
             }
           }).catch(function(){
-            // Error de red al renovar — intentar entrar de todas formas (offline posible)
+            // Error de red — entrar con lo que tenemos
             _enterWithSession();
           });
-        } else if(!hasToken&&!localStorage.getItem('cp4_refresh_token')){
+        } else if(!hasToken&&!hasRefresh){
           // Sin token ni refresh — pedir login
           showLoginScreen();
         } else {
