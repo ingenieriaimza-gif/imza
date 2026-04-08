@@ -5276,6 +5276,9 @@ function initAuth(){
   // incluyendo Android donde el hash puede perderse en el redirect
   getSbClient().auth.onAuthStateChange(function(event, session){
     if((event==='SIGNED_IN'||event==='TOKEN_REFRESHED')&&session&&session.user){
+      // Si estamos esperando que el usuario pida su magic link desde una invitación,
+      // ignorar sesiones automáticas — el usuario debe autenticarse con su correo
+      if(_waitingForMagicLink) return;
       // Solo procesar si no estamos ya dentro de la app
       if(_currentUser) return;
       var email=session.user.email.toLowerCase();
@@ -5294,9 +5297,9 @@ function initAuth(){
         if(users.length){ S.users=users; localStorage.setItem('cp4_users_backup',JSON.stringify(users)); }
         else {
           var bk=localStorage.getItem('cp4_users_backup');
-          if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
+          if(bk) try{ S.users=JSON.parse(bk); users=S.users; }catch(e){}
         }
-        var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
+        var found=(users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
         if(found){
           var sessionData={id:found.id,nombre:found.nombre,email:email,rol:found.rol||'visor'};
           localStorage.setItem('cp4_session',JSON.stringify(sessionData));
@@ -5511,6 +5514,9 @@ function handleMagicLinkCallback(){
   var accessToken=params.get('access_token');
   if(!accessToken) return false;
 
+  // El usuario completó el magic link — ya no estamos esperando
+  _waitingForMagicLink=false;
+
   var refreshToken=params.get('refresh_token')||'';
   var expiresIn=Number(params.get('expires_in')||3600);
 
@@ -5580,22 +5586,38 @@ function handleMagicLinkCallback(){
       headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
     }).then(function(r){ return r.ok?r.json():Promise.reject(r.status); })
     .then(function(rows){
-      if(!rows||!rows[0]||!rows[0].data||!rows[0].data.users){
-        if(attempts>1) return new Promise(function(res){ setTimeout(res,1500); }).then(function(){ return loadUsersAndFinish(email,attempts-1); });
-        showErr('Sin datos. Intenta de nuevo.');
-        return;
+      var users=(rows&&rows[0]&&rows[0].data&&rows[0].data.users)||[];
+      if(users.length){
+        S.users=users;
+        localStorage.setItem('cp4_users_backup',JSON.stringify(users));
+      } else {
+        // Fetch exitoso pero sin usuarios — usar backup local
+        var bk=localStorage.getItem('cp4_users_backup');
+        if(bk) try{ S.users=JSON.parse(bk); users=S.users; }catch(e){}
       }
-      S.users=rows[0].data.users;
-      localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
-      var found=S.users.find(function(u){ return (u.email||'').toLowerCase()===email; });
+      var found=(users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
       if(found){
         finishLogin(found);
+      } else if(attempts>1){
+        // Reintentar — puede que los datos aún no estén disponibles
+        new Promise(function(res){ setTimeout(res,1500); }).then(function(){ loadUsersAndFinish(email,attempts-1); });
       } else {
         showErr('Correo no registrado. Contacta al administrador.');
       }
     }).catch(function(){
-      if(attempts>1) return new Promise(function(res){ setTimeout(res,1500); }).then(function(){ return loadUsersAndFinish(email,attempts-1); });
-      showErr('Sin conexión. Verifica tu internet e intenta de nuevo.');
+      if(attempts>1){
+        new Promise(function(res){ setTimeout(res,1500); }).then(function(){ loadUsersAndFinish(email,attempts-1); });
+        return;
+      }
+      // Último recurso: usar backup local
+      var bk=localStorage.getItem('cp4_users_backup');
+      if(bk) try{ S.users=JSON.parse(bk); }catch(e){}
+      var found=(S.users||[]).find(function(u){ return (u.email||'').toLowerCase()===email; });
+      if(found){
+        finishLogin(found);
+      } else {
+        showErr('Sin conexión. Verifica tu internet e intenta de nuevo.');
+      }
     });
   }
 
@@ -6093,14 +6115,16 @@ function shareInviteLink(){
 
 // Detectar ?invite=email al cargar y pre-llenar el login
 var _inviteEmail='';
+var _waitingForMagicLink=false; // true cuando se abrió link de invitación — bloquea auto-login
+
 function checkInviteParam(){
   var params=new URLSearchParams(window.location.search);
   var inv=params.get('invite');
   if(!inv) return;
   _inviteEmail=decodeURIComponent(inv).toLowerCase();
+  _waitingForMagicLink=true; // bloquear auto-login por onAuthStateChange
 
-  // Cerrar sesión activa completamente — timers, WebSocket y Supabase Auth
-  if(_visorInterval){ clearInterval(_visorInterval); _visorInterval=null; }
+  // Cerrar sesión activa completamente
   if(_liveTimer){ clearInterval(_liveTimer); _liveTimer=null; }
   if(_presenceTimer){ clearInterval(_presenceTimer); _presenceTimer=null; }
   if(_onlineRefreshTimer){ clearInterval(_onlineRefreshTimer); _onlineRefreshTimer=null; }
@@ -6108,15 +6132,8 @@ function checkInviteParam(){
   if(_realtimeHb){ clearInterval(_realtimeHb); _realtimeHb=null; }
   _currentUser=null;
 
-  // Cerrar sesión en Supabase Auth (no bloqueante)
-  var oldToken=localStorage.getItem('cp4_auth_token')||'';
-  if(oldToken){
-    fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/logout',{
-      method:'POST', credentials:'omit',
-      headers:{'apikey':'sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',
-               'Authorization':'Bearer '+oldToken}
-    }).catch(function(){});
-  }
+  // Cerrar sesión en Supabase JS client (maneja cookies/storage internos)
+  getSbClient().auth.signOut().catch(function(){});
 
   // Borrar todos los datos de sesión local
   ['cp4_session','cp4_auth_token','cp4_refresh_token','cp4_token_exp','cp4_last_email'].forEach(function(k){
@@ -6125,7 +6142,6 @@ function checkInviteParam(){
 
   // Limpiar la URL sin recargar
   window.history.replaceState({},'',window.location.pathname);
-  // El email se pre-llena en showLogin() que respeta _inviteEmail
 }
 
 function togSnapsPanel(){
