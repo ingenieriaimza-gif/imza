@@ -279,11 +279,11 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 .hbody.open { display:block; }
 
 /* BOTTOM NAV */
-.bnav { flex-shrink:0; background:var(--bg); border-top:1px solid rgba(255,255,255,0.06); padding:6px 8px 8px; display:flex; gap:4px; }
-.ntab { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 2px 6px; cursor:pointer; border:none; background:none; border-radius:14px; -webkit-user-select:none; transition:background .15s; }
+.bnav { order:2; flex-shrink:0; background:var(--bg); border-top:1px solid rgba(255,255,255,0.06); padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px)) 4px; display:flex; gap:2px; }
+.ntab { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:7px 2px 5px; cursor:pointer; border:none; background:none; border-radius:12px; -webkit-user-select:none; transition:background .15s; min-width:0; }
 .ntab:active { background:rgba(255,255,255,0.05); }
-.ntab svg { width:22px; height:22px; color:var(--txt3); transition:color 0.15s; }
-.ntab span { font-size:9px; font-weight:700; color:var(--txt3); letter-spacing:0.3px; text-transform:uppercase; transition:color 0.15s; }
+.ntab svg { width:20px; height:20px; color:var(--txt3); transition:color 0.15s; flex-shrink:0; }
+.ntab span { font-size:8px; font-weight:700; color:var(--txt3); letter-spacing:0.2px; text-transform:uppercase; transition:color 0.15s; white-space:nowrap; overflow:hidden; text-overflow:clip; max-width:100%; }
 .ntab.active { background:rgba(240,201,74,0.08); }
 .ntab.active svg { color:var(--gold); }
 .ntab.active span { color:var(--gold); }
@@ -527,7 +527,7 @@ if('serviceWorker' in navigator){
   </nav>
 
   <!-- MAIN CONTENT -->
-  <div id="main-content">
+  <div id="main-content" style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;order:1;">
   <div class="safe-t"></div>
   <div class="topbar">
     <div class="logo-wrap">
