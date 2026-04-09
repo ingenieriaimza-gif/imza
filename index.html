@@ -3061,11 +3061,10 @@ function _abrirReporteHistorial(subtitulo, fecha, htmlBody){
   '.ritem .rv{font-size:16px;font-weight:900;color:#fff;line-height:1;}'+
   '.ritem .rl{font-size:7.5px;color:#64748B;margin-top:3px;text-transform:uppercase;letter-spacing:.06em;}'+
   '.ritem.rb .rv{color:#60A5FA;}.ritem.rg .rv{color:#34D399;}.ritem.ra .rv{color:#FBBF24;}'+
-  // Print
   '@media print{'+
-  '@page{size:A4 portrait;margin:0;}'+
+  '@page{size:A4 portrait;margin:12mm 9mm;}'+
   'body{background:#fff!important;}'+
-  '.page{max-width:100%!important;padding:8mm 9mm!important;}'+
+  '.page{max-width:100%!important;padding:0!important;}'+
   '.hdr{margin-bottom:8px!important;}'+
   '.proj-card{page-break-inside:avoid;}'+
   '.wcard{page-break-inside:avoid;}'+
@@ -3324,7 +3323,7 @@ function _generarReporteRango(){
     var dayG=acts.reduce(function(s,a){ return s+sumG(a.gastos); },0);
     var dayHE=acts.reduce(function(s,a){ return s+Object.values(a.horasExtras||{}).reduce(function(x,v){ return x+v; },0); },0);
 
-    html+='<div style="margin-bottom:20px;page-break-inside:avoid;break-inside:avoid;">'+
+    html+='<div style="margin-bottom:20px;">'+
       '<div class="dia-sep'+(wknd?' wknd':'')+'">'+
         '<span>'+fmtD(date)+(wknd?' 🔴 Descanso':'')+(fest?' · 🎌 '+festivoNombre(date):'')+'</span>'+
         '<small>'+acts.length+' act. · '+dayW+' pers.'+(dayHE?' · +'+dayHE+'h':'')+(dayG?' · '+_money(dayG):'')+'</small>'+
@@ -3381,7 +3380,7 @@ function _generarReporteRango(){
     '.gmonto{font-size:9px;font-weight:700;color:#059669;white-space:nowrap;}'+
     '.notas{border-top:1px solid #F1F5F9;padding:7px 14px;font-size:8.5px;color:#475569;background:#FFFBEB;}'+
     '.notas-lbl{font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#92400E;margin-bottom:3px;}'+
-    '.dia-sep{background:#0F172A;border-radius:8px;padding:9px 14px;display:flex;justify-content:space-between;align-items:center;}'+
+    '.dia-sep{background:#0F172A;border-radius:8px;padding:9px 14px;display:flex;justify-content:space-between;align-items:center;page-break-after:avoid;break-after:avoid;}'+
     '.dia-sep span{font-size:11px;font-weight:800;color:#F8FAFC;letter-spacing:-.02em;}'+
     '.dia-sep small{font-size:8px;color:#94A3B8;}'+
     '.dia-sep.wknd{background:#7F1D1D;}.dia-sep.wknd span{color:#FCA5A5;}.dia-sep.wknd small{color:#FCA5A5;opacity:.7;}'+
@@ -3398,11 +3397,10 @@ function _generarReporteRango(){
     '.ritem .rv{font-size:18px;font-weight:900;color:#fff;line-height:1;}'+
     '.ritem .rl{font-size:7px;color:#64748B;margin-top:4px;text-transform:uppercase;letter-spacing:.06em;}'+
     '.ritem.rb .rv{color:#60A5FA;}.ritem.rg .rv{color:#34D399;}.ritem.ra .rv{color:#FBBF24;}'+
-    '@media print{@page{size:A4 portrait;margin:12mm 9mm 12mm 9mm;}body{background:#fff!important;}'+
-    '.page{max-width:100%!important;padding:4mm 0!important;}'+
+    '@media print{@page{size:A4 portrait;margin:12mm 9mm;}body{background:#fff!important;}'+
+    '.page{max-width:100%!important;padding:0!important;}'+
     '.proj-card{page-break-inside:avoid;break-inside:avoid;}'+
-    '.dia-cont{display:none!important;}'+
-    '.card-day-label{display:none!important;}'+
+    '.dia-cont{display:none!important;}.card-day-label{display:none!important;}'+
     '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}';
 
   var fullHtml='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+pdfName+'</title><style>'+css+'</style></head><body><div class="page">'+html+'</div></body></html>';
@@ -3967,8 +3965,8 @@ function _doShareProj(projId, images){
     '.kpi .kv{font-size:18px;font-weight:900;line-height:1;}'+
     '.kpi-b .kv{color:#1D4ED8;}.kpi-g .kv{color:#059669;}.kpi-s .kv{color:#0F172A;}'+
     '.proj-card{background:#fff;border-radius:8px;border:1px solid #E2E8F0;}'+
-    '@media print{@page{size:A4 portrait;margin:0;}body{background:#fff!important;}'+
-    '.page{max-width:100%!important;padding:8mm 9mm!important;}tr{page-break-inside:avoid!important;}'+
+    '@media print{@page{size:A4 portrait;margin:12mm 9mm;}body{background:#fff!important;}'+
+    '.page{max-width:100%!important;padding:0!important;}tr{page-break-inside:avoid!important;}'+
     'thead{display:table-header-group!important;}'+
     'img{page-break-inside:avoid!important;break-inside:avoid!important;max-width:100%!important;}'+
     '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}</style>'+
@@ -4821,9 +4819,9 @@ function _abrirReporteHTML(d){
   '.tf span{font-size:8px;color:rgba(255,255,255,.75);}.tf strong{font-size:12px;font-weight:900;color:#fff;}'+
   // PRINT
   '@media print{'+
-  '@page{size:A4 landscape;margin:0;}'+
+  '@page{size:A4 landscape;margin:10mm 8mm;}'+
   'body{background:#fff!important;}'+
-  '.page{width:100%!important;padding:5mm 6mm!important;}'+
+  '.page{width:100%!important;padding:0!important;}'+
   '.hdr{margin-bottom:6px!important;padding:8px 12px!important;}'+
   '.kpis{gap:5px!important;margin-bottom:6px!important;}'+
   '.rc{gap:5px!important;margin-bottom:6px!important;}'+
