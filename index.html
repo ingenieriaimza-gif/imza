@@ -912,7 +912,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0401.1300';
+const APP_VERSION='2026.0409.1';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -1283,10 +1283,11 @@ function _mergeEstadoHistorial(remote, local){
   var merged={};
   // Copiar todo lo de la nube primero
   Object.keys(remote||{}).forEach(function(date){
-    merged[date]=Object.assign({},remote[date]);
+    if(remote[date]&&typeof remote[date]==='object') merged[date]=Object.assign({},remote[date]);
   });
   // Aplicar entradas locales donde el timestamp local sea más reciente
   Object.keys(local||{}).forEach(function(date){
+    if(!local[date]||typeof local[date]!=='object') return; // ignorar entradas corruptas
     if(!merged[date]) merged[date]={};
     var rts=(remote[date]&&remote[date]._ts)||{};
     var lts=(local[date]&&local[date]._ts)||{};
@@ -1307,14 +1308,18 @@ function _mergeActividades(remote, local, del){
   // Merge por _upd timestamp — la actividad más reciente por ID gana
   var byId={};
   Object.keys(remote||{}).forEach(function(date){
-    (remote[date]||[]).forEach(function(a){
+    if(!Array.isArray(remote[date])) return;
+    remote[date].forEach(function(a){
+      if(!a||!a.id) return;
       if(del['act_'+a.id]) return;
       byId[a.id]={act:a,date:date};
     });
   });
   var hadLocalOnly=false;
   Object.keys(local||{}).forEach(function(date){
-    (local[date]||[]).forEach(function(a){
+    if(!Array.isArray(local[date])) return;
+    local[date].forEach(function(a){
+      if(!a||!a.id) return;
       if(del['act_'+a.id]) return;
       if(!byId[a.id]){ byId[a.id]={act:a,date:date}; hadLocalOnly=true; }
       else if((a._upd||0)>(byId[a.id].act._upd||0)){ byId[a.id]={act:a,date:date}; hadLocalOnly=true; }
@@ -1346,13 +1351,22 @@ function _applyRemoteData(remote){
   // Personal
   S.personal=(remote.personal||[]).filter(function(p){ return !del['pers_'+p.id]; });
   // Actividades — merge por timestamp: el cambio más reciente por actividad gana
-  var mergedActs=_mergeActividades(remote.actividades,S.actividades,del);
-  if(mergedActs._hadLocalOnly) needsPush=true;
-  S.actividades={};
-  Object.keys(mergedActs).forEach(function(d){
-    if(d==='_hadLocalOnly') return;
-    if(mergedActs[d].length) S.actividades[d]=mergedActs[d];
-  });
+  try{
+    var mergedActs=_mergeActividades(remote.actividades,S.actividades,del);
+    if(mergedActs._hadLocalOnly) needsPush=true;
+    S.actividades={};
+    Object.keys(mergedActs).forEach(function(d){
+      if(d==='_hadLocalOnly') return;
+      if(mergedActs[d].length) S.actividades[d]=mergedActs[d];
+    });
+  }catch(e){
+    // Fallback: usar actividades remotas directamente
+    S.actividades={};
+    Object.keys(remote.actividades||{}).forEach(function(d){
+      var acts=(remote.actividades[d]||[]).filter(function(a){ return a&&a.id&&!del['act_'+a.id]; });
+      if(acts.length) S.actividades[d]=acts;
+    });
+  }
   // Users
   if(remote.users&&remote.users.length) S.users=remote.users;
   // Misc
@@ -1360,7 +1374,11 @@ function _applyRemoteData(remote){
   S.exPersonal=remote.exPersonal||{};
   S.deletedUsers=remote.deletedUsers||{};
   // estadoHistorial — merge timestamps: el cambio más reciente por persona/fecha gana
-  S.estadoHistorial=_mergeEstadoHistorial(remote.estadoHistorial||{},S.estadoHistorial||{});
+  try{
+    S.estadoHistorial=_mergeEstadoHistorial(remote.estadoHistorial||{},S.estadoHistorial||{});
+  }catch(e){
+    S.estadoHistorial=remote.estadoHistorial||{}; // fallback: usar nube directamente
+  }
   // Sincronizar p.estado con el historial de hoy
   var todayH=S.estadoHistorial[td()]||{};
   S.personal.forEach(function(p){
