@@ -279,7 +279,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 .hbody.open { display:block; }
 
 /* BOTTOM NAV */
-.bnav { order:2; flex-shrink:0; background:var(--bg); border-top:1px solid rgba(255,255,255,0.06); padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px)) 4px; display:flex; gap:2px; }
+.bnav { order:1; flex-shrink:0; background:var(--bg); border-top:1px solid rgba(255,255,255,0.06); padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px)) 4px; display:flex; gap:2px; }
 .ntab { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:7px 2px 5px; cursor:pointer; border:none; background:none; border-radius:12px; -webkit-user-select:none; transition:background .15s; min-width:0; }
 .ntab:active { background:rgba(255,255,255,0.05); }
 .ntab svg { width:20px; height:20px; color:var(--txt3); transition:color 0.15s; flex-shrink:0; }
@@ -527,7 +527,7 @@ if('serviceWorker' in navigator){
   </nav>
 
   <!-- MAIN CONTENT -->
-  <div id="main-content" style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;order:1;">
+  <div id="main-content" style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;order:0;">
   <div class="safe-t"></div>
   <div class="topbar">
     <div class="logo-wrap">
