@@ -2909,65 +2909,22 @@ function _printBlob(pdfName, blob){
     var prev=document.getElementById('__print_frame__');
     if(prev) prev.remove();
 
-    // Crear iframe visible para medir alturas reales
     var fr=document.createElement('iframe');
     fr.id='__print_frame__';
-    // Ancho A4 en px a 96dpi = 794px, altura A4 = 1123px
-    fr.style.cssText='position:fixed;top:-9999px;left:0;width:794px;height:1123px;border:none;visibility:hidden;background:#fff;';
+    fr.style.cssText='position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;visibility:hidden;';
     fr.srcdoc=htmlContent;
     document.body.appendChild(fr);
 
     fr.onload=function(){
       try{
-        var doc=fr.contentDocument;
-        var win=fr.contentWindow;
-
-        // Margen disponible por página (A4 28mm top+bot = ~106px, 18mm lados)
-        var PAGE_H=1123; // px altura A4 a 96dpi
-        var MARGIN_TOP=30;   // px ≈ 8mm
-        var MARGIN_BOT=106;  // px ≈ 28mm
-        var USABLE=PAGE_H-MARGIN_TOP-MARGIN_BOT; // px útiles por página
-
-        // Buscar todas las proj-cards
-        var cards=doc.querySelectorAll('.proj-card');
-        var pageBottom=USABLE; // límite inferior de la página actual
-        var pageNum=0;
-
-        cards.forEach(function(card){
-          var rect=card.getBoundingClientRect();
-          var cardTop=rect.top+win.scrollY;
-          var cardBot=rect.bottom+win.scrollY;
-
-          // Si la tarjeta sobrepasa el límite de la página actual
-          if(cardBot > pageBottom){
-            // Insertar salto de página antes de esta tarjeta
-            var br=doc.createElement('div');
-            br.style.cssText='page-break-before:always;break-before:page;height:0;display:block;';
-            card.parentNode.insertBefore(br, card);
-            pageNum++;
-            pageBottom=(pageNum+1)*USABLE + pageNum*(MARGIN_TOP+MARGIN_BOT);
-            // Si la propia tarjeta es más alta que una página, dejarla fluir
-          }
-        });
-
-        // Imprimir con el layout corregido
         var orig=document.title;
         document.title=pdfName;
-        win.focus();
-        win.print();
+        fr.contentWindow.focus();
+        fr.contentWindow.print();
         var restore=function(){ document.title=orig; };
         window.addEventListener('focus', restore, {once:true});
         setTimeout(restore, 15000);
-      }catch(err){
-        // Fallback: imprimir sin corrección
-        try{
-          var orig=document.title;
-          document.title=pdfName;
-          fr.contentWindow.focus();
-          fr.contentWindow.print();
-          setTimeout(function(){ document.title=orig; }, 15000);
-        }catch(e2){}
-      }
+      }catch(err){}
       setTimeout(function(){ if(fr.parentNode) fr.remove(); }, 60000);
     };
   };
@@ -3047,15 +3004,10 @@ function _abrirReporteHistorial(subtitulo, fecha, htmlBody){
   '@page{size:A4 portrait;margin:8mm 9mm 28mm 9mm;}'+
   'body{background:#fff!important;}'+
   '.page{max-width:100%!important;padding:0!important;}'+
-  /* White bar fixed at bottom covers browser URL/date */
-  '.url-mask{display:block!important;position:fixed;bottom:0;left:0;right:0;height:14mm;background:#fff;z-index:99999;}'+
-  '.hdr,.krow{page-break-inside:avoid!important;break-inside:avoid!important;}'+
-  '.proj-card{page-break-inside:avoid!important;break-inside:avoid!important;overflow:visible!important;margin-bottom:8px!important;}'+
-  '.wgrid{page-break-inside:avoid!important;break-inside:avoid!important;}'+
-  '.wcard{page-break-inside:avoid!important;break-inside:avoid!important;}'+
-  '.gsec{page-break-inside:avoid!important;break-inside:avoid!important;}'+
-  '.notas{page-break-inside:avoid!important;break-inside:avoid!important;}'+
-  'tr{page-break-inside:avoid!important;break-inside:avoid!important;}'+
+  '.url-mask{display:block!important;position:fixed;bottom:0;left:0;right:0;height:20mm;background:#fff;z-index:99999;}'+
+  '.proj-card{break-inside:avoid!important;page-break-inside:avoid!important;overflow:visible!important;margin-bottom:6px!important;}'+
+  '.dia-sep{break-after:avoid!important;page-break-after:avoid!important;}'+
+  '.resumen{break-inside:avoid!important;page-break-inside:avoid!important;}'+
   '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}'+
   '</style></head><body>'+
   '<div class="url-mask"></div>'+
@@ -3397,15 +3349,14 @@ function _generarReporteRango(){
     '.ritem.rb .rv{color:#60A5FA;}.ritem.rg .rv{color:#34D399;}.ritem.ra .rv{color:#FBBF24;}'+
     '@media print{@page{size:A4 portrait;margin:8mm 9mm 28mm 9mm;}body{background:#fff!important;}'+
     '.page{max-width:100%!important;padding:0!important;}'+
-    '.proj-card{page-break-inside:avoid!important;break-inside:avoid!important;overflow:visible!important;}'+
-    '.wgrid{page-break-inside:avoid!important;break-inside:avoid!important;}'+
-    '.wcard{page-break-inside:avoid!important;break-inside:avoid!important;}'+
+    '.proj-card{break-inside:avoid!important;page-break-inside:avoid!important;overflow:visible!important;}'+
+    '.dia-sep{break-after:avoid!important;page-break-after:avoid!important;}'+
+    '.resumen{break-inside:avoid!important;page-break-inside:avoid!important;}'+
     '.dia-cont{display:none!important;}.card-day-label{display:none!important;}'+
-    'a{color:#fff!important;}'+
     '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}';
 
   var fullHtml='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+pdfName+'</title><style>'+css+
-    '@media print{.url-mask{display:block!important;position:fixed;bottom:0;left:0;right:0;height:14mm;background:#fff;z-index:99999;}}'+
+    '@media print{.url-mask{display:block!important;position:fixed;bottom:0;left:0;right:0;height:20mm;background:#fff;z-index:99999;}}'+
     '</style></head><body><div class="url-mask"></div><div class="page">'+html+'</div></body></html>';
   _printBlob(pdfName, new Blob([fullHtml],{type:'text/html;charset=utf-8'}));
 }
@@ -3970,14 +3921,11 @@ function _doShareProj(projId, images){
     '.proj-card{background:#fff;border-radius:8px;border:1px solid #E2E8F0;}'+
     '@media print{@page{size:A4 portrait;margin:8mm 9mm 28mm 9mm;}body{background:#fff!important;}'+
     '.page{max-width:100%!important;padding:0!important;}'+
-    '.proj-card{page-break-inside:avoid!important;break-inside:avoid!important;overflow:visible!important;}'+
-    '.wgrid{page-break-inside:avoid!important;break-inside:avoid!important;}'+
-    '.wcard{page-break-inside:avoid!important;break-inside:avoid!important;}'+
-    'tr{page-break-inside:avoid!important;break-inside:avoid!important;}'+
+    '.proj-card{break-inside:avoid!important;page-break-inside:avoid!important;overflow:visible!important;}'+
+    'tr{break-inside:avoid!important;page-break-inside:avoid!important;}'+
     'thead{display:table-header-group!important;}'+
-    'img{page-break-inside:avoid!important;break-inside:avoid!important;max-width:100%!important;}'+
-    'a{color:#fff!important;}'+
-    '.url-mask{display:block!important;position:fixed;bottom:0;left:0;right:0;height:14mm;background:#fff;z-index:99999;}'+
+    'img{break-inside:avoid!important;page-break-inside:avoid!important;max-width:100%!important;}'+
+    '.url-mask{display:block!important;position:fixed;bottom:0;left:0;right:0;height:20mm;background:#fff;z-index:99999;}'+
     '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}</style>'+
     '</head><body><div class="url-mask"></div><div class="page">'+html+'</div></body></html>'
   ],{type:'text/html;charset=utf-8'});
