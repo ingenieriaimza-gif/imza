@@ -3445,6 +3445,11 @@ function _doShareProj(projId, images){
     var borderC=wknd?'#FECACA':'#F3F4F6';
     var multiAct=acts.length>1;
 
+    // Calcular rowspan real: 1 fila por actividad + filas de nota + maq + gastos por actividad
+    var totalSubRows=acts.reduce(function(s,a){
+      return s+1+(a.notas?1:0)+((a.maquinaria&&a.maquinaria.length)?1:0)+((a.gastos&&a.gastos.length)?1:0);
+    },0);
+
     acts.forEach(function(a, ai){
       var actWids=a.trabajadores||[];
       var actHE=Object.values(a.horasExtras||{}).reduce(function(s,v){return s+v;},0);
@@ -3496,11 +3501,10 @@ function _doShareProj(projId, images){
           '</td></tr>';
       }
 
-      // Celda de fecha: solo en la primera actividad del día
+      // Celda de fecha: solo en la primera actividad del día, rowspan correcto
       var fechaCell=ai===0
-        ?'<td rowspan="'+acts.length+'" style="padding:4px 8px;font-size:8px;font-weight:'+(wknd?'700':'500')+';color:'+(wknd?'#DC2626':'#0F172A')+';white-space:nowrap;vertical-align:top;">'+
+        ?'<td rowspan="'+totalSubRows+'" style="padding:4px 8px;font-size:8px;font-weight:'+(wknd?'700':'500')+';color:'+(wknd?'#DC2626':'#0F172A')+';white-space:nowrap;vertical-align:top;border-right:2px solid '+(wknd?'#FECACA':'#E2E8F0')+';">'+
             fmtFechaCompleta(date)+(wknd?' 🔴':'')+
-            (multiAct?'<div style="font-size:6px;color:#94A3B8;margin-top:1px;">Act. '+(ai+1)+'/'+acts.length+'</div>':'')+
           '</td>'
         :'';
 
@@ -3508,7 +3512,7 @@ function _doShareProj(projId, images){
       var actLabel=multiAct?'<div style="font-size:6px;color:#94A3B8;margin-bottom:1px;">Actividad '+(ai+1)+'</div>':'';
 
       html+=
-        '<tr style="background:'+bg+';border-bottom:1px solid '+borderC+(ai<acts.length-1?';border-bottom:1px dashed #E2E8F0':'')+'">'+ 
+        '<tr style="background:'+bg+';border-bottom:1px solid '+(ai<acts.length-1?'#E2E8F0':borderC)+'">'+ 
         (ai===0?fechaCell:'')+
         '<td style="padding:4px 4px;text-align:center;font-size:8.5px;font-weight:700;color:#374151;">'+actWids.length+'</td>'+
         '<td style="padding:4px 4px;text-align:center;">'+
