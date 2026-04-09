@@ -2933,11 +2933,96 @@ function _printBlob(pdfName, blob){
   reader.readAsText(blob);
 }
 
+// ── Smart paginator: estima altura de cada proj-card e inserta saltos de página ─
+function _smartPaginate(htmlBody){
+  // Altura de página disponible en px equivalente (A4 210×297mm, ~96dpi equiv en browser)
+  // Con márgenes 10mm top + 18mm bottom + 10mm header browser ≈ 240mm útiles ≈ 908px a 96dpi
+  // Usamos unidades abstractas: 1 unidad ≈ 4px de contenido
+  var PAGE_UNITS = 210; // unidades por página (ajustado conservadoramente)
+
+  // Parsear tarjetas del htmlBody
+  // Buscamos los bloques .proj-card y estimamos su altura
+  var result = '';
+  var pageUsed = 0;
+  var firstPage = true;
+
+  // Procesar el HTML dividiéndolo en fragmentos: cards y no-cards
+  // Buscar todas las ocurrencias de <div class="proj-card">...</div>
+  var remaining = htmlBody;
+  var cardRegex = /<div class="proj-card">/g;
+  var lastEnd = 0;
+
+  // Función para estimar unidades de una tarjeta
+  function estimateCard(cardHtml){
+    var units = 12; // header mínimo
+    // Contar trabajadores
+    var workers = (cardHtml.match(/<div class="wcard">/g)||[]).length;
+    units += Math.ceil(workers/3) * 12; // 3 workers por fila, 12 unidades por fila
+    // ¿Tiene gastos?
+    if(cardHtml.indexOf('class="gsec"')>=0){
+      var gastos=(cardHtml.match(/<div class="gitem">/g)||[]).length;
+      units += 6 + gastos * 5;
+    }
+    // ¿Tiene notas?
+    if(cardHtml.indexOf('class="notas"')>=0) units += 10;
+    return units;
+  }
+
+  // Función para estimar unidades de HTML genérico (header, kpis, dia-sep, etc.)
+  function estimateGeneric(h){
+    if(!h.trim()) return 0;
+    var u = 0;
+    if(h.indexOf('class="hdr"')>=0) u += 20;
+    if(h.indexOf('class="krow"')>=0) u += 18;
+    if(h.indexOf('class="dia-sep"')>=0) u += 14;
+    if(h.indexOf('class="resumen"')>=0) u += 25;
+    return u || Math.ceil(h.length / 200);
+  }
+
+  // Dividir el HTML en segmentos: [preContent, card1, between1, card2, between2, ...]
+  var parts = [];
+  var re = /<div class="proj-card">([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
+  var simpleRe = /<div class="proj-card">/g;
+
+  // Usar approach más simple: split por inicio de proj-card
+  var segments = htmlBody.split('<div class="proj-card">');
+  var reconstructed = '';
+  pageUsed = 0;
+
+  for(var si=0; si<segments.length; si++){
+    if(si===0){
+      // Pre-contenido (header, kpis, primer dia-sep)
+      var preUnits = estimateGeneric(segments[0]);
+      pageUsed += preUnits;
+      reconstructed += segments[0];
+    } else {
+      // Cada segmento empieza con el contenido de una proj-card
+      // Encontrar el cierre de esta tarjeta (2 </div> anidados)
+      var seg = segments[si];
+      // Estimar altura de esta tarjeta
+      var cardUnits = estimateCard(seg);
+
+      // Si no cabe en la página actual, insertar salto
+      if(pageUsed + cardUnits > PAGE_UNITS && pageUsed > 20){
+        reconstructed += '<div style="page-break-before:always;break-before:page;height:0;"></div>';
+        pageUsed = 0;
+      }
+      pageUsed += cardUnits;
+      reconstructed += '<div class="proj-card">' + seg;
+    }
+  }
+
+  return reconstructed;
+}
+
 // ── Función auxiliar para abrir reporte HTML desde historial ─────────────────
 // ── Reporte de Historial — diseño visual claro ────────────────────────────────
 function _abrirReporteHistorial(subtitulo, fecha, htmlBody){
   var appName=localStorage.getItem('cp4_appname')||'IMZA';
   var pdfName=appName+'_'+subtitulo.replace(/\s+/g,'_')+'_'+fecha.split(' ').slice(1).join('_');
+
+  // Aplicar paginación inteligente
+  var paginatedBody = _smartPaginate(htmlBody);
 
   var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'+
   '<title>'+pdfName+'</title><style>'+
@@ -3003,19 +3088,20 @@ function _abrirReporteHistorial(subtitulo, fecha, htmlBody){
   '.ritem .rl{font-size:7.5px;color:#64748B;margin-top:3px;text-transform:uppercase;letter-spacing:.06em;}'+
   '.ritem.rb .rv{color:#60A5FA;}.ritem.rg .rv{color:#34D399;}.ritem.ra .rv{color:#FBBF24;}'+
   '@media print{'+
-  '@page{size:A4 portrait;margin:12mm 9mm;}'+
+  '@page{size:A4 portrait;margin:10mm 9mm 18mm 9mm;}'+
   'body{background:#fff!important;}'+
   '.page{max-width:100%!important;padding:0!important;}'+
-  '.hdr{margin-bottom:8px!important;page-break-inside:avoid;break-inside:avoid;}'+
-  '.hdr,.krow{page-break-inside:avoid;break-inside:avoid;}'+
-  '.proj-card{page-break-inside:avoid!important;break-inside:avoid!important;overflow:visible!important;}'+
+  '.hdr,.krow{page-break-inside:avoid!important;break-inside:avoid!important;}'+
+  '.proj-card{page-break-inside:avoid!important;break-inside:avoid!important;overflow:visible!important;margin-bottom:8px!important;}'+
   '.wgrid{page-break-inside:avoid!important;break-inside:avoid!important;}'+
-  '.wcard{page-break-inside:avoid!important;break-inside:avoid!important;display:inline-flex!important;}'+
+  '.wcard{page-break-inside:avoid!important;break-inside:avoid!important;}'+
   '.gsec{page-break-inside:avoid!important;break-inside:avoid!important;}'+
   '.notas{page-break-inside:avoid!important;break-inside:avoid!important;}'+
   'tr{page-break-inside:avoid!important;break-inside:avoid!important;}'+
+  /* Hide browser URL/footer by making it white */
+  'a{color:#fff!important;}'+
   '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}'+
-  '</style></head><body><div class="page">'+htmlBody+'</div></body></html>';
+  '</style></head><body><div class="page">'+paginatedBody+'</div></body></html>';
 
   _printBlob(pdfName, new Blob([html],{type:'text/html;charset=utf-8'}));
 }
@@ -3342,12 +3428,13 @@ function _generarReporteRango(){
     '.ritem .rv{font-size:18px;font-weight:900;color:#fff;line-height:1;}'+
     '.ritem .rl{font-size:7px;color:#64748B;margin-top:4px;text-transform:uppercase;letter-spacing:.06em;}'+
     '.ritem.rb .rv{color:#60A5FA;}.ritem.rg .rv{color:#34D399;}.ritem.ra .rv{color:#FBBF24;}'+
-    '@media print{@page{size:A4 portrait;margin:12mm 9mm;}body{background:#fff!important;}'+
+    '@media print{@page{size:A4 portrait;margin:10mm 9mm 18mm 9mm;}body{background:#fff!important;}'+
     '.page{max-width:100%!important;padding:0!important;}'+
     '.proj-card{page-break-inside:avoid!important;break-inside:avoid!important;overflow:visible!important;}'+
     '.wgrid{page-break-inside:avoid!important;break-inside:avoid!important;}'+
     '.wcard{page-break-inside:avoid!important;break-inside:avoid!important;}'+
     '.dia-cont{display:none!important;}.card-day-label{display:none!important;}'+
+    'a{color:#fff!important;}'+
     '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}';
 
   var fullHtml='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+pdfName+'</title><style>'+css+'</style></head><body><div class="page">'+html+'</div></body></html>';
@@ -3912,7 +3999,7 @@ function _doShareProj(projId, images){
     '.kpi .kv{font-size:18px;font-weight:900;line-height:1;}'+
     '.kpi-b .kv{color:#1D4ED8;}.kpi-g .kv{color:#059669;}.kpi-s .kv{color:#0F172A;}'+
     '.proj-card{background:#fff;border-radius:8px;border:1px solid #E2E8F0;}'+
-    '@media print{@page{size:A4 portrait;margin:12mm 9mm;}body{background:#fff!important;}'+
+    '@media print{@page{size:A4 portrait;margin:10mm 9mm 18mm 9mm;}body{background:#fff!important;}'+
     '.page{max-width:100%!important;padding:0!important;}'+
     '.proj-card{page-break-inside:avoid!important;break-inside:avoid!important;overflow:visible!important;}'+
     '.wgrid{page-break-inside:avoid!important;break-inside:avoid!important;}'+
@@ -3920,6 +4007,7 @@ function _doShareProj(projId, images){
     'tr{page-break-inside:avoid!important;break-inside:avoid!important;}'+
     'thead{display:table-header-group!important;}'+
     'img{page-break-inside:avoid!important;break-inside:avoid!important;max-width:100%!important;}'+
+    'a{color:#fff!important;}'+
     '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}</style>'+
     '</head><body><div class="page">'+html+'</div></body></html>'
   ],{type:'text/html;charset=utf-8'});
