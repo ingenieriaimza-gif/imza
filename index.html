@@ -654,11 +654,16 @@ if('serviceWorker' in navigator){
         <button class="hview-btn active-hv" id="hv-dia" onclick="setHView('dia')" style="flex:1;padding:10px;border-radius:12px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;background:var(--gold);color:#000;transition:all .15s">📅 Por Día</button>
         <button class="hview-btn" id="hv-proj" onclick="setHView('proj')" style="flex:1;padding:10px;border-radius:12px;border:1.5px solid var(--line);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;background:var(--card2);color:var(--txt2);transition:all .15s">📂 Por Proyecto</button>
       </div>
-      <!-- period filter (only for día view) -->
-      <div id="hist-period-row" style="display:flex;gap:4px;margin-bottom:4px">
+      <!-- period filter + range report button -->
+      <div id="hist-period-row" style="display:flex;gap:4px;margin-bottom:8px;align-items:center">
         <button class="sec-btn bg hf" data-f="all" onclick="setHF('all',this)" style="color:#000">Todo</button>
         <button class="sec-btn b hf" data-f="month" onclick="setHF('month',this)" style="background:var(--card2);color:var(--txt2);border:1px solid var(--line)">Mes</button>
         <button class="sec-btn b hf" data-f="week" onclick="setHF('week',this)" style="background:var(--card2);color:var(--txt2);border:1px solid var(--line)">Semana</button>
+        <div style="flex:1"></div>
+        <button onclick="openRangeReport()" id="btn-range-report" style="display:none;padding:6px 12px;border-radius:100px;border:none;background:rgba(91,156,246,0.15);color:var(--blue);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:5px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          Reporte rango
+        </button>
       </div>
       <div id="hist-list"></div>
     </div>
@@ -2669,6 +2674,10 @@ let hf='all', hview='dia';
 
 function setHView(v){
   hview=v;
+  var btn=document.getElementById('btn-range-report');
+  if(btn) btn.style.display=(v==='dia')?'flex':'none';
+  var pr=document.getElementById('hist-period-row');
+  if(pr) pr.style.display=(v==='dia')?'flex':'none';
   document.getElementById('hv-dia').style.cssText  ='flex:1;padding:10px;border-radius:12px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;'+(v==='dia'?'background:var(--gold);color:#000;':'background:var(--card2);color:var(--txt2);border:1.5px solid var(--line);');
   document.getElementById('hv-proj').style.cssText ='flex:1;padding:10px;border-radius:12px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;'+(v==='proj'?'background:var(--gold);color:#000;':'background:var(--card2);color:var(--txt2);border:1.5px solid var(--line);');
   document.getElementById('hist-period-row').style.display=v==='dia'?'flex':'none';
@@ -3183,6 +3192,169 @@ function shareDay(date){
   html+='</div></div>';
 
   _abrirReporteHistorial('Reporte Diario', fechaLabel, html);
+}
+
+// ── REPORTE DE RANGO DE FECHAS ────────────────────────────────────────────────
+function openRangeReport(){
+  // Obtener fechas disponibles
+  var availDates=Object.keys(S.actividades).filter(function(d){ return (S.actividades[d]||[]).length; }).sort();
+  if(!availDates.length){ toast('Sin actividades registradas','err'); return; }
+
+  var minDate=availDates[0];
+  var maxDate=availDates[availDates.length-1];
+  var today=td();
+
+  var overlay=document.createElement('div');
+  overlay.id='range-report-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:400;display:flex;align-items:flex-end;justify-content:center;padding:0 0 calc(16px + env(safe-area-inset-bottom,0px));-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)';
+
+  overlay.innerHTML=
+    '<div onclick="event.stopPropagation()" style="background:var(--card);border:1px solid var(--line2);border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:24px 20px;animation:sup 0.28s cubic-bezier(0.32,0.72,0,1)">'+
+      '<div style="width:36px;height:4px;background:var(--line2);border-radius:2px;margin:0 auto 18px"></div>'+
+      '<div style="font-size:18px;font-weight:800;color:var(--txt);margin-bottom:4px">📊 Reporte por rango</div>'+
+      '<div style="font-size:13px;color:var(--txt3);margin-bottom:20px">Selecciona el período del reporte</div>'+
+
+      // Accesos rápidos
+      '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+
+        '<button onclick="setRangeQuick(\'today\')" style="padding:7px 14px;border-radius:100px;border:1px solid var(--line);background:var(--card2);color:var(--txt2);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">Hoy</button>'+
+        '<button onclick="setRangeQuick(\'week\')" style="padding:7px 14px;border-radius:100px;border:1px solid var(--line);background:var(--card2);color:var(--txt2);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">Esta semana</button>'+
+        '<button onclick="setRangeQuick(\'month\')" style="padding:7px 14px;border-radius:100px;border:1px solid var(--line);background:var(--card2);color:var(--txt2);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">Este mes</button>'+
+        '<button onclick="setRangeQuick(\'all\')" style="padding:7px 14px;border-radius:100px;border:1px solid var(--line);background:var(--card2);color:var(--txt2);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">Todo</button>'+
+      '</div>'+
+
+      // Fecha inicio
+      '<div style="margin-bottom:12px">'+
+        '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--txt3);margin-bottom:7px">Desde</label>'+
+        '<div class="fi" id="rr-from-display" onclick="openCal(\'rr-from\',document.getElementById(\'rr-from\').value||td())" style="cursor:pointer;display:flex;align-items:center;min-height:50px;color:var(--txt)">Seleccionar fecha</div>'+
+        '<input type="hidden" id="rr-from" value="">'+
+      '</div>'+
+
+      // Fecha fin
+      '<div style="margin-bottom:20px">'+
+        '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--txt3);margin-bottom:7px">Hasta</label>'+
+        '<div class="fi" id="rr-to-display" onclick="openCal(\'rr-to\',document.getElementById(\'rr-to\').value||td())" style="cursor:pointer;display:flex;align-items:center;min-height:50px;color:var(--txt)">Seleccionar fecha</div>'+
+        '<input type="hidden" id="rr-to" value="">'+
+      '</div>'+
+
+      '<div style="display:flex;gap:10px">'+
+        '<button onclick="document.getElementById(\'range-report-overlay\').remove()" style="flex:1;padding:14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt2);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">Cancelar</button>'+
+        '<button onclick="_generarReporteRango()" style="flex:1;padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">📊 Generar</button>'+
+      '</div>'+
+    '</div>';
+
+  overlay.addEventListener('click',function(e){ if(e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+function setRangeQuick(preset){
+  var today=td();
+  var from='', to=today;
+  if(preset==='today'){
+    from=today;
+  } else if(preset==='week'){
+    var d=new Date(); d.setDate(d.getDate()-6);
+    from=d.toISOString().split('T')[0];
+  } else if(preset==='month'){
+    var d=new Date(); d.setDate(d.getDate()-29);
+    from=d.toISOString().split('T')[0];
+  } else if(preset==='all'){
+    var dates=Object.keys(S.actividades).filter(function(d){ return (S.actividades[d]||[]).length; }).sort();
+    from=dates[0]||today;
+    to=dates[dates.length-1]||today;
+  }
+  var fi=document.getElementById('rr-from'), fd=document.getElementById('rr-from-display');
+  var ti=document.getElementById('rr-to'), td2=document.getElementById('rr-to-display');
+  if(fi){ fi.value=from; } if(fd){ fd.textContent=from?fmtDate(from):'Seleccionar fecha'; }
+  if(ti){ ti.value=to; } if(td2){ td2.textContent=to?fmtDate(to):'Seleccionar fecha'; }
+}
+
+function _generarReporteRango(){
+  var from=document.getElementById('rr-from').value;
+  var to=document.getElementById('rr-to').value;
+  if(!from||!to){ toast('Selecciona ambas fechas','err'); return; }
+  if(from>to){ toast('La fecha inicio debe ser anterior al fin','err'); return; }
+
+  // Recopilar fechas con actividad en el rango
+  var dates=Object.keys(S.actividades)
+    .filter(function(d){ return d>=from && d<=to && (S.actividades[d]||[]).length; })
+    .sort();
+
+  if(!dates.length){ toast('Sin actividades en ese rango','err'); return; }
+
+  document.getElementById('range-report-overlay').remove();
+  toast('Generando reporte...','ok');
+
+  var appName=localStorage.getItem('cp4_appname')||'IMZA';
+  var periodoLabel=fmtDate(from)+(from!==to?' → '+fmtDate(to):'');
+  var pdfName=appName+'_Reporte_'+from+'_al_'+to;
+
+  // Totales globales
+  var totalActs=0, allWorkers=new Set(), totalHE=0, totalG=0;
+  dates.forEach(function(date){
+    var acts=S.actividades[date]||[];
+    totalActs+=acts.length;
+    acts.forEach(function(a){
+      (a.trabajadores||[]).forEach(function(w){ allWorkers.add(w); });
+      totalHE+=Object.values(a.horasExtras||{}).reduce(function(s,v){ return s+v; },0);
+      totalG+=(a.gastos||[]).reduce(function(s,g){ return s+Number(g.monto||0); },0);
+    });
+  });
+
+  var html='';
+
+  // HEADER
+  html+='<div class="hdr">'+
+    '<div class="hdr-l"><h1>'+appName+'</h1><p>Reporte de Actividades</p></div>'+
+    '<div class="hdr-r"><div class="hl">Período</div><div class="hv">'+periodoLabel+'</div></div>'+
+  '</div>';
+
+  // KPIs
+  html+='<div class="krow krow-4">'+
+    '<div class="kpi kpi-s"><div class="kl">Días trabajados</div><div class="kv">'+dates.length+'</div></div>'+
+    '<div class="kpi kpi-b"><div class="kl">Trabajadores</div><div class="kv">'+allWorkers.size+'</div></div>'+
+    (totalHE?'<div class="kpi kpi-b"><div class="kl">Horas extras</div><div class="kv">+'+totalHE+'h</div></div>':'')+
+    (totalG?'<div class="kpi kpi-g"><div class="kl">Gastos</div><div class="kv">'+_money(totalG)+'</div></div>':'')+
+  '</div>';
+
+  // Una sección por día
+  dates.forEach(function(date){
+    var acts=S.actividades[date]||[];
+    var wknd=isWeekend(date), fest=isFestivo(date);
+    var dayW=new Set(acts.flatMap(function(a){ return a.trabajadores||[]; })).size;
+    var dayG=acts.reduce(function(s,a){ return s+sumG(a.gastos); },0);
+    var dayHE=acts.reduce(function(s,a){ return s+Object.values(a.horasExtras||{}).reduce(function(x,v){ return x+v; },0); },0);
+
+    html+='<div style="margin-bottom:14px;border-radius:8px;overflow:hidden;border:1px solid '+(wknd?'#FECACA':'#E2E8F0')+'">'+
+      // Cabecera del día
+      '<div style="background:'+(wknd?'#FEF2F2':'#1E293B')+';padding:8px 14px;display:flex;align-items:center;justify-content:space-between;">'+
+        '<div>'+
+          '<span style="font-size:11px;font-weight:800;color:'+(wknd?'#DC2626':'#fff')+'">'+fmtD(date)+(wknd?' 🔴 Descanso':'')+(fest?' 🎌 '+festivoNombre(date):'')+'</span>'+
+        '</div>'+
+        '<div style="display:flex;gap:12px;align-items:center">'+
+          '<span style="font-size:9px;color:'+(wknd?'#FECACA':'#94A3B8')+'">'+acts.length+' act. · '+dayW+' pers.'+(dayHE?' · +'+dayHE+'h':'')+'</span>'+
+          (dayG?'<span style="font-size:10px;font-weight:800;color:#34D399">'+_money(dayG)+'</span>':'')+
+        '</div>'+
+      '</div>'+
+      // Actividades del día
+      '<div style="background:#fff;padding:8px 14px;">'+
+      acts.map(function(a){
+        return _buildProjCard(a, date);
+      }).join('')+
+      '</div>'+
+    '</div>';
+  });
+
+  // Resumen final
+  html+='<div class="resumen"><div class="resumen-title">Resumen del período</div>'+
+    '<div class="resumen-grid">'+
+    '<div class="ritem rb"><div class="rv">'+dates.length+'</div><div class="rl">Días</div></div>'+
+    '<div class="ritem rb"><div class="rv">'+allWorkers.size+'</div><div class="rl">Trabajadores</div></div>'+
+    '<div class="ritem rb"><div class="rv">'+totalActs+'</div><div class="rl">Actividades</div></div>'+
+    (totalHE?'<div class="ritem rb"><div class="rv">+'+totalHE+'h</div><div class="rl">Horas extras</div></div>':'')+
+    (totalG?'<div class="ritem rg"><div class="rv">'+_money(totalG)+'</div><div class="rl">Gastos</div></div>':'')+
+    '</div></div>';
+
+  _abrirReporteHistorial('Reporte', periodoLabel, html);
 }
 
 // ── REPORTE POR PROYECTO ──────────────────────────────────────────────────────
@@ -6799,7 +6971,6 @@ function festivoNombre(dateStr){
 function calPick(dateStr){
   _calSel=dateStr;
   closeCal();
-  // Dispatch to the right target
   if(_calTarget==='main'){
     setDate(dateStr);
   } else if(_calTarget==='pi'){
@@ -6813,6 +6984,12 @@ function calPick(dateStr){
     document.getElementById('wvf').value=dateStr;
     document.getElementById('wvf-display').textContent=fmtDate(dateStr);
     updVacDaysLbl();
+  } else if(_calTarget==='rr-from'){
+    var el=document.getElementById('rr-from'); if(el) el.value=dateStr;
+    var disp=document.getElementById('rr-from-display'); if(disp) disp.textContent=fmtDate(dateStr);
+  } else if(_calTarget==='rr-to'){
+    var el=document.getElementById('rr-to'); if(el) el.value=dateStr;
+    var disp=document.getElementById('rr-to-display'); if(disp) disp.textContent=fmtDate(dateStr);
   }
 }
 
