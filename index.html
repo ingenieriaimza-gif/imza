@@ -3006,10 +3006,14 @@ function _abrirReporteHistorial(subtitulo, fecha, htmlBody){
   '@page{size:A4 portrait;margin:12mm 9mm;}'+
   'body{background:#fff!important;}'+
   '.page{max-width:100%!important;padding:0!important;}'+
-  '.hdr{margin-bottom:8px!important;}'+
-  '.proj-card{page-break-inside:avoid;}'+
-  '.wcard{page-break-inside:avoid;}'+
-  'tr{page-break-inside:avoid!important;}'+
+  '.hdr{margin-bottom:8px!important;page-break-inside:avoid;break-inside:avoid;}'+
+  '.hdr,.krow{page-break-inside:avoid;break-inside:avoid;}'+
+  '.proj-card{page-break-inside:avoid!important;break-inside:avoid!important;overflow:visible!important;}'+
+  '.wgrid{page-break-inside:avoid!important;break-inside:avoid!important;}'+
+  '.wcard{page-break-inside:avoid!important;break-inside:avoid!important;display:inline-flex!important;}'+
+  '.gsec{page-break-inside:avoid!important;break-inside:avoid!important;}'+
+  '.notas{page-break-inside:avoid!important;break-inside:avoid!important;}'+
+  'tr{page-break-inside:avoid!important;break-inside:avoid!important;}'+
   '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}'+
   '</style></head><body><div class="page">'+htmlBody+'</div></body></html>';
 
@@ -3300,7 +3304,7 @@ function _generarReporteRango(){
     '.kpi .kl{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748B;margin-bottom:3px;}'+
     '.kpi .kv{font-size:18px;font-weight:900;line-height:1;}.kpi-b .kv{color:#1D4ED8;}.kpi-g .kv{color:#059669;}.kpi-s .kv{color:#0F172A;}'+
     '.kpi .ks{font-size:8px;color:#94A3B8;margin-top:2px;}'+
-    '.proj-card{background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:6px;page-break-inside:avoid;break-inside:avoid;box-decoration-break:clone;-webkit-box-decoration-break:clone;}'+
+    '.proj-card{background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:visible;margin-bottom:6px;page-break-inside:avoid;break-inside:avoid;}'+
     '.proj-hdr{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #F1F5F9;}'+
     '.proj-hdr-b{background:#EFF6FF;}.proj-hdr-g{background:#F0FDF4;}.proj-hdr-r{background:#FEF2F2;}'+
     '.proj-code{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:6px;background:#1E3A8A;color:#fff;font-size:9px;font-weight:800;flex-shrink:0;margin-right:10px;}'+
@@ -3340,7 +3344,9 @@ function _generarReporteRango(){
     '.ritem.rb .rv{color:#60A5FA;}.ritem.rg .rv{color:#34D399;}.ritem.ra .rv{color:#FBBF24;}'+
     '@media print{@page{size:A4 portrait;margin:12mm 9mm;}body{background:#fff!important;}'+
     '.page{max-width:100%!important;padding:0!important;}'+
-    '.proj-card{page-break-inside:avoid;break-inside:avoid;}'+
+    '.proj-card{page-break-inside:avoid!important;break-inside:avoid!important;overflow:visible!important;}'+
+    '.wgrid{page-break-inside:avoid!important;break-inside:avoid!important;}'+
+    '.wcard{page-break-inside:avoid!important;break-inside:avoid!important;}'+
     '.dia-cont{display:none!important;}.card-day-label{display:none!important;}'+
     '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}';
 
@@ -3907,7 +3913,11 @@ function _doShareProj(projId, images){
     '.kpi-b .kv{color:#1D4ED8;}.kpi-g .kv{color:#059669;}.kpi-s .kv{color:#0F172A;}'+
     '.proj-card{background:#fff;border-radius:8px;border:1px solid #E2E8F0;}'+
     '@media print{@page{size:A4 portrait;margin:12mm 9mm;}body{background:#fff!important;}'+
-    '.page{max-width:100%!important;padding:0!important;}tr{page-break-inside:avoid!important;}'+
+    '.page{max-width:100%!important;padding:0!important;}'+
+    '.proj-card{page-break-inside:avoid!important;break-inside:avoid!important;overflow:visible!important;}'+
+    '.wgrid{page-break-inside:avoid!important;break-inside:avoid!important;}'+
+    '.wcard{page-break-inside:avoid!important;break-inside:avoid!important;}'+
+    'tr{page-break-inside:avoid!important;break-inside:avoid!important;}'+
     'thead{display:table-header-group!important;}'+
     'img{page-break-inside:avoid!important;break-inside:avoid!important;max-width:100%!important;}'+
     '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}</style>'+
