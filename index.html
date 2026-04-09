@@ -3274,7 +3274,6 @@ function _generarReporteRango(){
   if(!from||!to){ toast('Selecciona ambas fechas','err'); return; }
   if(from>to){ toast('La fecha inicio debe ser anterior al fin','err'); return; }
 
-  // Recopilar fechas con actividad en el rango
   var dates=Object.keys(S.actividades)
     .filter(function(d){ return d>=from && d<=to && (S.actividades[d]||[]).length; })
     .sort();
@@ -3285,8 +3284,15 @@ function _generarReporteRango(){
   toast('Generando reporte...','ok');
 
   var appName=localStorage.getItem('cp4_appname')||'IMZA';
+
+  // Nombre limpio con fechas en formato DD-MMM-YYYY
+  var MESES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  function fmtShort(ds){
+    var p=ds.split('-');
+    return p[2]+'-'+MESES[Number(p[1])-1]+'-'+p[0];
+  }
   var periodoLabel=fmtDate(from)+(from!==to?' → '+fmtDate(to):'');
-  var pdfName=appName+'_Reporte_'+from+'_al_'+to;
+  var pdfName=(appName+'_Reporte_'+fmtShort(from)+(from!==to?'_al_'+fmtShort(to):'')).replace(/\s+/g,'_');
 
   // Totales globales
   var totalActs=0, allWorkers=new Set(), totalHE=0, totalG=0;
@@ -3302,6 +3308,9 @@ function _generarReporteRango(){
 
   var html='';
 
+  // HEADER + KPIs pegados al primer día (todo en un bloque sin page-break)
+  html+='<div style="page-break-inside:avoid;break-inside:avoid;">';
+
   // HEADER
   html+='<div class="hdr">'+
     '<div class="hdr-l"><h1>'+appName+'</h1><p>Reporte de Actividades</p></div>'+
@@ -3309,34 +3318,41 @@ function _generarReporteRango(){
   '</div>';
 
   // KPIs
-  html+='<div class="krow krow-4">'+
+  html+='<div class="krow krow-4" style="margin-bottom:16px;">'+
     '<div class="kpi kpi-s"><div class="kl">Días trabajados</div><div class="kv">'+dates.length+'</div></div>'+
     '<div class="kpi kpi-b"><div class="kl">Trabajadores</div><div class="kv">'+allWorkers.size+'</div></div>'+
     (totalHE?'<div class="kpi kpi-b"><div class="kl">Horas extras</div><div class="kv">+'+totalHE+'h</div></div>':'')+
     (totalG?'<div class="kpi kpi-g"><div class="kl">Gastos</div><div class="kv">'+_money(totalG)+'</div></div>':'')+
   '</div>';
 
-  // Una sección por día
-  dates.forEach(function(date){
+  html+='</div>'; // cierra bloque header+KPIs
+
+  // Una sección por día — bien separada visualmente
+  dates.forEach(function(date, di){
     var acts=S.actividades[date]||[];
     var wknd=isWeekend(date), fest=isFestivo(date);
     var dayW=new Set(acts.flatMap(function(a){ return a.trabajadores||[]; })).size;
     var dayG=acts.reduce(function(s,a){ return s+sumG(a.gastos); },0);
     var dayHE=acts.reduce(function(s,a){ return s+Object.values(a.horasExtras||{}).reduce(function(x,v){ return x+v; },0); },0);
 
-    html+='<div style="margin-bottom:14px;border-radius:8px;overflow:hidden;border:1px solid '+(wknd?'#FECACA':'#E2E8F0')+'">'+
-      // Cabecera del día
-      '<div style="background:'+(wknd?'#FEF2F2':'#1E293B')+';padding:8px 14px;display:flex;align-items:center;justify-content:space-between;">'+
-        '<div>'+
-          '<span style="font-size:11px;font-weight:800;color:'+(wknd?'#DC2626':'#fff')+'">'+fmtD(date)+(wknd?' 🔴 Descanso':'')+(fest?' 🎌 '+festivoNombre(date):'')+'</span>'+
+    // Cada día en su propio bloque con borde y separación clara
+    html+='<div style="margin-bottom:20px;border-radius:10px;overflow:hidden;border:2px solid '+(wknd?'#FECACA':'#CBD5E1')+';box-shadow:0 1px 4px rgba(0,0,0,0.06);">'+
+
+      // Cabecera del día — barra de color sólido
+      '<div style="background:'+(wknd?'#7F1D1D':'#0F172A')+';padding:10px 16px;display:flex;align-items:center;justify-content:space-between;">'+
+        '<div style="display:flex;align-items:center;gap:10px;">'+
+          '<span style="font-size:13px;font-weight:900;color:'+(wknd?'#FCA5A5':'#F8FAFC')+'">'+fmtD(date)+'</span>'+
+          (wknd?'<span style="font-size:9px;font-weight:700;background:#991B1B;color:#FCA5A5;padding:2px 8px;border-radius:4px;">🔴 Descanso</span>':'')+
+          (fest?'<span style="font-size:9px;font-weight:700;background:#1E3A5F;color:#93C5FD;padding:2px 8px;border-radius:4px;">🎌 '+festivoNombre(date)+'</span>':'')+
         '</div>'+
-        '<div style="display:flex;gap:12px;align-items:center">'+
-          '<span style="font-size:9px;color:'+(wknd?'#FECACA':'#94A3B8')+'">'+acts.length+' act. · '+dayW+' pers.'+(dayHE?' · +'+dayHE+'h':'')+'</span>'+
-          (dayG?'<span style="font-size:10px;font-weight:800;color:#34D399">'+_money(dayG)+'</span>':'')+
+        '<div style="display:flex;gap:14px;align-items:center;">'+
+          '<span style="font-size:9px;color:#94A3B8;">'+acts.length+' act. · '+dayW+' pers.'+(dayHE?' · +'+dayHE+'h':'')+'</span>'+
+          (dayG?'<span style="font-size:11px;font-weight:800;color:#34D399;">'+_money(dayG)+'</span>':'')+
         '</div>'+
       '</div>'+
+
       // Actividades del día
-      '<div style="background:#fff;padding:8px 14px;">'+
+      '<div style="background:#FAFAFA;padding:10px 12px;">'+
       acts.map(function(a){
         return _buildProjCard(a, date);
       }).join('')+
@@ -3345,7 +3361,8 @@ function _generarReporteRango(){
   });
 
   // Resumen final
-  html+='<div class="resumen"><div class="resumen-title">Resumen del período</div>'+
+  html+='<div class="resumen" style="page-break-inside:avoid;break-inside:avoid;">'+
+    '<div class="resumen-title">Resumen del período</div>'+
     '<div class="resumen-grid">'+
     '<div class="ritem rb"><div class="rv">'+dates.length+'</div><div class="rl">Días</div></div>'+
     '<div class="ritem rb"><div class="rv">'+allWorkers.size+'</div><div class="rl">Trabajadores</div></div>'+
@@ -3354,7 +3371,59 @@ function _generarReporteRango(){
     (totalG?'<div class="ritem rg"><div class="rv">'+_money(totalG)+'</div><div class="rl">Gastos</div></div>':'')+
     '</div></div>';
 
-  _abrirReporteHistorial('Reporte', periodoLabel, html);
+  // Usar pdfName directamente — no pasar por _abrirReporteHistorial para controlar el nombre
+  var appName2=localStorage.getItem('cp4_appname')||'IMZA';
+  var fullHtml='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'+
+  '<title>'+pdfName+'</title><style>'+
+  '*{margin:0;padding:0;box-sizing:border-box;}'+
+  'html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
+  'body{font-family:"Segoe UI",-apple-system,Arial,sans-serif;font-size:10px;background:#F8FAFC;color:#0F172A;line-height:1.4;}'+
+  '.page{max-width:720px;margin:0 auto;padding:16px;}'+
+  '.hdr{background:#1E3A8A;border-radius:8px;padding:14px 20px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;}'+
+  '.hdr-l h1{font-size:18px;font-weight:900;color:#fff;letter-spacing:-.03em;line-height:1;}'+
+  '.hdr-l p{font-size:8.5px;color:#93C5FD;margin-top:3px;text-transform:uppercase;letter-spacing:.07em;}'+
+  '.hdr-r{text-align:right;}.hdr-r .hl{font-size:7.5px;color:#93C5FD;text-transform:uppercase;letter-spacing:.08em;}'+
+  '.hdr-r .hv{font-size:12px;font-weight:800;color:#fff;margin-top:3px;}'+
+  '.krow{display:grid;gap:8px;margin-bottom:14px;}.krow-4{grid-template-columns:repeat(4,1fr);}.krow-3{grid-template-columns:repeat(3,1fr);}.krow-2{grid-template-columns:repeat(2,1fr);}'+
+  '.kpi{border-radius:7px;padding:10px 12px;border:1px solid #E2E8F0;background:#fff;}'+
+  '.kpi-b{border-left:3px solid #2563EB;}.kpi-g{border-left:3px solid #059669;}.kpi-s{border-left:3px solid #0F172A;}'+
+  '.kpi .kl{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748B;margin-bottom:3px;}'+
+  '.kpi .kv{font-size:18px;font-weight:900;line-height:1;}.kpi-b .kv{color:#1D4ED8;}.kpi-g .kv{color:#059669;}.kpi-s .kv{color:#0F172A;}'+
+  '.proj-card{background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:8px;}'+
+  '.proj-hdr{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #F1F5F9;}'+
+  '.proj-hdr-b{background:#EFF6FF;}.proj-hdr-g{background:#F0FDF4;}.proj-hdr-r{background:#FEF2F2;}'+
+  '.proj-code{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:#1E3A8A;color:#fff;font-size:9px;font-weight:800;flex-shrink:0;margin-right:10px;}'+
+  '.proj-name{font-weight:800;font-size:11px;color:#0F172A;line-height:1.2;}'+
+  '.proj-lider{font-size:8.5px;color:#64748B;margin-top:2px;}'+
+  '.proj-stat{text-align:right;flex-shrink:0;}.proj-stat .he{font-size:14px;font-weight:900;color:#1D4ED8;}.proj-stat .g{font-size:11px;font-weight:700;color:#059669;margin-top:2px;}'+
+  '.wgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:5px;padding:10px 14px;}'+
+  '.wcard{display:flex;align-items:center;gap:6px;background:#F8FAFC;border-radius:6px;padding:6px 8px;border:1px solid #F1F5F9;}'+
+  '.av{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#7C3AED);color:#fff;font-size:7.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}'+
+  '.wname{font-weight:600;font-size:9px;color:#0F172A;line-height:1.2;}.wcargo{font-size:7.5px;color:#94A3B8;margin-top:1px;}'+
+  '.whe{margin-left:auto;font-size:9.5px;font-weight:700;color:#1D4ED8;white-space:nowrap;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:5px;padding:1px 6px;}'+
+  '.gsec{border-top:1px solid #F1F5F9;padding:8px 14px;}'+
+  '.gsec-title{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#059669;margin-bottom:6px;}'+
+  '.gitem{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #F8FAFC;gap:8px;}'+
+  '.gitem:last-child{border-bottom:none;}'+
+  '.gtipo{background:#EFF6FF;border:1px solid #BFDBFE;border-radius:3px;padding:0 5px;font-size:7px;font-weight:600;color:#2563EB;white-space:nowrap;flex-shrink:0;}'+
+  '.gdesc{font-size:8.5px;color:#374151;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'+
+  '.gmonto{font-size:9px;font-weight:700;color:#059669;white-space:nowrap;}'+
+  '.notas{border-top:1px solid #F1F5F9;padding:8px 14px;font-size:8.5px;color:#475569;background:#FFFBEB;border-radius:0 0 8px 8px;}'+
+  '.notas-lbl{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#92400E;margin-bottom:3px;}'+
+  '.resumen{background:#0F172A;border-radius:8px;padding:14px 16px;margin-top:10px;}'+
+  '.resumen-title{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#94A3B8;margin-bottom:10px;}'+
+  '.resumen-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}'+
+  '.ritem{text-align:center;}.ritem .rv{font-size:16px;font-weight:900;color:#fff;line-height:1;}'+
+  '.ritem .rl{font-size:7.5px;color:#64748B;margin-top:3px;text-transform:uppercase;letter-spacing:.06em;}'+
+  '.ritem.rb .rv{color:#60A5FA;}.ritem.rg .rv{color:#34D399;}'+
+  '@media print{@page{size:A4 portrait;margin:0;}body{background:#fff!important;}'+
+  '.page{max-width:100%!important;padding:8mm 9mm!important;}'+
+  '.proj-card{page-break-inside:avoid;break-inside:avoid;}'+
+  'img{page-break-inside:avoid;break-inside:avoid;max-width:100%;}'+
+  '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}'+
+  '</style></head><body><div class="page">'+html+'</div></body></html>';
+
+  _printBlob(pdfName, new Blob([fullHtml],{type:'text/html;charset=utf-8'}));
 }
 
 // ── REPORTE POR PROYECTO ──────────────────────────────────────────────────────
