@@ -3324,19 +3324,13 @@ function _generarReporteRango(){
     var dayG=acts.reduce(function(s,a){ return s+sumG(a.gastos); },0);
     var dayHE=acts.reduce(function(s,a){ return s+Object.values(a.horasExtras||{}).reduce(function(x,v){ return x+v; },0); },0);
 
-    html+='<div style="margin-bottom:20px;">'+
+    html+='<div style="margin-bottom:20px;page-break-inside:avoid;break-inside:avoid;">'+
       '<div class="dia-sep'+(wknd?' wknd':'')+'">'+
         '<span>'+fmtD(date)+(wknd?' 🔴 Descanso':'')+(fest?' · 🎌 '+festivoNombre(date):'')+'</span>'+
         '<small>'+acts.length+' act. · '+dayW+' pers.'+(dayHE?' · +'+dayHE+'h':'')+(dayG?' · '+_money(dayG):'')+'</small>'+
       '</div>'+
       '<div style="display:flex;flex-direction:column;gap:6px;padding-top:6px;">'+
-      acts.map(function(a,ai){
-        // Agregar etiqueta de día en cada tarjeta (solo visible al imprimir si hay salto de página)
-        var dayLabel=ai>0
-          ? '<div class="card-day-label'+(wknd?' wknd':'')+'">'+fmtD(date)+(wknd?' 🔴':'')+(fest?' 🎌':'')+'</div>'
-          : '';
-        return dayLabel+_buildProjCard(a, date);
-      }).join('')+
+      acts.map(function(a){ return _buildProjCard(a, date); }).join('')+
       '</div>'+
     '</div>';
   });
@@ -3406,9 +3400,9 @@ function _generarReporteRango(){
     '.ritem.rb .rv{color:#60A5FA;}.ritem.rg .rv{color:#34D399;}.ritem.ra .rv{color:#FBBF24;}'+
     '@media print{@page{size:A4 portrait;margin:12mm 9mm 12mm 9mm;}body{background:#fff!important;}'+
     '.page{max-width:100%!important;padding:4mm 0!important;}'+
-    '.proj-card{page-break-inside:avoid;break-inside:avoid;box-decoration-break:clone;-webkit-box-decoration-break:clone;}'+
+    '.proj-card{page-break-inside:avoid;break-inside:avoid;}'+
     '.dia-cont{display:none!important;}'+
-    '.card-day-label{display:block!important;}'+
+    '.card-day-label{display:none!important;}'+
     '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}';
 
   var fullHtml='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+pdfName+'</title><style>'+css+'</style></head><body><div class="page">'+html+'</div></body></html>';
