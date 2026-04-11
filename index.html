@@ -387,13 +387,14 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 <script>
 // ── SERVICE WORKER ────────────────────────────────────────────────────────────
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
+// Limpiar service workers anteriores
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.getRegistrations().then(r=>r.forEach(sw=>sw.unregister()));
+  navigator.serviceWorker.getRegistrations().then(function(r){ r.forEach(function(sw){ sw.unregister(); }); });
 }
-if(window.caches){ caches.keys().then(keys=>keys.forEach(k=>caches.delete(k))); }
+if(window.caches){ caches.keys().then(function(keys){ keys.forEach(function(k){ caches.delete(k); }); }); }
 if(false && 'serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v5';
+    const CACHE='imza-shell-v6';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -972,7 +973,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0411.1500';
+const APP_VERSION='2026.0411.2000';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -5678,7 +5679,13 @@ var _sbClient=null;
 
 function getSbClient(){
   if(!_sbClient){
-    _sbClient=supabase.createClient('https://vcdwtlwnbztausmwzwla.supabase.co','sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY');
+    _sbClient=supabase.createClient('https://vcdwtlwnbztausmwzwla.supabase.co','sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',{
+      auth:{
+        persistSession:true,
+        detectSessionInUrl:true,
+        autoRefreshToken:true
+      }
+    });
   }
   return _sbClient;
 }
@@ -5702,6 +5709,18 @@ function enterApp(found, sessionData){
 }
 
 function initAuth(){
+  // Si hay magic link en URL, limpiar sesión de Supabase para que no restaure la anterior
+  var _hasToken=(window.location.hash&&window.location.hash.includes('access_token'))||
+                (new URLSearchParams(window.location.search).get('access_token'));
+  if(_hasToken){
+    // Borrar storage de Supabase JS para evitar que restaure sesión anterior
+    localStorage.removeItem('sb-vcdwtlwnbztausmwzwla-auth-token');
+    localStorage.removeItem('cp4_session');
+    localStorage.removeItem('cp4_auth_token');
+    localStorage.removeItem('cp4_refresh_token');
+    localStorage.removeItem('cp4_token_exp');
+    _sbClient=null; // Forzar recreación del cliente limpio
+  }
   var n=localStorage.getItem('cp4_appname')||'IMZA';
   var el=document.getElementById('login-appname');
   if(el) el.textContent=n;
@@ -5720,8 +5739,10 @@ function initAuth(){
       }
       // Si estamos esperando magic link de invitación — ignorar sesiones automáticas
       if(_waitingForMagicLink) return;
-      // Solo procesar SIGNED_IN si no estamos ya dentro de la app
-      if(_currentUser) return;
+      // Si hay un nuevo SIGNED_IN con email diferente al actual, cambiar de usuario
+      if(_currentUser && _currentUser.email && _currentUser.email.toLowerCase()===session.user.email.toLowerCase()) return;
+      // Si mismo usuario ya logueado, no hacer nada
+      // Si es usuario diferente, proceder con el nuevo login
       var email=session.user.email.toLowerCase();
       var accessToken=session.access_token||'';
       var refreshToken=session.refresh_token||'';
@@ -5775,11 +5796,6 @@ function initAuth(){
   var searchParams=new URLSearchParams(window.location.search);
   var queryHasToken=searchParams.get('access_token');
   if(hashHasToken||(queryHasToken&&searchParams.get('type'))){
-    // Limpiar sesión anterior para que el nuevo magic link tome control
-    localStorage.removeItem('cp4_session');
-    localStorage.removeItem('cp4_auth_token');
-    localStorage.removeItem('cp4_refresh_token');
-    localStorage.removeItem('cp4_token_exp');
     if(queryHasToken&&!hashHasToken){
       var hashStr='access_token='+queryHasToken;
       ['token_type','expires_in','refresh_token','type'].forEach(function(k){
