@@ -1527,6 +1527,14 @@ function _applyRemoteData(remote){
     S.users=remote.users;
     // Guardar backup para auth en futuros arranques
     localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
+    // Verificar que el usuario activo sigue existiendo — si fue eliminado, cerrar sesión
+    if(_currentUser&&_currentUser.email){
+      var stillExists=S.users.find(function(x){ return (x.email||'').toLowerCase()===_currentUser.email.toLowerCase(); });
+      if(!stillExists){
+        setTimeout(function(){ logout(); toast('Tu acceso fue revocado.','err'); }, 500);
+        return;
+      }
+    }
   }
   // Misc
   S.deleted=del;
@@ -5856,7 +5864,13 @@ function initAuth(){
               S.users=rows[0].data.users;
               localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
               var found=(S.users||[]).find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
-              if(found) sessionData.rol=found.rol;
+              if(found){
+                sessionData.rol=found.rol;
+              } else {
+                // Usuario fue eliminado del sistema — forzar logout
+                logout();
+                return;
+              }
             }
           }).catch(function(){
             var bk=localStorage.getItem('cp4_users_backup');
