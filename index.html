@@ -6451,8 +6451,16 @@ function logout(){
     }).catch(function(){});
   }catch(e){}
 
-  document.getElementById('app').style.display='none';
-  showLogin();
+  // Limpiar todo el localStorage de sesión
+  localStorage.removeItem('cp4_session');
+  localStorage.removeItem('cp4_auth_token');
+  localStorage.removeItem('cp4_refresh_token');
+  localStorage.removeItem('cp4_token_exp');
+  localStorage.removeItem('cp4_users_backup');
+  localStorage.removeItem('cp4_lastsync');
+
+  // Recargar la página — forma más limpia de hacer logout
+  setTimeout(function(){ window.location.reload(true); }, 200);
 }
 
 function rUsersConfig(){
