@@ -35,38 +35,95 @@
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display','Helvetica Neue',Arial,sans-serif; background:#0a0c10; color:var(--txt); overflow:hidden; overscroll-behavior:none; }
 
-/* ── APP SHELL ── */
-.app { display:flex; flex-direction:column; height:100dvh; width:100%; max-width:430px; margin:0 auto; background:var(--bg); overflow:hidden; }
+.app { display:flex; flex-direction:column; height:100dvh; width:100%; max-width:430px; margin:0 auto; position:relative; background:var(--bg); overflow:hidden; }
 .app[style*="display:none"] { display:none !important; }
-#main-content { flex:1; display:flex; flex-direction:column; overflow:hidden; min-height:0; min-width:0; }
 .safe-t { height:var(--safe-t); background:var(--bg); flex-shrink:0; }
 
-/* ── DESKTOP (≥900px) ── */
+/* ── DESKTOP LAYOUT (≥900px) ─────────────────────────────────────────────── */
 @media (min-width:900px){
   body { background:#060810; }
-  /* row-reverse: #main-content (first in DOM) goes RIGHT, .bnav (second in DOM) goes LEFT */
-  .app { max-width:100%; flex-direction:row-reverse; }
+
+  /* App: fila completa */
+  .app {
+    max-width:100%;
+    flex-direction:row;
+    height:100dvh;
+    overflow:hidden;
+  }
+
+  /* Ocultar elementos mobile */
   .safe-t { display:none; }
+  .app > div[style*="safe-area-inset-bottom"] { display:none; }
+
+  /* ── Sidebar de navegación ── */
   .bnav {
-    flex-direction:column; align-items:stretch; justify-content:flex-start;
-    width:220px; min-width:220px; flex-shrink:0; height:100%;
-    border-top:none; border-right:1px solid rgba(255,255,255,0.07);
-    padding:20px 10px; gap:3px; background:var(--card); overflow-y:auto;
+    order:-1;
+    flex-direction:column;
+    align-items:stretch;
+    justify-content:flex-start;
+    width:220px;
+    min-width:220px;
+    height:100%;
+    border-top:none;
+    border-right:1px solid rgba(255,255,255,0.07);
+    padding:20px 10px;
+    gap:3px;
+    background:var(--card);
+    flex-shrink:0;
+    overflow-y:auto;
   }
   .bnav::-webkit-scrollbar { display:none; }
-  #main-content { flex:1; min-width:0; min-height:0; }
+
+  /* Logo en sidebar */
   .desk-logo { display:flex !important; }
-  .topbar { display:none; }
-  .ntab { flex-direction:row; justify-content:flex-start; align-items:center; padding:10px 14px; border-radius:10px; gap:12px; width:100%; height:auto; }
+  .bnav::before { display:none; }
+
+  /* Tabs en sidebar */
+  .ntab {
+    flex-direction:row;
+    justify-content:flex-start;
+    align-items:center;
+    padding:10px 14px;
+    border-radius:10px;
+    gap:12px;
+    width:100%;
+    height:auto;
+  }
   .ntab svg { width:18px; height:18px; flex-shrink:0; }
-  .ntab span { font-size:13px; font-weight:600; letter-spacing:0; text-transform:none; color:var(--txt3); }
+  .ntab span {
+    font-size:13px;
+    font-weight:600;
+    letter-spacing:0;
+    text-transform:none;
+    color:var(--txt3);
+  }
   .ntab.active span { color:var(--gold); }
   .ntab:hover:not(.active) { background:rgba(255,255,255,0.04); }
+
+  /* Topbar: ocultar en desktop (el logo va en el sidebar) */
+  .topbar { display:none; }
+
+  /* ── Área de contenido principal ── */
+  #main-content {
+    flex:1;
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    background:var(--bg);
+  }
+
+  /* Scroll — más padding horizontal */
   .scroll { padding:16px 24px 60px; }
+
+  /* Stats: 4 en fila en pantallas medianas */
   .stats { grid-template-columns:1fr 1fr; }
   #st-vac-box { grid-column:1/-1; }
+
+  /* Acciones rápidas: 4 en fila */
   .agrid { grid-template-columns:repeat(4,1fr); }
 }
+
 @media (min-width:1280px){
   .bnav { width:240px; min-width:240px; }
   #sync-bar { margin:16px 32px 0; }
@@ -74,7 +131,9 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
   .scroll { padding:20px 32px 60px; }
   .stats { grid-template-columns:1fr 1fr 1fr 1fr; }
   #st-vac-box { grid-column:span 2; }
+  .agrid { grid-template-columns:repeat(4,1fr); }
 }
+
 @media (min-width:1600px){
   .bnav { width:260px; min-width:260px; }
   .scroll { padding:24px 40px 60px; }
@@ -388,10 +447,6 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // ── SERVICE WORKER ────────────────────────────────────────────────────────────
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.getRegistrations().then(function(r){ r.forEach(function(sw){ sw.unregister(); }); });
-}
-if(window.caches){ caches.keys().then(function(keys){ keys.forEach(function(k){ caches.delete(k); }); }); }
-if(false && 'serviceWorker' in navigator){
   const swCode=`
     const CACHE='imza-shell-v3';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
@@ -431,8 +486,48 @@ if(false && 'serviceWorker' in navigator){
 <body>
 <div class="app" id="app" style="display:none">
 
+  <!-- SIDEBAR (desktop) / BOTTOM NAV (mobile) -->
+  <nav class="bnav">
+    <!-- Logo solo visible en desktop -->
+    <div class="desk-logo" style="display:none;align-items:center;gap:10px;padding:0 4px 20px;border-bottom:1px solid var(--line);margin-bottom:8px;">
+      <div class="logo-sq">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      </div>
+      <span class="logo-name" id="app-name-desk" onclick="editAppName()" style="font-size:19px;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;background:linear-gradient(90deg,#64a0ff 0%,#a78bfa 50%,#64a0ff 100%);background-size:200% 100%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:logoShimmer 4s ease infinite;cursor:pointer;">IMZA</span>
+    </div>
+    <button class="ntab active" id="tab-inicio" onclick="navigate('inicio')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      <span>Inicio</span>
+    </button>
+    <button class="ntab" id="tab-actividad" onclick="navigate('actividad')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      <span>Actividad</span>
+    </button>
+    <button class="ntab" id="tab-historial" onclick="navigate('historial')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span>Historial</span>
+    </button>
+    <button class="ntab" id="tab-proyectos" onclick="navigate('proyectos')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/></svg>
+      <span>Proyectos</span>
+    </button>
+    <button class="ntab" id="tab-personal" onclick="navigate('personal')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      <span>Personal</span>
+    </button>
+    <button class="ntab" id="tab-nomina" onclick="navigate('nomina')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+      <span>Nómina</span>
+    </button>
+    <button class="ntab" id="tab-config" onclick="navigate('config')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <span>Config</span>
+    </button>
+    <div style="flex-shrink:0;background:transparent;height:env(safe-area-inset-bottom,0px);min-height:0"></div>
+  </nav>
+
   <!-- MAIN CONTENT -->
-  <div id="main-content">
+  <div id="main-content" style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;order:1;">
   <div class="safe-t"></div>
   <div class="topbar">
     <div class="logo-wrap">
@@ -705,7 +800,7 @@ if(false && 'serviceWorker' in navigator){
       <div style="background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:18px;margin-bottom:12px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div style="font-size:14px;font-weight:800;color:var(--txt)">☁️ Sincronización</div>
-          <div id="sync-dot-cfg" style="width:10px;height:10px;border-radius:50%;background:var(--txt3);transition:background .3s"></div>
+          <div id="sync-dot" style="width:10px;height:10px;border-radius:50%;background:var(--txt3);transition:background .3s"></div>
         </div>
         <div style="font-size:12px;color:var(--txt3);line-height:1.7;margin-bottom:8px">Últimas actualizaciones:</div>
         <div id="cfg-sync-last" style="display:flex;flex-direction:column;gap:2px">—</div>
@@ -741,55 +836,12 @@ if(false && 'serviceWorker' in navigator){
         <div id="diag-output" style="font-size:11px;color:var(--txt2);font-family:monospace;line-height:1.8;white-space:pre-wrap;background:var(--card2);border-radius:8px;padding:10px;min-height:40px"></div>
       </div>
 
-      <!-- CERRAR SESIÓN (visible para todos los roles) -->
-      <button onclick="logout()" style="width:100%;padding:14px;border-radius:12px;border:1px solid rgba(255,107,107,0.25);background:rgba(255,107,107,0.08);color:var(--red);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-bottom:12px">🚪 Cerrar sesión</button>
-
     </div>
 
   </div><!-- /scroll -->
 
   </div><!-- /main-content -->
-
-
-  <nav class="bnav">
-    <!-- Logo solo visible en desktop -->
-    <div class="desk-logo" style="display:none;align-items:center;gap:10px;padding:0 4px 20px;border-bottom:1px solid var(--line);margin-bottom:8px;">
-      <div class="logo-sq">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-      </div>
-      <span class="logo-name" id="app-name-desk" onclick="editAppName()" style="font-size:19px;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;background:linear-gradient(90deg,#64a0ff 0%,#a78bfa 50%,#64a0ff 100%);background-size:200% 100%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:logoShimmer 4s ease infinite;cursor:pointer;">IMZA</span>
-    </div>
-    <button class="ntab active" id="tab-inicio" onclick="navigate('inicio')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-      <span>Inicio</span>
-    </button>
-    <button class="ntab" id="tab-actividad" onclick="navigate('actividad')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-      <span>Actividad</span>
-    </button>
-    <button class="ntab" id="tab-historial" onclick="navigate('historial')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      <span>Historial</span>
-    </button>
-    <button class="ntab" id="tab-proyectos" onclick="navigate('proyectos')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/></svg>
-      <span>Proyectos</span>
-    </button>
-    <button class="ntab" id="tab-personal" onclick="navigate('personal')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-      <span>Personal</span>
-    </button>
-    <button class="ntab" id="tab-nomina" onclick="navigate('nomina')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-      <span>Nómina</span>
-    </button>
-    <button class="ntab" id="tab-config" onclick="navigate('config')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-      <span>Config</span>
-    </button>
-    <div style="flex-shrink:0;background:transparent;height:env(safe-area-inset-bottom,0px);min-height:0"></div>
-  </nav>
-
+</div><!-- /app -->
 
 <!-- SHEET ACTIVIDAD -->
 <div class="sov" id="sov-act">
@@ -1247,7 +1299,7 @@ function fmtSyncTime(iso){
   }catch(e){ return {mini:'--:--',full:'—'}; }
 }
 
-function updateSyncDot(ok){ var d=document.getElementById('sync-dot'); if(d) d.style.background=ok?'var(--green)':'var(--red)'; var d2=document.getElementById('sync-dot-cfg'); if(d2) d2.style.background=ok?'var(--green)':'var(--red)'; }
+function updateSyncDot(ok){ var d=document.getElementById('sync-dot'); if(d) d.style.background=ok?'var(--green)':'var(--red)'; }
 function updateSyncDotOnly(ok){ updateSyncDot(ok); }
 
 function addToSyncHistory(info){
@@ -2626,9 +2678,9 @@ function setHView(v){
   if(btn) btn.style.display=(v==='dia')?'flex':'none';
   var pr=document.getElementById('hist-period-row');
   if(pr) pr.style.display=(v==='dia')?'flex':'none';
-  var hvDia=document.getElementById('hv-dia'); if(hvDia) hvDia.style.cssText='flex:1;padding:10px;border-radius:12px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;'+(v==='dia'?'background:var(--gold);color:#000;':'background:var(--card2);color:var(--txt2);border:1.5px solid var(--line);');
-  var hvProj=document.getElementById('hv-proj'); if(hvProj) hvProj.style.cssText='flex:1;padding:10px;border-radius:12px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;'+(v==='proj'?'background:var(--gold);color:#000;':'background:var(--card2);color:var(--txt2);border:1.5px solid var(--line);');
-  var hpr=document.getElementById('hist-period-row'); if(hpr) hpr.style.display=v==='dia'?'flex':'none';
+  document.getElementById('hv-dia').style.cssText  ='flex:1;padding:10px;border-radius:12px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;'+(v==='dia'?'background:var(--gold);color:#000;':'background:var(--card2);color:var(--txt2);border:1.5px solid var(--line);');
+  document.getElementById('hv-proj').style.cssText ='flex:1;padding:10px;border-radius:12px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;'+(v==='proj'?'background:var(--gold);color:#000;':'background:var(--card2);color:var(--txt2);border:1.5px solid var(--line);');
+  document.getElementById('hist-period-row').style.display=v==='dia'?'flex':'none';
   rHist();
 }
 
@@ -2919,6 +2971,8 @@ function _printBlob(pdfName, blob){
     var fr=document.createElement('iframe');
     fr.id='__print_frame__';
     fr.style.cssText='position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;visibility:hidden;';
+
+    // srcdoc: el iframe no tiene URL propia — browser no imprime URL en footer
     fr.srcdoc=htmlContent;
     document.body.appendChild(fr);
 
@@ -2938,8 +2992,8 @@ function _printBlob(pdfName, blob){
   reader.readAsText(blob);
 }
 
-// ── Smart paginator: estima altura de cada proj-card e inserta saltos de página ─
 // ── Función auxiliar para abrir reporte HTML desde historial ─────────────────
+// ── Reporte de Historial — diseño visual claro ────────────────────────────────
 function _abrirReporteHistorial(subtitulo, fecha, htmlBody){
   var appName=localStorage.getItem('cp4_appname')||'IMZA';
   var pdfName=appName+'_'+subtitulo.replace(/\s+/g,'_')+'_'+fecha.split(' ').slice(1).join('_');
@@ -3007,18 +3061,17 @@ function _abrirReporteHistorial(subtitulo, fecha, htmlBody){
   '.ritem .rv{font-size:16px;font-weight:900;color:#fff;line-height:1;}'+
   '.ritem .rl{font-size:7.5px;color:#64748B;margin-top:3px;text-transform:uppercase;letter-spacing:.06em;}'+
   '.ritem.rb .rv{color:#60A5FA;}.ritem.rg .rv{color:#34D399;}.ritem.ra .rv{color:#FBBF24;}'+
+  // Print
   '@media print{'+
-  '@page{size:A4 portrait;margin:8mm 9mm 28mm 9mm;}'+
+  '@page{size:A4 portrait;margin:0;}'+
   'body{background:#fff!important;}'+
-  '.page{max-width:100%!important;padding:0!important;}'+
-  '.url-mask{display:block!important;position:fixed;bottom:0;left:0;right:0;height:20mm;background:#fff;z-index:99999;}'+
-  '.proj-card{break-inside:avoid!important;page-break-inside:avoid!important;overflow:visible!important;margin-bottom:6px!important;}'+
-  '.dia-sep{break-after:avoid!important;page-break-after:avoid!important;}'+
-  '.resumen{break-inside:avoid!important;page-break-inside:avoid!important;}'+
+  '.page{max-width:100%!important;padding:8mm 9mm!important;}'+
+  '.hdr{margin-bottom:8px!important;}'+
+  '.proj-card{page-break-inside:avoid;}'+
+  '.wcard{page-break-inside:avoid;}'+
+  'tr{page-break-inside:avoid!important;}'+
   '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}'+
-  '</style></head><body>'+
-  '<div class="url-mask"></div>'+
-  '<div class="page">'+htmlBody+'</div></body></html>';
+  '</style></head><body><div class="page">'+htmlBody+'</div></body></html>';
 
   _printBlob(pdfName, new Blob([html],{type:'text/html;charset=utf-8'}));
 }
@@ -3271,23 +3324,14 @@ function _generarReporteRango(){
     var dayG=acts.reduce(function(s,a){ return s+sumG(a.gastos); },0);
     var dayHE=acts.reduce(function(s,a){ return s+Object.values(a.horasExtras||{}).reduce(function(x,v){ return x+v; },0); },0);
 
-    html+='<div style="margin-bottom:20px;">'+
-      // Pegar el header del día con la primera tarjeta — nunca quedan separados
-      '<div style="page-break-inside:avoid;break-inside:avoid;">'+
-        '<div class="dia-sep'+(wknd?' wknd':'')+'">'+
-          '<span>'+fmtD(date)+(wknd?' 🔴 Descanso':'')+(fest?' · 🎌 '+festivoNombre(date):'')+'</span>'+
-          '<small>'+acts.length+' act. · '+dayW+' pers.'+(dayHE?' · +'+dayHE+'h':'')+(dayG?' · '+_money(dayG):'')+'</small>'+
-        '</div>'+
-        '<div style="padding-top:6px;">'+
-        (acts[0]?_buildProjCard(acts[0],date):'')+
-        '</div>'+
+    html+='<div style="margin-bottom:20px;page-break-inside:avoid;break-inside:avoid;">'+
+      '<div class="dia-sep'+(wknd?' wknd':'')+'">'+
+        '<span>'+fmtD(date)+(wknd?' 🔴 Descanso':'')+(fest?' · 🎌 '+festivoNombre(date):'')+'</span>'+
+        '<small>'+acts.length+' act. · '+dayW+' pers.'+(dayHE?' · +'+dayHE+'h':'')+(dayG?' · '+_money(dayG):'')+'</small>'+
       '</div>'+
-      // El resto de las tarjetas fluyen normalmente
-      (acts.length>1
-        ? '<div style="display:flex;flex-direction:column;gap:6px;">'+
-          acts.slice(1).map(function(a){ return _buildProjCard(a, date); }).join('')+
-          '</div>'
-        : '')+
+      '<div style="display:flex;flex-direction:column;gap:6px;padding-top:6px;">'+
+      acts.map(function(a){ return _buildProjCard(a, date); }).join('')+
+      '</div>'+
     '</div>';
   });
 
@@ -3316,7 +3360,7 @@ function _generarReporteRango(){
     '.kpi .kl{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748B;margin-bottom:3px;}'+
     '.kpi .kv{font-size:18px;font-weight:900;line-height:1;}.kpi-b .kv{color:#1D4ED8;}.kpi-g .kv{color:#059669;}.kpi-s .kv{color:#0F172A;}'+
     '.kpi .ks{font-size:8px;color:#94A3B8;margin-top:2px;}'+
-    '.proj-card{background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:visible;margin-bottom:6px;page-break-inside:avoid;break-inside:avoid;}'+
+    '.proj-card{background:#fff;border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:6px;page-break-inside:avoid;break-inside:avoid;box-decoration-break:clone;-webkit-box-decoration-break:clone;}'+
     '.proj-hdr{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #F1F5F9;}'+
     '.proj-hdr-b{background:#EFF6FF;}.proj-hdr-g{background:#F0FDF4;}.proj-hdr-r{background:#FEF2F2;}'+
     '.proj-code{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:6px;background:#1E3A8A;color:#fff;font-size:9px;font-weight:800;flex-shrink:0;margin-right:10px;}'+
@@ -3337,7 +3381,7 @@ function _generarReporteRango(){
     '.gmonto{font-size:9px;font-weight:700;color:#059669;white-space:nowrap;}'+
     '.notas{border-top:1px solid #F1F5F9;padding:7px 14px;font-size:8.5px;color:#475569;background:#FFFBEB;}'+
     '.notas-lbl{font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#92400E;margin-bottom:3px;}'+
-    '.dia-sep{background:#0F172A;border-radius:8px;padding:9px 14px;display:flex;justify-content:space-between;align-items:center;page-break-after:avoid;break-after:avoid;}'+
+    '.dia-sep{background:#0F172A;border-radius:8px;padding:9px 14px;display:flex;justify-content:space-between;align-items:center;}'+
     '.dia-sep span{font-size:11px;font-weight:800;color:#F8FAFC;letter-spacing:-.02em;}'+
     '.dia-sep small{font-size:8px;color:#94A3B8;}'+
     '.dia-sep.wknd{background:#7F1D1D;}.dia-sep.wknd span{color:#FCA5A5;}.dia-sep.wknd small{color:#FCA5A5;opacity:.7;}'+
@@ -3354,17 +3398,14 @@ function _generarReporteRango(){
     '.ritem .rv{font-size:18px;font-weight:900;color:#fff;line-height:1;}'+
     '.ritem .rl{font-size:7px;color:#64748B;margin-top:4px;text-transform:uppercase;letter-spacing:.06em;}'+
     '.ritem.rb .rv{color:#60A5FA;}.ritem.rg .rv{color:#34D399;}.ritem.ra .rv{color:#FBBF24;}'+
-    '@media print{@page{size:A4 portrait;margin:8mm 9mm 28mm 9mm;}body{background:#fff!important;}'+
-    '.page{max-width:100%!important;padding:0!important;}'+
-    '.proj-card{break-inside:avoid!important;page-break-inside:avoid!important;overflow:visible!important;}'+
-    '.dia-sep{break-after:avoid!important;page-break-after:avoid!important;}'+
-    '.resumen{break-inside:avoid!important;page-break-inside:avoid!important;}'+
-    '.dia-cont{display:none!important;}.card-day-label{display:none!important;}'+
+    '@media print{@page{size:A4 portrait;margin:12mm 9mm 12mm 9mm;}body{background:#fff!important;}'+
+    '.page{max-width:100%!important;padding:4mm 0!important;}'+
+    '.proj-card{page-break-inside:avoid;break-inside:avoid;}'+
+    '.dia-cont{display:none!important;}'+
+    '.card-day-label{display:none!important;}'+
     '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}';
 
-  var fullHtml='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+pdfName+'</title><style>'+css+
-    '@media print{.url-mask{display:block!important;position:fixed;bottom:0;left:0;right:0;height:20mm;background:#fff;z-index:99999;}}'+
-    '</style></head><body><div class="url-mask"></div><div class="page">'+html+'</div></body></html>';
+  var fullHtml='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+pdfName+'</title><style>'+css+'</style></head><body><div class="page">'+html+'</div></body></html>';
   _printBlob(pdfName, new Blob([fullHtml],{type:'text/html;charset=utf-8'}));
 }
 
@@ -3926,15 +3967,12 @@ function _doShareProj(projId, images){
     '.kpi .kv{font-size:18px;font-weight:900;line-height:1;}'+
     '.kpi-b .kv{color:#1D4ED8;}.kpi-g .kv{color:#059669;}.kpi-s .kv{color:#0F172A;}'+
     '.proj-card{background:#fff;border-radius:8px;border:1px solid #E2E8F0;}'+
-    '@media print{@page{size:A4 portrait;margin:8mm 9mm 28mm 9mm;}body{background:#fff!important;}'+
-    '.page{max-width:100%!important;padding:0!important;}'+
-    '.proj-card{break-inside:avoid!important;page-break-inside:avoid!important;overflow:visible!important;}'+
-    'tr{break-inside:avoid!important;page-break-inside:avoid!important;}'+
+    '@media print{@page{size:A4 portrait;margin:0;}body{background:#fff!important;}'+
+    '.page{max-width:100%!important;padding:8mm 9mm!important;}tr{page-break-inside:avoid!important;}'+
     'thead{display:table-header-group!important;}'+
-    'img{break-inside:avoid!important;page-break-inside:avoid!important;max-width:100%!important;}'+
-    '.url-mask{display:block!important;position:fixed;bottom:0;left:0;right:0;height:20mm;background:#fff;z-index:99999;}'+
+    'img{page-break-inside:avoid!important;break-inside:avoid!important;max-width:100%!important;}'+
     '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}</style>'+
-    '</head><body><div class="url-mask"></div><div class="page">'+html+'</div></body></html>'
+    '</head><body><div class="page">'+html+'</div></body></html>'
   ],{type:'text/html;charset=utf-8'});
 
   _printBlob(pdfName, blob);
@@ -4206,10 +4244,10 @@ let _nomTab='personal';
 function setNomTab(tab){
   _nomTab=tab;
   const isP=tab==='personal';
-  var nomP=document.getElementById('nom-personal'); if(nomP) nomP.style.display=isP?'block':'none';
-  var nomH=document.getElementById('nom-horas'); if(nomH) nomH.style.display=isP?'none':'block';
-  var nomTP=document.getElementById('nom-tab-personal'); if(nomTP) nomTP.style.cssText='flex:1;padding:8px;border-radius:8px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;'+(isP?'background:var(--gold);color:#000;':'background:transparent;color:var(--txt2);');
-  var nomTH=document.getElementById('nom-tab-horas'); if(nomTH) nomTH.style.cssText='flex:1;padding:8px;border-radius:8px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;'+(!isP?'background:var(--gold);color:#000;':'background:transparent;color:var(--txt2);');
+  document.getElementById('nom-personal').style.display=isP?'block':'none';
+  document.getElementById('nom-horas').style.display=isP?'none':'block';
+  document.getElementById('nom-tab-personal').style.cssText='flex:1;padding:8px;border-radius:8px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;'+(isP?'background:var(--gold);color:#000;':'background:transparent;color:var(--txt2);');
+  document.getElementById('nom-tab-horas').style.cssText='flex:1;padding:8px;border-radius:8px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;'+(!isP?'background:var(--gold);color:#000;':'background:transparent;color:var(--txt2);');
   rNom();
 }
 
@@ -4783,9 +4821,9 @@ function _abrirReporteHTML(d){
   '.tf span{font-size:8px;color:rgba(255,255,255,.75);}.tf strong{font-size:12px;font-weight:900;color:#fff;}'+
   // PRINT
   '@media print{'+
-  '@page{size:A4 landscape;margin:10mm 8mm;}'+
+  '@page{size:A4 landscape;margin:0;}'+
   'body{background:#fff!important;}'+
-  '.page{width:100%!important;padding:0!important;}'+
+  '.page{width:100%!important;padding:5mm 6mm!important;}'+
   '.hdr{margin-bottom:6px!important;padding:8px 12px!important;}'+
   '.kpis{gap:5px!important;margin-bottom:6px!important;}'+
   '.rc{gap:5px!important;margin-bottom:6px!important;}'+
@@ -5859,9 +5897,7 @@ function initAuth(){
   }
 
   // 3. Sin sesión local — buscar en Supabase imza_sessions (puente PWA/Safari)
-  // SOLO si hay email conocido en este equipo — si no, ir al login directamente
   var _filterEmail=_inviteEmail||localStorage.getItem('cp4_last_email')||'';
-  if(!_filterEmail){ showLoginScreen(); return; }
 
   // Primero cargar usuarios (necesarios para validar la sesión)
   var usersBk=localStorage.getItem('cp4_users_backup');
@@ -5949,8 +5985,8 @@ function handleAuthSession(session){
     showLogin();
     var errEl=document.getElementById('login-error');
     if(errEl) errEl.textContent='Este correo no tiene acceso. Contacta al administrador.';
-    var s1=document.getElementById('login-step-email'); if(s1) s1.style.display='block';
-    var s2=document.getElementById('login-step-sent'); if(s2) s2.style.display='none';
+    document.getElementById('login-step1').style.display='block';
+    document.getElementById('login-step2').style.display='none';
     return;
   }
   _currentUser=found;
@@ -6293,12 +6329,10 @@ function blockPinEntry(){
 }
 
 function adminAssignPin(){
-  var pinEl=document.getElementById('admin-new-pin');
-  if(!pinEl) return;
-  var newPin=(pinEl.value||'').trim();
+  var newPin=(document.getElementById('admin-new-pin').value||'').trim();
   if(newPin.length!==4||isNaN(newPin)){
-    pinEl.style.borderColor='var(--red)';
-    setTimeout(function(){ pinEl.style.borderColor=''; },600);
+    document.getElementById('admin-new-pin').style.borderColor='var(--red)';
+    setTimeout(function(){ document.getElementById('admin-new-pin').style.borderColor=''; },600);
     toast('El nuevo PIN debe ser 4 dígitos','err'); return;
   }
   if((S.users||[]).some(function(u){ return u.pin===newPin; })){
@@ -6441,26 +6475,8 @@ function logout(){
     }).catch(function(){});
   }catch(e){}
 
-    // Limpiar todo el storage de este equipo
-  localStorage.removeItem('cp4_session');
-  localStorage.removeItem('cp4_auth_token');
-  localStorage.removeItem('cp4_refresh_token');
-  localStorage.removeItem('cp4_token_exp');
-  localStorage.removeItem('cp4_last_email');
-  localStorage.removeItem('sb-vcdwtlwnbztausmwzwla-auth-token');
-
-  // Borrar sesión en imza_sessions para que no la cargue otro equipo
-  if(_currentUser&&_currentUser.email){
-    fetch(SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(_currentUser.email.toLowerCase()),{
-      method:'DELETE', credentials:'omit',
-      headers:{'apikey':SB_KEY,'Prefer':'return=minimal'}
-    }).catch(function(){});
-  }
-
-  // Cerrar sesión en Supabase y recargar página limpia
-  try{
-    getSbClient().auth.signOut().finally(function(){ window.location.href=window.location.pathname; });
-  }catch(e){ window.location.href=window.location.pathname; }
+  document.getElementById('app').style.display='none';
+  showLogin();
 }
 
 function rUsersConfig(){
