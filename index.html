@@ -387,9 +387,14 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 <script>
 // ── SERVICE WORKER ────────────────────────────────────────────────────────────
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
+// SW desactivado — limpia cache anterior
 if('serviceWorker' in navigator){
+  navigator.serviceWorker.getRegistrations().then(r=>r.forEach(sw=>sw.unregister()));
+}
+if(window.caches){ caches.keys().then(keys=>keys.forEach(k=>caches.delete(k))); }
+if(false && 'serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v3';
+    const CACHE='imza-shell-v5';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -968,7 +973,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0401.1300';
+const APP_VERSION='2026.0411.1200';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
