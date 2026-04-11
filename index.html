@@ -6424,6 +6424,24 @@ function applyRoleRestrictions(){
   startRealtime();
   startLiveSync();
   startPresence();
+  startSessionWatch();
+}
+
+function startSessionWatch(){
+  // Cada 30 segundos verifica que la sesión siga activa en Supabase
+  // Si el admin la borró (cambio de rol), fuerza logout
+  setInterval(function(){
+    if(!_currentUser||!_currentUser.email) return;
+    var email=_currentUser.email.toLowerCase();
+    sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(email)+'&select=device_id')
+    .then(function(rows){
+      if(!rows||rows.length===0){
+        // Sesión eliminada por admin — forzar logout
+        toast('Tu sesión fue cerrada por el administrador','err');
+        setTimeout(logout, 1500);
+      }
+    }).catch(function(){});
+  }, 30000);
 }
 
 var _visorInterval=null;
@@ -6451,31 +6469,25 @@ function logout(){
     }).catch(function(){});
   }catch(e){}
 
-  // Limpiar TODO el localStorage
-  var keysToRemove = [];
-  for(var i=0; i<localStorage.length; i++){
-    keysToRemove.push(localStorage.key(i));
+  // Cerrar sesión en Supabase PRIMERO, luego limpiar todo
+  function _doLogout(){
+    // Borrar claves de Supabase JS client
+    localStorage.removeItem('sb-vcdwtlwnbztausmwzwla-auth-token');
+    localStorage.removeItem('sb-vcdwtlwnbztausmwzwla-auth-token-code-verifier');
+    // Borrar claves cp4
+    ['cp4_session','cp4_auth_token','cp4_refresh_token','cp4_token_exp',
+     'cp4_users_backup','cp4_lastsync','cp4_last_email','cp4_change_log',
+     'cp4_sync_history','cp4_outbox','cp4_pending','cp4_changes','cp4_last_pull',
+     'cp4_last_event','cp4_device_id'].forEach(function(k){ localStorage.removeItem(k); });
+    try{ sessionStorage.clear(); }catch(e){}
+    // Resetear cliente Supabase
+    _sbClient = null;
+    window.location.href = window.location.pathname;
   }
-  keysToRemove.forEach(function(k){ localStorage.removeItem(k); });
 
-  // Limpiar sessionStorage también
-  try{ sessionStorage.clear(); }catch(e){}
-
-  // Cerrar sesión en Supabase JS client
   try{
-    var sb = getSbClient();
-    if(sb && sb.auth) {
-      sb.auth.signOut().then(function(){
-        window.location.reload(true);
-      }).catch(function(){
-        window.location.reload(true);
-      });
-    } else {
-      window.location.reload(true);
-    }
-  } catch(e){
-    window.location.reload(true);
-  }
+    getSbClient().auth.signOut().then(function(){ _doLogout(); }).catch(function(){ _doLogout(); });
+  }catch(e){ _doLogout(); }
 }
 
 function rUsersConfig(){
@@ -6681,16 +6693,28 @@ function saveUser(uid){
   S.users[idx].nombre=nom;
   if(rol) S.users[idx].rol=rol;
   if(email) S.users[idx].email=email;
+  var prevRol=(idx!==-1&&S.users[idx])?S.users[idx].rol:'';
+  var prevEmail=(idx!==-1&&S.users[idx])?(S.users[idx].email||''):'';
+  var rolChanged=rol&&rol!==prevRol;
   save();
-  pushToCloud(); // Push immediately so other devices get new permissions
+  pushToCloud();
   rUsersConfig();
   toast('Guardado ✓','ok');
   var isSelf=uid===(_currentUser&&_currentUser.id);
   if(isSelf){
     setTimeout(logout,400);
+    return;
   }
-  // Note: other devices will get updated permissions on next pullFromCloud
-  // because session restore always re-checks against latest S.users
+  // Si cambió el rol, borrar sesión del usuario en Supabase
+  // para forzar re-login en su dispositivo
+  if(rolChanged && prevEmail){
+    sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(prevEmail),{
+      method:'DELETE',
+      headers:{'Prefer':'return=minimal'}
+    }).then(function(){
+      toast('Sesión de '+nom+' cerrada en todos sus dispositivos','ok');
+    }).catch(function(){});
+  }
 }
 
 function _doSaveNewUser(){
