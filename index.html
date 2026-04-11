@@ -387,7 +387,6 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 <script>
 // ── SERVICE WORKER ────────────────────────────────────────────────────────────
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
-// SW desactivado — limpia cache anterior
 if('serviceWorker' in navigator){
   navigator.serviceWorker.getRegistrations().then(r=>r.forEach(sw=>sw.unregister()));
 }
@@ -973,7 +972,7 @@ function td(){
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
 const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
-const APP_VERSION='2026.0411.1200';
+const APP_VERSION='2026.0411.1500';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
 (function(){
@@ -5776,6 +5775,11 @@ function initAuth(){
   var searchParams=new URLSearchParams(window.location.search);
   var queryHasToken=searchParams.get('access_token');
   if(hashHasToken||(queryHasToken&&searchParams.get('type'))){
+    // Limpiar sesión anterior para que el nuevo magic link tome control
+    localStorage.removeItem('cp4_session');
+    localStorage.removeItem('cp4_auth_token');
+    localStorage.removeItem('cp4_refresh_token');
+    localStorage.removeItem('cp4_token_exp');
     if(queryHasToken&&!hashHasToken){
       var hashStr='access_token='+queryHasToken;
       ['token_type','expires_in','refresh_token','type'].forEach(function(k){
