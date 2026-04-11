@@ -6451,16 +6451,31 @@ function logout(){
     }).catch(function(){});
   }catch(e){}
 
-  // Limpiar todo el localStorage de sesión
-  localStorage.removeItem('cp4_session');
-  localStorage.removeItem('cp4_auth_token');
-  localStorage.removeItem('cp4_refresh_token');
-  localStorage.removeItem('cp4_token_exp');
-  localStorage.removeItem('cp4_users_backup');
-  localStorage.removeItem('cp4_lastsync');
+  // Limpiar TODO el localStorage
+  var keysToRemove = [];
+  for(var i=0; i<localStorage.length; i++){
+    keysToRemove.push(localStorage.key(i));
+  }
+  keysToRemove.forEach(function(k){ localStorage.removeItem(k); });
 
-  // Recargar la página — forma más limpia de hacer logout
-  setTimeout(function(){ window.location.reload(true); }, 200);
+  // Limpiar sessionStorage también
+  try{ sessionStorage.clear(); }catch(e){}
+
+  // Cerrar sesión en Supabase JS client
+  try{
+    var sb = getSbClient();
+    if(sb && sb.auth) {
+      sb.auth.signOut().then(function(){
+        window.location.reload(true);
+      }).catch(function(){
+        window.location.reload(true);
+      });
+    } else {
+      window.location.reload(true);
+    }
+  } catch(e){
+    window.location.reload(true);
+  }
 }
 
 function rUsersConfig(){
