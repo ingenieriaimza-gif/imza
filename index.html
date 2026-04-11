@@ -385,18 +385,9 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 }">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230c0e12'/><polygon points='50,10 10,30 50,50 90,30' fill='none' stroke='%2364a0ff' stroke-width='5'/><polyline points='10,70 50,90 90,70' fill='none' stroke='%2364a0ff' stroke-width='5'/><polyline points='10,50 50,70 90,50' fill='none' stroke='%23a78bfa' stroke-width='5'/></svg>">
 <script>
-// Limpiar service workers anteriores que causan pantalla negra
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.getRegistrations().then(function(regs){
-    regs.forEach(function(r){ r.unregister(); });
-  });
-}
-if(window.caches){
-  caches.keys().then(function(keys){ keys.forEach(function(k){ caches.delete(k); }); });
-}
 // ── SERVICE WORKER ────────────────────────────────────────────────────────────
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
-if(false && 'serviceWorker' in navigator){
+if('serviceWorker' in navigator){
   const swCode=`
     const CACHE='imza-shell-v4';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
@@ -631,15 +622,6 @@ if(false && 'serviceWorker' in navigator){
     <!-- CONFIGURACIÓN -->
     <div id="s-config" class="screen">
       <div class="sec"><div class="sec-lbl">Configuración</div></div>
-
-      <!-- CERRAR SESIÓN — visible para todos los roles -->
-      <div onclick="logout()" style="background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:12px;cursor:pointer;-webkit-user-select:none">
-        <div style="width:34px;height:34px;border-radius:10px;background:rgba(255,107,107,0.1);display:flex;align-items:center;justify-content:center;font-size:17px">🚪</div>
-        <div>
-          <div style="font-size:14px;font-weight:800;color:var(--red)">Cerrar sesión</div>
-          <div id="logout-user-label" style="font-size:11px;color:var(--txt3)">Salir de la cuenta actual</div>
-        </div>
-      </div>
 
       <!-- USUARIOS -->
       <div id="users-list-wrap" style="background:var(--card);border:1px solid var(--line);border-radius:var(--r2);margin-bottom:12px;overflow:hidden">
@@ -5637,9 +5619,6 @@ function runDiag(){
 }
 
 function rCfgStats(){
-  // Update logout label with current user
-  var lbl=document.getElementById('logout-user-label');
-  if(lbl&&_currentUser) lbl.textContent='Sesión: '+(_currentUser.nombre||_currentUser.email||'');
   rUsersConfig();
   // Show diag panel for admin only
   var diagWrap=document.getElementById('diag-wrap');
@@ -6424,24 +6403,6 @@ function applyRoleRestrictions(){
   startRealtime();
   startLiveSync();
   startPresence();
-  startSessionWatch();
-}
-
-function startSessionWatch(){
-  // Cada 30 segundos verifica que la sesión siga activa en Supabase
-  // Si el admin la borró (cambio de rol), fuerza logout
-  setInterval(function(){
-    if(!_currentUser||!_currentUser.email) return;
-    var email=_currentUser.email.toLowerCase();
-    sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(email)+'&select=device_id')
-    .then(function(rows){
-      if(!rows||rows.length===0){
-        // Sesión eliminada por admin — forzar logout
-        toast('Tu sesión fue cerrada por el administrador','err');
-        setTimeout(logout, 1500);
-      }
-    }).catch(function(){});
-  }, 30000);
 }
 
 var _visorInterval=null;
@@ -6469,25 +6430,8 @@ function logout(){
     }).catch(function(){});
   }catch(e){}
 
-  // Cerrar sesión en Supabase PRIMERO, luego limpiar todo
-  function _doLogout(){
-    // Borrar claves de Supabase JS client
-    localStorage.removeItem('sb-vcdwtlwnbztausmwzwla-auth-token');
-    localStorage.removeItem('sb-vcdwtlwnbztausmwzwla-auth-token-code-verifier');
-    // Borrar claves cp4
-    ['cp4_session','cp4_auth_token','cp4_refresh_token','cp4_token_exp',
-     'cp4_users_backup','cp4_lastsync','cp4_last_email','cp4_change_log',
-     'cp4_sync_history','cp4_outbox','cp4_pending','cp4_changes','cp4_last_pull',
-     'cp4_last_event','cp4_device_id'].forEach(function(k){ localStorage.removeItem(k); });
-    try{ sessionStorage.clear(); }catch(e){}
-    // Resetear cliente Supabase
-    _sbClient = null;
-    window.location.href = window.location.pathname;
-  }
-
-  try{
-    getSbClient().auth.signOut().then(function(){ _doLogout(); }).catch(function(){ _doLogout(); });
-  }catch(e){ _doLogout(); }
+  document.getElementById('app').style.display='none';
+  showLogin();
 }
 
 function rUsersConfig(){
@@ -6693,28 +6637,16 @@ function saveUser(uid){
   S.users[idx].nombre=nom;
   if(rol) S.users[idx].rol=rol;
   if(email) S.users[idx].email=email;
-  var prevRol=(idx!==-1&&S.users[idx])?S.users[idx].rol:'';
-  var prevEmail=(idx!==-1&&S.users[idx])?(S.users[idx].email||''):'';
-  var rolChanged=rol&&rol!==prevRol;
   save();
-  pushToCloud();
+  pushToCloud(); // Push immediately so other devices get new permissions
   rUsersConfig();
   toast('Guardado ✓','ok');
   var isSelf=uid===(_currentUser&&_currentUser.id);
   if(isSelf){
     setTimeout(logout,400);
-    return;
   }
-  // Si cambió el rol, borrar sesión del usuario en Supabase
-  // para forzar re-login en su dispositivo
-  if(rolChanged && prevEmail){
-    sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(prevEmail),{
-      method:'DELETE',
-      headers:{'Prefer':'return=minimal'}
-    }).then(function(){
-      toast('Sesión de '+nom+' cerrada en todos sus dispositivos','ok');
-    }).catch(function(){});
-  }
+  // Note: other devices will get updated permissions on next pullFromCloud
+  // because session restore always re-checks against latest S.users
 }
 
 function _doSaveNewUser(){
