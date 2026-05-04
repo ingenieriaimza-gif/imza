@@ -988,16 +988,10 @@ if('serviceWorker' in navigator){
         <input class="fi" id="rf-title" type="text" placeholder="¿Qué necesitas recordar?" maxlength="120" autocomplete="off">
       </div>
 
-      <!-- TIPO -->
+      <!-- NOTAS -->
       <div class="fg">
-        <label class="fl">Tipo</label>
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px" id="rf-type-grid">
-          <div class="rem-type-opt selected" data-rtype="work"     onclick="remSelType('work')"    ><div style="font-size:18px">💼</div><div style="font-size:10px;font-weight:600;color:var(--txt3);margin-top:2px">Trabajo</div></div>
-          <div class="rem-type-opt"          data-rtype="personal" onclick="remSelType('personal')" ><div style="font-size:18px">⭐</div><div style="font-size:10px;font-weight:600;color:var(--txt3);margin-top:2px">Personal</div></div>
-          <div class="rem-type-opt"          data-rtype="health"   onclick="remSelType('health')"   ><div style="font-size:18px">🏃</div><div style="font-size:10px;font-weight:600;color:var(--txt3);margin-top:2px">Salud</div></div>
-          <div class="rem-type-opt"          data-rtype="finance"  onclick="remSelType('finance')"  ><div style="font-size:18px">💰</div><div style="font-size:10px;font-weight:600;color:var(--txt3);margin-top:2px">Finanzas</div></div>
-          <div class="rem-type-opt"          data-rtype="other"    onclick="remSelType('other')"    ><div style="font-size:18px">📌</div><div style="font-size:10px;font-weight:600;color:var(--txt3);margin-top:2px">Otro</div></div>
-        </div>
+        <label class="fl">Notas</label>
+        <textarea class="fi fta" id="rf-notes" placeholder="Agrega una descripción, detalles, enlaces o cualquier información adicional…" rows="4" style="resize:vertical;min-height:90px;max-height:260px;line-height:1.5"></textarea>
       </div>
 
       <!-- FECHA -->
@@ -7378,7 +7372,6 @@ load();updDates();rAll();
   var remTab        = 'all';
   var remFormMode   = 'add';   // 'add' | 'edit'
   var remEditId     = null;
-  var remSelType_   = 'work';
   var remHasDate_   = true;
   var remTimers     = {};      // id → [timeoutId,...]
   var remSwReg      = null;
@@ -7529,7 +7522,7 @@ load();updDates();rAll();
     var db=[];
     try{db=JSON.parse(row.days_before||'[]');}catch(e){}
     return{
-      id:row.id, title:row.title, type:row.type||'other',
+      id:row.id, title:row.title, notes:row.notes||'',
       date:row.date||null, time:row.time||null,
       notify:!!row.notify,
       daysBefore: db,
@@ -7541,7 +7534,7 @@ load();updDates();rAll();
 
   function remToRow(rem){
     return{
-      title:rem.title, type:rem.type,
+      title:rem.title, notes:rem.notes||'',
       date:rem.date||null, time:rem.time||null,
       notify:rem.notify,
       days_before: JSON.stringify(rem.daysBefore||[]),
@@ -7644,8 +7637,7 @@ load();updDates();rAll();
   }
 
   // ── RENDER ────────────────────────────────────────────────────────
-  var RICONS ={work:'💼',personal:'⭐',health:'🏃',finance:'💰',other:'📌'};
-  var RLABELS={work:'Trabajo',personal:'Personal',health:'Salud',finance:'Finanzas',other:'Otro'};
+
   function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
   function remAlertBadges(rem){
@@ -7688,7 +7680,7 @@ load();updDates();rAll();
         '<div class="rem-sec-title">'+lbl+'</div><div class="rem-sec-count">'+n+'</div></div>';
     }
     function card(rem){
-      var type=rem.type||'other';var isDone=rem.done;
+      var isDone=rem.done;
       var isOver=!isDone&&rem.date&&rem.date<t;var isTod=!isDone&&rem.date===t;
       var dc=isOver?'roverdue':isTod?'rtoday':'';
       var dh=rem.date
@@ -7699,13 +7691,14 @@ load();updDates();rAll();
         :'<button class="rem-act-btn" style="color:var(--gold);border-color:rgba(245,207,85,.3)" onclick="remOpenEdit(\''+rem.id+'\')">'+
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Editar</button>'+
           '<button class="rem-act-btn rdel" onclick="remDelete(\''+rem.id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>Eliminar</button>';
-      return '<div class="rem-card rtype-'+type+(isDone?' rdone':'')+'" id="rcard-'+rem.id+'">'+
+      return '<div class="rem-card rtype-other'+(isDone?' rdone':'')+'" id="rcard-'+rem.id+'">'+
         '<div style="display:flex;align-items:flex-start;gap:10px">'+
         '<div class="rem-check '+(isDone?'rchecked':'')+'" onclick="remToggleDone(\''+rem.id+'\')">'+
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>'+
         '<div style="flex:1;min-width:0">'+
         '<div class="rem-title">'+esc(rem.title)+'</div>'+
-        '<div class="rem-meta"><div class="rem-type-badge rtype-'+type+'">'+RICONS[type]+' '+RLABELS[type]+'</div>'+dh+remAlertBadges(rem)+'</div>'+
+        '<div class="rem-meta">'+dh+remAlertBadges(rem)+'</div>'+
+        (rem.notes?'<div style="font-size:12px;color:var(--txt3);margin-top:5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;padding-left:32px">'+esc(rem.notes.length>120?rem.notes.slice(0,120)+'…':rem.notes)+'</div>':'')+
         '</div></div><div class="rem-actions">'+acts+'</div></div>';
     }
     var html='';
@@ -7742,6 +7735,7 @@ load();updDates();rAll();
   // ── FORM HELPERS ──────────────────────────────────────────────────
   function remReadForm(){
     var title=(document.getElementById('rf-title').value||'').trim();
+    var notes=(document.getElementById('rf-notes').value||'').trim();
     var hasDate=remHasDate_;
     var date=hasDate?(document.getElementById('rf-date').value||null):null;
     var time=hasDate?(document.getElementById('rf-time').value||null):null;
@@ -7757,18 +7751,15 @@ load();updDates();rAll();
     var sdH=sdOn?parseInt(document.getElementById('rf-sd-hours').value)||0:0;
     var sdM=sdOn?parseInt(document.getElementById('rf-sd-mins').value)||30:30;
     var sdInterval=sdH*60+sdM; if(sdInterval<1)sdInterval=30;
-    return{title:title,date:date,time:time,notify:notify,
+    return{title:title,notes:notes,date:date,time:time,notify:notify,
       daysBefore:daysBefore,sdCount:sdCount,sdInterval:sdInterval};
   }
 
   function remPopulateForm(rem){
     // Title
     var t=document.getElementById('rf-title');if(t)t.value=rem.title||'';
-    // Type
-    remSelType_=rem.type||'work';
-    document.querySelectorAll('#rf-type-grid .rem-type-opt').forEach(function(el){
-      el.classList.toggle('selected',el.dataset.rtype===remSelType_);
-    });
+    // Notes
+    var nt=document.getElementById('rf-notes');if(nt)nt.value=rem.notes||'';
     // Date mode
     remHasDate_=!!rem.date;
     remToggleDate(remHasDate_);
@@ -7803,12 +7794,12 @@ load();updDates();rAll();
     remFormMode='add';remEditId=null;
     var ft=document.getElementById('rem-form-title');if(ft)ft.textContent='Nuevo recordatorio';
     var sb=document.getElementById('rf-save-btn');if(sb)sb.textContent='Agregar recordatorio';
-    remSelType_='work';remHasDate_=true;
+    remHasDate_=true;
     var ti=document.getElementById('rf-title');if(ti)ti.value='';
+    var ni=document.getElementById('rf-notes');if(ni)ni.value='';
     var rd=document.getElementById('rf-date');if(rd)rd.value=remToday();
     var rt=document.getElementById('rf-time');if(rt)rt.value='';
     var rn=document.getElementById('rf-notif');if(rn){rn.checked=true;remUpdNotifToggle('rf-notif','rf-notif-track','rf-notif-thumb');}
-    document.querySelectorAll('#rf-type-grid .rem-type-opt').forEach(function(el){el.classList.toggle('selected',el.dataset.rtype==='work');});
     document.querySelectorAll('#rf-days-chips .rem-day-chip').forEach(function(el){el.classList.remove('active');});
     var rsd=document.getElementById('rf-sameday');if(rsd)rsd.checked=false;
     remToggleDate(true);remToggleSameday(false);
@@ -7834,7 +7825,7 @@ load();updDates();rAll();
 
     if(isEdit){
       var r=remData.find(function(x){return x.id===remEditId;});if(!r)return;
-      Object.assign(r,{title:f.title,type:remSelType_,date:f.date,time:f.time,
+      Object.assign(r,{title:f.title,notes:f.notes||'',date:f.date,time:f.time,
         notify:f.notify,daysBefore:f.daysBefore,sdCount:f.sdCount,sdInterval:f.sdInterval});
       remCancelTimers(remEditId);remScheduleOne(r);
       remRender();remCloseModal('rem-form-ov');
@@ -7843,7 +7834,7 @@ load();updDates();rAll();
     } else {
       var rem={
         id:Date.now().toString(36)+Math.random().toString(36).slice(2),
-        title:f.title,type:remSelType_,date:f.date,time:f.time,
+        title:f.title,notes:f.notes||'',date:f.date,time:f.time,
         notify:f.notify,daysBefore:f.daysBefore,sdCount:f.sdCount,sdInterval:f.sdInterval,
         done:false,doneAt:null,createdAt:new Date().toISOString()
       };
@@ -7862,12 +7853,7 @@ load();updDates();rAll();
   };
 
   // ── FORM CONTROLS ─────────────────────────────────────────────────
-  window.remSelType=function(t){
-    remSelType_=t;
-    document.querySelectorAll('#rf-type-grid .rem-type-opt').forEach(function(el){
-      el.classList.toggle('selected',el.dataset.rtype===t);
-    });
-  };
+
 
   window.remToggleDate=function(yes){
     remHasDate_=yes;
