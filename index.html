@@ -431,6 +431,87 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 .pin-key { width:72px;height:72px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);color:var(--txt);font-size:22px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-user-select:none;user-select:none;transition:background .1s; }
 .pin-key:active { background:var(--card2); }
 .pin-key.del { font-size:18px;color:var(--txt2); }
+
+/* ── RECORDATORIOS ─────────────────────────────────────────────────────── */
+.rem-tabs-wrap::-webkit-scrollbar{display:none}
+.rem-tab{
+  flex-shrink:0;display:flex;align-items:center;gap:5px;
+  padding:7px 12px;border-radius:20px;cursor:pointer;
+  border:1px solid var(--line);background:transparent;transition:all .18s;
+}
+.rem-tab.active{background:var(--gold);border-color:var(--gold);}
+.rem-tab-lbl{font-size:12px;font-weight:600;color:var(--txt3);}
+.rem-tab.active .rem-tab-lbl{color:#0a0c10;}
+.rem-tab-cnt{
+  font-size:10px;font-weight:700;background:var(--card3,#1f2436);
+  color:var(--txt3);padding:1px 5px;border-radius:8px;min-width:18px;text-align:center;
+}
+.rem-tab.active .rem-tab-cnt{background:rgba(0,0,0,0.2);color:#0a0c10;}
+.rem-sec-hdr{
+  display:flex;align-items:center;gap:8px;margin:18px 0 9px;
+}
+.rem-sec-hdr:first-child{margin-top:0}
+.rem-sec-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.rem-sec-dot.rdot-today{background:var(--gold)}
+.rem-sec-dot.rdot-future{background:var(--blue)}
+.rem-sec-dot.rdot-undecided{background:var(--purp)}
+.rem-sec-dot.rdot-done{background:var(--green)}
+.rem-sec-title{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--txt3)}
+.rem-sec-count{margin-left:auto;font-size:10px;font-weight:600;color:var(--txt3);background:var(--card2);padding:2px 7px;border-radius:8px}
+.rem-card{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 16px;margin-bottom:8px;position:relative;overflow:hidden;
+  animation:fadeUp .22s ease;
+}
+.rem-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:3px 0 0 3px}
+.rem-card.rtype-work::before{background:var(--blue)}
+.rem-card.rtype-personal::before{background:var(--purp)}
+.rem-card.rtype-health::before{background:var(--green)}
+.rem-card.rtype-finance::before{background:var(--gold)}
+.rem-card.rtype-other::before{background:var(--txt3)}
+.rem-card.rdone{opacity:.52}
+.rem-card.rdone .rem-title{text-decoration:line-through;color:var(--txt3)}
+.rem-check{
+  width:22px;height:22px;border-radius:50%;flex-shrink:0;
+  border:2px solid var(--line2);background:transparent;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  margin-top:1px;transition:all .2s;
+}
+.rem-check:hover{border-color:var(--green);background:rgba(66,224,144,.12)}
+.rem-check.rchecked{background:var(--green);border-color:var(--green)}
+.rem-check svg{width:11px;height:11px;color:#fff;opacity:0;transition:opacity .15s}
+.rem-check.rchecked svg{opacity:1}
+.rem-title{font-size:15px;font-weight:600;color:var(--txt);line-height:1.3;margin-bottom:5px;word-break:break-word}
+.rem-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.rem-type-badge{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:6px}
+.rem-type-badge.rtype-work{background:rgba(106,170,255,.12);color:var(--blue)}
+.rem-type-badge.rtype-personal{background:rgba(181,157,255,.12);color:var(--purp)}
+.rem-type-badge.rtype-health{background:rgba(66,224,144,.12);color:var(--green)}
+.rem-type-badge.rtype-finance{background:rgba(245,207,85,.12);color:var(--gold)}
+.rem-type-badge.rtype-other{background:var(--card2);color:var(--txt3)}
+.rem-date-badge{font-size:11px;color:var(--txt3);display:flex;align-items:center;gap:3px}
+.rem-date-badge.roverdue{color:var(--red)}
+.rem-date-badge.rtoday{color:var(--gold)}
+.rem-notif-badge{font-size:10px;color:var(--gold);background:rgba(245,207,85,.1);padding:2px 6px;border-radius:6px;display:flex;align-items:center;gap:3px}
+.rem-actions{
+  display:flex;align-items:center;gap:6px;margin-left:32px;
+  margin-top:10px;border-top:1px solid var(--line);padding-top:10px;
+}
+.rem-act-btn{
+  display:flex;align-items:center;gap:4px;padding:5px 10px;
+  border-radius:8px;cursor:pointer;font-family:inherit;
+  font-size:11px;font-weight:600;border:1px solid var(--line);background:transparent;transition:all .15s;
+}
+.rem-act-btn.rresched{color:var(--blue)}
+.rem-act-btn.rresched:hover{background:rgba(106,170,255,.1);border-color:var(--blue)}
+.rem-act-btn.rdel{color:var(--red)}
+.rem-act-btn.rdel:hover{background:rgba(255,107,107,.1);border-color:var(--red)}
+.rem-type-opt{
+  text-align:center;padding:9px 4px;border-radius:12px;
+  border:1.5px solid var(--line);background:var(--card2);cursor:pointer;transition:all .18s;
+}
+.rem-type-opt:hover{border-color:var(--line2)}
+.rem-type-opt.selected{border-color:var(--gold);background:rgba(245,207,85,.08)}
 </style>
 
 <link rel="manifest" href="data:application/json,{
@@ -522,6 +603,11 @@ if('serviceWorker' in navigator){
     <button class="ntab" id="tab-config" onclick="navigate('config')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       <span>Config</span>
+    </button>
+    <button class="ntab" id="tab-recordatorios" onclick="navigate('recordatorios')" style="position:relative">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span>Alertas</span>
+      <div id="rem-nav-dot" style="display:none;position:absolute;top:6px;right:calc(50% - 12px);width:7px;height:7px;border-radius:50%;background:var(--gold);border:2px solid var(--bg)"></div>
     </button>
     <div style="flex-shrink:0;background:transparent;height:env(safe-area-inset-bottom,0px);min-height:0"></div>
   </nav>
@@ -838,10 +924,148 @@ if('serviceWorker' in navigator){
 
     </div>
 
+
+    <!-- RECORDATORIOS -->
+    <div id="s-recordatorios" class="screen">
+      <!-- Header info banner (notification permission) -->
+      <div id="rem-perm-banner" style="display:none;background:rgba(245,207,85,0.08);border:1px solid rgba(245,207,85,0.2);border-radius:12px;padding:12px 14px;margin-bottom:14px;display:none;align-items:center;gap:10px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" style="width:20px;height:20px;flex-shrink:0"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:700;color:var(--gold);margin-bottom:1px">Activa las notificaciones push</div>
+          <div style="font-size:11px;color:var(--txt3)">Recibe alertas aunque la app esté cerrada</div>
+        </div>
+        <button onclick="remRequestNotif()" style="padding:6px 12px;border-radius:8px;border:none;background:var(--gold);color:#000;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">Activar</button>
+      </div>
+
+      <!-- Filter tabs -->
+      <div style="display:flex;gap:5px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;margin-bottom:12px" class="rem-tabs-wrap">
+        <div class="rem-tab active" data-rtab="all" onclick="remSetTab('all')"><span class="rem-tab-lbl">Todos</span><span class="rem-tab-cnt" id="rcnt-all">0</span></div>
+        <div class="rem-tab" data-rtab="today" onclick="remSetTab('today')"><span class="rem-tab-lbl">Hoy</span><span class="rem-tab-cnt" id="rcnt-today">0</span></div>
+        <div class="rem-tab" data-rtab="upcoming" onclick="remSetTab('upcoming')"><span class="rem-tab-lbl">Próximos</span><span class="rem-tab-cnt" id="rcnt-upcoming">0</span></div>
+        <div class="rem-tab" data-rtab="undecided" onclick="remSetTab('undecided')"><span class="rem-tab-lbl">Por decidir</span><span class="rem-tab-cnt" id="rcnt-undecided">0</span></div>
+        <div class="rem-tab" data-rtab="done" onclick="remSetTab('done')"><span class="rem-tab-lbl">Realizados</span><span class="rem-tab-cnt" id="rcnt-done">0</span></div>
+      </div>
+
+      <!-- Add button -->
+      <button onclick="remOpenAdd()" style="width:100%;padding:13px;border-radius:12px;border:none;background:var(--gold);color:#000;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:16px;letter-spacing:0.02em">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nuevo recordatorio
+      </button>
+
+      <!-- List -->
+      <div id="rem-list"></div>
+    </div>
+
   </div><!-- /scroll -->
 
   </div><!-- /main-content -->
 </div><!-- /app -->
+
+<!-- RECORDATORIOS MODALS -->
+<div class="sov" id="rem-add-ov" onclick="remOvClick(event,'rem-add-ov')">
+  <div class="sheet">
+    <div class="shandle"></div>
+    <div class="shdr">
+      <div class="shtitle">Nuevo recordatorio</div>
+      <button class="shclose" onclick="remCloseModal('rem-add-ov')">&times;</button>
+    </div>
+    <div class="shbody">
+      <div class="fg">
+        <label class="fl">Título</label>
+        <input class="fi" id="radd-title" type="text" placeholder="¿Qué necesitas recordar?" maxlength="120" autocomplete="off">
+      </div>
+      <div class="fg">
+        <label class="fl">Tipo</label>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px" id="radd-type-grid">
+          <div class="rem-type-opt selected" data-rtype="work" onclick="remSelType('work')"><div style="font-size:18px">💼</div><div style="font-size:10px;font-weight:600;color:var(--txt3);margin-top:2px">Trabajo</div></div>
+          <div class="rem-type-opt" data-rtype="personal" onclick="remSelType('personal')"><div style="font-size:18px">⭐</div><div style="font-size:10px;font-weight:600;color:var(--txt3);margin-top:2px">Personal</div></div>
+          <div class="rem-type-opt" data-rtype="health" onclick="remSelType('health')"><div style="font-size:18px">🏃</div><div style="font-size:10px;font-weight:600;color:var(--txt3);margin-top:2px">Salud</div></div>
+          <div class="rem-type-opt" data-rtype="finance" onclick="remSelType('finance')"><div style="font-size:18px">💰</div><div style="font-size:10px;font-weight:600;color:var(--txt3);margin-top:2px">Finanzas</div></div>
+          <div class="rem-type-opt" data-rtype="other" onclick="remSelType('other')"><div style="font-size:18px">📌</div><div style="font-size:10px;font-weight:600;color:var(--txt3);margin-top:2px">Otro</div></div>
+        </div>
+      </div>
+      <div class="fg">
+        <label class="fl">¿Tiene fecha?</label>
+        <div style="display:flex;gap:8px">
+          <div id="radd-btn-date" class="rem-type-opt selected" style="flex:1;padding:10px" onclick="remToggleDate(true)"><div style="font-size:18px">📅</div><div style="font-size:11px;font-weight:600;color:var(--txt3);margin-top:2px">Con fecha</div></div>
+          <div id="radd-btn-nodate" class="rem-type-opt" style="flex:1;padding:10px" onclick="remToggleDate(false)"><div style="font-size:18px">❓</div><div style="font-size:11px;font-weight:600;color:var(--txt3);margin-top:2px">Por decidir</div></div>
+        </div>
+      </div>
+      <div id="radd-date-fields">
+        <div class="frow" style="margin-bottom:14px">
+          <div class="fg" style="margin:0">
+            <label class="fl">Fecha</label>
+            <input class="fi" id="radd-date" type="date" style="color-scheme:dark">
+          </div>
+          <div class="fg" style="margin:0">
+            <label class="fl">Hora (opc.)</label>
+            <input class="fi" id="radd-time" type="time" style="color-scheme:dark">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px">
+          <div style="width:32px;height:32px;border-radius:9px;background:rgba(245,207,85,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" style="width:15px;height:15px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:var(--txt)">Notificación push</div>
+            <div style="font-size:11px;color:var(--txt3)" id="radd-notif-sub">Te avisaremos a la hora indicada</div>
+          </div>
+          <label style="position:relative;width:42px;height:24px;flex-shrink:0">
+            <input type="checkbox" id="radd-notif" checked onchange="remUpdNotifSub()" style="opacity:0;width:0;height:0;position:absolute">
+            <div id="radd-notif-track" style="position:absolute;inset:0;border-radius:24px;background:var(--gold);cursor:pointer;transition:background .2s">
+              <div id="radd-notif-thumb" style="position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;top:3px;left:21px;transition:transform .2s"></div>
+            </div>
+          </label>
+        </div>
+      </div>
+      <div class="brow" style="margin-top:0">
+        <button class="bfull bgold" onclick="remAddSave()">Agregar recordatorio</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sov" id="rem-resched-ov" onclick="remOvClick(event,'rem-resched-ov')">
+  <div class="sheet">
+    <div class="shandle"></div>
+    <div class="shdr">
+      <div class="shtitle">Reagendar</div>
+      <button class="shclose" onclick="remCloseModal('rem-resched-ov')">&times;</button>
+    </div>
+    <div class="shbody">
+      <input type="hidden" id="rresched-id">
+      <div class="frow" style="margin-bottom:14px">
+        <div class="fg" style="margin:0">
+          <label class="fl">Nueva fecha</label>
+          <input class="fi" id="rresched-date" type="date" style="color-scheme:dark">
+        </div>
+        <div class="fg" style="margin:0">
+          <label class="fl">Hora (opc.)</label>
+          <input class="fi" id="rresched-time" type="time" style="color-scheme:dark">
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px">
+        <div style="width:32px;height:32px;border-radius:9px;background:rgba(245,207,85,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" style="width:15px;height:15px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;color:var(--txt)">Reactivar notificación</div>
+          <div style="font-size:11px;color:var(--txt3)">Alerta para la nueva fecha</div>
+        </div>
+        <label style="position:relative;width:42px;height:24px;flex-shrink:0">
+          <input type="checkbox" id="rresched-notif" checked style="opacity:0;width:0;height:0;position:absolute">
+          <div id="rresched-notif-track" style="position:absolute;inset:0;border-radius:24px;background:var(--gold);cursor:pointer;transition:background .2s">
+            <div style="position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;top:3px;left:21px;transition:transform .2s"></div>
+          </div>
+        </label>
+      </div>
+      <div class="brow" style="margin-top:0">
+        <button class="bfull bghost" onclick="remCloseModal('rem-resched-ov')">Cancelar</button>
+        <button class="bfull bgold" onclick="remReschedSave()">Confirmar fecha</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- SHEET ACTIVIDAD -->
 <div class="sov" id="sov-act">
@@ -1792,7 +2016,8 @@ function navigate(p){
     }).catch(function(){});
   }
   // Hide date navigator on screens where it's not relevant
-  const hideTopCal=['personal','nomina','config'];
+  const hideTopCal=['personal','nomina','config','recordatorios'];
+  if(p==='recordatorios'){ setTimeout(function(){ if(window._remRender)_remRender(); if(window._remUpdateNotifUI)_remUpdateNotifUI(); },10); }
   const db=document.getElementById('datebar');
   if(db) db.style.display=hideTopCal.includes(p)?'none':'flex';
   const cb=document.getElementById('cal-btn');
@@ -7104,6 +7329,379 @@ window.addEventListener('pagehide',function(){
 // antes de que load() e initAuth() la encuentren y entren como el usuario equivocado
 checkInviteParam();
 load();updDates();rAll();
+
+// ═══════════════════════════════════════════════════════════════════
+// RECORDATORIOS MODULE
+// ═══════════════════════════════════════════════════════════════════
+(function(){
+  // ── STATE ─────────────────────────────────────────────────────────
+  var REM_KEY='imza_rem_'+location.hostname;
+  var remData=[];
+  var remTab='all';
+  var remSelType_='work';
+  var remHasDate_=true;
+  var remTimers={};
+  var remSwReg=null;
+
+  function remSave(){ sessionStorage.setItem(REM_KEY,JSON.stringify(remData)); }
+  function remLoad(){ remData=JSON.parse(sessionStorage.getItem(REM_KEY)||'[]'); }
+  remLoad();
+
+  // ── SERVICE WORKER (inline blob) ──────────────────────────────────
+  function remInitSW(){
+    if(!('serviceWorker' in navigator)) return;
+    var swSrc=[
+      "self.addEventListener('install',function(e){self.skipWaiting();});",
+      "self.addEventListener('activate',function(e){e.waitUntil(clients.claim());});",
+      "self.addEventListener('notificationclick',function(e){",
+      "  e.notification.close();",
+      "  e.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(function(list){",
+      "    for(var i=0;i<list.length;i++){if('focus' in list[i]){list[i].focus();return;}}",
+      "    if(clients.openWindow)clients.openWindow('./');",
+      "  }));",
+      "});",
+      "self.addEventListener('push',function(e){",
+      "  var d=e.data?e.data.json():{title:'Recordatorio',body:''};",
+      "  e.waitUntil(self.registration.showNotification(d.title,{body:d.body,vibrate:[200,100,200],tag:d.tag||'rem',renotify:true}));",
+      "});"
+    ].join('\n');
+    try{
+      var blob=new Blob([swSrc],{type:'application/javascript'});
+      var url=URL.createObjectURL(blob);
+      navigator.serviceWorker.register(url,{scope:'./'}).then(function(reg){
+        remSwReg=reg;
+      }).catch(function(){
+        navigator.serviceWorker.getRegistration().then(function(reg){ remSwReg=reg||null; });
+      });
+    }catch(e){}
+  }
+
+  // ── NOTIFICATIONS ─────────────────────────────────────────────────
+  function remGetPerm(){ return ('Notification' in window)?Notification.permission:'denied'; }
+
+  window.remRequestNotif=function(){
+    if(!('Notification' in window)){ toast('Tu navegador no soporta notificaciones','err'); return; }
+    Notification.requestPermission().then(function(p){
+      remUpdateNotifUI();
+      if(p==='granted'){
+        toast('🔔 Notificaciones activadas','ok');
+        document.getElementById('rem-perm-banner').style.display='none';
+        remData.filter(function(r){return !r.done&&r.notify&&r.date;}).forEach(remSchedule);
+      } else {
+        toast('Notificaciones bloqueadas','err');
+      }
+    });
+  };
+
+  function remSchedule(rem){
+    if(!rem.date||!rem.notify||rem.done) return;
+    if(remTimers[rem.id]){ clearTimeout(remTimers[rem.id]); delete remTimers[rem.id]; }
+    if(remGetPerm()!=='granted') return;
+    var ds=rem.date+(rem.time?'T'+rem.time:'T09:00');
+    var fire=new Date(ds).getTime()-Date.now();
+    if(fire<=0) return;
+    remTimers[rem.id]=setTimeout(function(){
+      delete remTimers[rem.id];
+      var title='⏰ '+rem.title;
+      var body=rem.time?'Hoy a las '+rem.time:'Hoy';
+      if(remSwReg&&remSwReg.showNotification){
+        remSwReg.showNotification(title,{body:body,vibrate:[200,100,200],tag:'rem-'+rem.id,renotify:true});
+      } else {
+        try{ new Notification(title,{body:body,tag:'rem-'+rem.id}); }catch(e){}
+      }
+    }, fire);
+  }
+
+  function remCancelNotif(id){ if(remTimers[id]){ clearTimeout(remTimers[id]); delete remTimers[id]; } }
+
+  function remScheduleAll(){
+    remData.filter(function(r){return !r.done&&r.notify&&r.date;}).forEach(remSchedule);
+  }
+
+  function remUpdateNotifUI(){
+    var p=remGetPerm();
+    var dot=document.getElementById('rem-nav-dot');
+    var banner=document.getElementById('rem-perm-banner');
+    if(!dot||!banner) return;
+    if(p==='granted'){
+      if(dot) dot.style.display='block';
+      banner.style.display='none';
+    } else if(p==='denied'){
+      if(dot) dot.style.display='none';
+      banner.style.display='none';
+    } else {
+      if(dot) dot.style.display='none';
+      var hasDated=remData.some(function(r){return !r.done&&r.date;});
+      banner.style.display=hasDated?'flex':'none';
+    }
+  }
+
+  // ── DATE UTILS ────────────────────────────────────────────────────
+  function remToday(){
+    var d=new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  function remFmtDate(str){
+    if(!str) return '';
+    var parts=str.split('-').map(Number);
+    var dt=new Date(parts[0],parts[1]-1,parts[2]);
+    var today=new Date(); today.setHours(0,0,0,0);
+    var tom=new Date(today); tom.setDate(tom.getDate()+1);
+    if(dt.getTime()===today.getTime()) return 'Hoy';
+    if(dt.getTime()===tom.getTime()) return 'Mañana';
+    var days=['dom','lun','mar','mié','jue','vie','sáb'];
+    var months=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    return days[dt.getDay()]+' '+parts[2]+' '+months[parts[1]-1];
+  }
+
+  // ── TABS / FILTERING ──────────────────────────────────────────────
+  window.remSetTab=function(tab){
+    remTab=tab;
+    document.querySelectorAll('.rem-tab').forEach(function(el){
+      el.classList.toggle('active',el.dataset.rtab===tab);
+    });
+    remRender();
+  };
+
+  function remGetFiltered(){
+    var t=remToday();
+    switch(remTab){
+      case 'today':    return remData.filter(function(r){return !r.done&&r.date===t;});
+      case 'upcoming': return remData.filter(function(r){return !r.done&&r.date&&r.date>t;});
+      case 'undecided':return remData.filter(function(r){return !r.done&&!r.date;});
+      case 'done':     return remData.filter(function(r){return r.done;});
+      default:         return remData.filter(function(r){return !r.done;});
+    }
+  }
+
+  function remUpdateCounts(){
+    var t=remToday();
+    var all=remData.filter(function(r){return !r.done;});
+    function sc(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
+    sc('rcnt-all',all.length);
+    sc('rcnt-today',remData.filter(function(r){return !r.done&&r.date===t;}).length);
+    sc('rcnt-upcoming',remData.filter(function(r){return !r.done&&r.date&&r.date>t;}).length);
+    sc('rcnt-undecided',remData.filter(function(r){return !r.done&&!r.date;}).length);
+    sc('rcnt-done',remData.filter(function(r){return r.done;}).length);
+    // Nav badge
+    var dot=document.getElementById('rem-nav-dot');
+    if(dot&&remGetPerm()==='granted') dot.style.display=all.length?'block':'none';
+  }
+
+  // ── RENDER ────────────────────────────────────────────────────────
+  var REM_TYPE_ICONS={work:'💼',personal:'⭐',health:'🏃',finance:'💰',other:'📌'};
+  var REM_TYPE_LABELS={work:'Trabajo',personal:'Personal',health:'Salud',finance:'Finanzas',other:'Otro'};
+
+  function remRender(){
+    remUpdateCounts();
+    var container=document.getElementById('rem-list');
+    if(!container) return;
+    var filtered=remGetFiltered();
+    var t=remToday();
+
+    if(!filtered.length){
+      var msgs={all:['🔔','Sin recordatorios activos','Crea uno con el botón de arriba'],
+        today:['☀️','Sin recordatorios para hoy','Disfruta o agrega uno'],
+        upcoming:['📅','Sin próximos recordatorios','Agrega uno con fecha futura'],
+        undecided:['❓','Sin recordatorios por decidir','Agrega uno sin fecha definida'],
+        done:['✅','Nada realizado aún','Completa tus recordatorios']};
+      var m=msgs[remTab]||msgs.all;
+      container.innerHTML='<div style="text-align:center;padding:40px 20px"><div style="font-size:36px;margin-bottom:10px">'+m[0]+'</div><div style="font-size:15px;font-weight:700;color:var(--txt2);margin-bottom:5px">'+m[1]+'</div><div style="font-size:13px;color:var(--txt3)">'+m[2]+'</div></div>';
+      return;
+    }
+
+    var html='';
+    function secHdr(dot,label,count){
+      return '<div class="rem-sec-hdr"><div class="rem-sec-dot rdot-'+dot+'"></div><div class="rem-sec-title">'+label+'</div><div class="rem-sec-count">'+count+'</div></div>';
+    }
+    function cardHtml(rem){
+      var cls=rem.done?'rdone':'';
+      var dateHtml='';
+      if(rem.date){
+        var isOver=!rem.done&&rem.date<t;
+        var isTod=!rem.done&&rem.date===t;
+        var dc=isOver?'roverdue':isTod?'rtoday':'';
+        var lbl=remFmtDate(rem.date)+(rem.time?' · '+rem.time:'');
+        dateHtml='<div class="rem-date-badge '+dc+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'+lbl+'</div>';
+      } else {
+        dateHtml='<div class="rem-date-badge" style="color:var(--purp)">❓ Por decidir</div>';
+      }
+      var notifBadge=rem.notify&&rem.date&&!rem.done?'<div class="rem-notif-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Notif.</div>':'';
+      var type=rem.type||'other';
+      var acts=rem.done
+        ?'<button class="rem-act-btn rdel" onclick="remDelete(\''+rem.id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>Eliminar</button>'
+        :'<button class="rem-act-btn rresched" onclick="remOpenResched(\''+rem.id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>Reagendar</button><button class="rem-act-btn rdel" onclick="remDelete(\''+rem.id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>Eliminar</button>';
+      return '<div class="rem-card rtype-'+type+' '+cls+'" id="rcard-'+rem.id+'">'+
+        '<div style="display:flex;align-items:flex-start;gap:10px">'+
+        '<div class="rem-check '+(rem.done?'rchecked':'')+'" onclick="remToggleDone(\''+rem.id+'\')">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>'+
+        '<div style="flex:1;min-width:0">'+
+        '<div class="rem-title">'+rem.title.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>'+
+        '<div class="rem-meta">'+
+        '<div class="rem-type-badge rtype-'+type+'">'+REM_TYPE_ICONS[type]+' '+REM_TYPE_LABELS[type]+'</div>'+
+        dateHtml+notifBadge+
+        '</div></div></div>'+
+        '<div class="rem-actions">'+acts+'</div></div>';
+    }
+
+    if(remTab==='all'){
+      var overdue=filtered.filter(function(r){return r.date&&r.date<t;});
+      var todayR=filtered.filter(function(r){return r.date===t;});
+      var future=filtered.filter(function(r){return r.date&&r.date>t;});
+      var undec=filtered.filter(function(r){return !r.date;});
+      if(overdue.length||todayR.length){ html+=secHdr('today','Hoy',overdue.length+todayR.length); overdue.concat(todayR).forEach(function(r){html+=cardHtml(r);}); }
+      if(future.length){ html+=secHdr('future','Próximos',future.length); future.forEach(function(r){html+=cardHtml(r);}); }
+      if(undec.length){ html+=secHdr('undecided','Por decidir',undec.length); undec.forEach(function(r){html+=cardHtml(r);}); }
+    } else {
+      var dotMap={today:'today',upcoming:'future',undecided:'undecided',done:'done'};
+      var lblMap={today:'Hoy',upcoming:'Próximos',undecided:'Por decidir',done:'Realizados'};
+      html+=secHdr(dotMap[remTab]||'today',lblMap[remTab]||'',filtered.length);
+      filtered.forEach(function(r){html+=cardHtml(r);});
+    }
+    container.innerHTML=html;
+    remUpdateNotifUI();
+  }
+
+  // ── ACTIONS ───────────────────────────────────────────────────────
+  window.remToggleDone=function(id){
+    var r=remData.find(function(x){return x.id===id;}); if(!r) return;
+    r.done=!r.done; r.doneAt=r.done?new Date().toISOString():null;
+    if(r.done) remCancelNotif(id); else if(r.notify&&r.date) remSchedule(r);
+    remSave(); remRender();
+    toast(r.done?'✅ Marcado como realizado':'↩ Desmarcado','ok');
+  };
+  window.remDelete=function(id){
+    remCancelNotif(id);
+    remData=remData.filter(function(x){return x.id!==id;});
+    remSave(); remRender();
+    toast('🗑 Recordatorio eliminado','ok');
+  };
+
+  // ── ADD MODAL ─────────────────────────────────────────────────────
+  window.remOpenAdd=function(){
+    remSelType_='work';
+    remHasDate_=true;
+    var ti=document.getElementById('radd-title'); if(ti) ti.value='';
+    var d=document.getElementById('radd-date'); if(d) d.value=remToday();
+    var tm=document.getElementById('radd-time'); if(tm) tm.value='';
+    var n=document.getElementById('radd-notif'); if(n) n.checked=true;
+    document.querySelectorAll('#radd-type-grid .rem-type-opt').forEach(function(el){ el.classList.remove('selected'); });
+    var wo=document.querySelector('[data-rtype="work"]'); if(wo) wo.classList.add('selected');
+    remToggleDate(true);
+    remUpdNotifSub();
+    remOpenModal('rem-add-ov');
+    setTimeout(function(){ var t=document.getElementById('radd-title'); if(t) t.focus(); },350);
+  };
+
+  window.remSelType=function(t){
+    remSelType_=t;
+    document.querySelectorAll('#radd-type-grid .rem-type-opt').forEach(function(el){ el.classList.toggle('selected',el.dataset.rtype===t); });
+  };
+
+  window.remToggleDate=function(yes){
+    remHasDate_=yes;
+    var df=document.getElementById('radd-date-fields'); if(df) df.style.display=yes?'block':'none';
+    var bd=document.getElementById('radd-btn-date'); if(bd) bd.classList.toggle('selected',yes);
+    var bn=document.getElementById('radd-btn-nodate'); if(bn) bn.classList.toggle('selected',!yes);
+  };
+
+  window.remUpdNotifSub=function(){
+    var on=document.getElementById('radd-notif');
+    var sub=document.getElementById('radd-notif-sub');
+    var track=document.getElementById('radd-notif-track');
+    var thumb=document.getElementById('radd-notif-thumb');
+    if(!on||!sub) return;
+    if(on.checked){
+      sub.textContent='Te avisaremos a la hora indicada';
+      if(track) track.style.background='var(--gold)';
+      if(thumb) thumb.style.transform='translateX(0)';
+    } else {
+      sub.textContent='Sin notificación para este recordatorio';
+      if(track) track.style.background='var(--line2)';
+      if(thumb) thumb.style.transform='translateX(-18px)';
+    }
+  };
+
+  window.remAddSave=function(){
+    var title=(document.getElementById('radd-title').value||'').trim();
+    if(!title){ toast('Escribe un título','err'); return; }
+    var date=null,time=null;
+    if(remHasDate_){
+      date=document.getElementById('radd-date').value||null;
+      time=document.getElementById('radd-time').value||null;
+    }
+    var notif=remHasDate_&&document.getElementById('radd-notif').checked;
+    var rem={
+      id:Date.now().toString(36)+Math.random().toString(36).slice(2),
+      title:title,type:remSelType_,date:date,time:time,
+      notify:notif,done:false,doneAt:null,createdAt:new Date().toISOString()
+    };
+    remData.unshift(rem);
+    remSave();
+    remCloseModal('rem-add-ov');
+    if(notif&&date){
+      if(remGetPerm()==='granted'){
+        remSchedule(rem);
+        toast('✅ Recordatorio con notificación creado','ok');
+      } else if(remGetPerm()==='default'){
+        toast('Creado · activa notificaciones para alertas','ok');
+        setTimeout(window.remRequestNotif,1000);
+      } else {
+        toast('Creado (notificaciones bloqueadas)','ok');
+      }
+    } else {
+      toast('✅ Recordatorio creado','ok');
+    }
+    remRender();
+    remUpdateNotifUI();
+  };
+
+  // ── RESCHEDULE ────────────────────────────────────────────────────
+  window.remOpenResched=function(id){
+    var r=remData.find(function(x){return x.id===id;}); if(!r) return;
+    document.getElementById('rresched-id').value=id;
+    document.getElementById('rresched-date').value=r.date||remToday();
+    document.getElementById('rresched-time').value=r.time||'';
+    document.getElementById('rresched-notif').checked=!!r.notify;
+    remOpenModal('rem-resched-ov');
+  };
+
+  window.remReschedSave=function(){
+    var id=document.getElementById('rresched-id').value;
+    var r=remData.find(function(x){return x.id===id;}); if(!r) return;
+    r.date=document.getElementById('rresched-date').value||null;
+    r.time=document.getElementById('rresched-time').value||null;
+    r.notify=document.getElementById('rresched-notif').checked;
+    remCancelNotif(id);
+    if(r.notify&&r.date) remSchedule(r);
+    remSave();
+    remCloseModal('rem-resched-ov');
+    remRender();
+    toast('📅 Recordatorio reagendado','ok');
+  };
+
+  // ── MODAL HELPERS ─────────────────────────────────────────────────
+  window.remOpenModal=function(id){ document.getElementById(id).classList.add('open'); };
+  window.remCloseModal=function(id){ document.getElementById(id).classList.remove('open'); };
+  window.remOvClick=function(e,id){ if(e.target.id===id) remCloseModal(id); };
+
+  // ── KEYBOARD ──────────────────────────────────────────────────────
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){ remCloseModal('rem-add-ov'); remCloseModal('rem-resched-ov'); }
+  });
+
+  // ── INIT ──────────────────────────────────────────────────────────
+  remInitSW();
+  remUpdateCounts();
+  remUpdateNotifUI();
+  remScheduleAll();
+
+  // Expose render for navigate() hook
+  window._remRender=remRender;
+  window._remUpdateNotifUI=remUpdateNotifUI;
+
+})();
+
 // Load custom app name
 (function(){
   const n=localStorage.getItem('cp4_appname')||'IMZA';
