@@ -7582,7 +7582,9 @@ load();updDates();rAll();
     var email=remEmail();
     if(!email){ remRender(); if(cb) cb(); return; }
     if(remLoading){ if(cb) cb(); return; }
-    remLoading=true; remShowLoading(true);
+    remLoading=true;
+    // Solo mostrar spinner si no hay datos aún (primera carga)
+    if(remData.length===0) remShowLoading(true);
     remSbFetch('/rest/v1/'+TABLE+'?user_email=eq.'+encodeURIComponent(email)+'&order=created_at.desc&limit=500')
       .then(function(rows){
         remLoading=false; remShowLoading(false); remLastFetch=Date.now(); remReady=true;
@@ -7962,7 +7964,13 @@ load();updDates();rAll();
 
   // ── PUBLIC API (called by navigate hook) ──────────────────────────
   window._remRender=function(){
-    try{ if(!remReady) remFetch(); else remRender(); }catch(e){}
+    try{
+      // Render existing data immediately (no flash)
+      if(remData.length>0) remRender();
+      // Then refresh from cloud silently in background
+      if(remEmail()) remFetch();
+      else if(!remReady) remFetch();
+    }catch(e){}
   };
   window._remFetch=function(){
     try{ remFetch(); }catch(e){}
