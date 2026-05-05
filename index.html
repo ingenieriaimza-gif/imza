@@ -868,6 +868,7 @@ if('serviceWorker' in navigator){
         <input type="file" id="import-file" accept=".json" style="display:none" onchange="handleImport(this)">
       </div>
 
+
       <!-- SNAPSHOTS (admin only) -->
       <div id="snapshots-wrap" style="background:var(--card);border:1px solid var(--line);border-radius:var(--r2);margin-bottom:12px;overflow:hidden">
         <!-- Header colapsable -->
@@ -5989,6 +5990,15 @@ function getSbClient(){
 function enterApp(found, sessionData){
   _currentUser=found;
   localStorage.setItem('cp4_session',JSON.stringify(sessionData));
+  // Renovar token proactivamente en cada entrada (silencioso, no bloquea)
+  var hasRefresh=!!localStorage.getItem('cp4_refresh_token');
+  if(hasRefresh){
+    setTimeout(function(){
+      refreshAuthToken().then(function(t){
+        if(t) console.log('[Auth] Token renovado al entrar');
+      }).catch(function(){});
+    }, 2000);
+  }
   // Guardar email para que futuros arranques sin sesión local sepan qué usuario buscar
   if(found&&found.email) localStorage.setItem('cp4_last_email',found.email.toLowerCase());
   var splash=document.getElementById('splash-screen');
@@ -6104,8 +6114,8 @@ function initAuth(){
         var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
         var hasToken=!!localStorage.getItem('cp4_auth_token');
         var hasRefresh=!!localStorage.getItem('cp4_refresh_token');
-        // needsRefresh: sin token, o token expira en menos de 10 minutos
-        var needsRefresh=!hasToken||(tokenExp>0&&Date.now()>tokenExp-10*60*1000);
+        // needsRefresh: sin token, o token expira en menos de 12 horas
+        var needsRefresh=!hasToken||(tokenExp>0&&Date.now()>tokenExp-12*60*60*1000);
 
         function _enterWithSession(){
           // Cargar usuarios frescos en background sin bloquear entrada
@@ -6133,32 +6143,13 @@ function initAuth(){
           enterApp(sessionData, sessionData);
         }
 
+        // Siempre entrar si hay datos de sesión válidos.
+        // El token JWT se renueva en background sin bloquear ni forzar login.
+        // Solo se cierra sesión si el admin elimina al usuario de S.users.
         if(needsRefresh&&hasRefresh){
-          refreshAuthToken().then(function(newToken){
-            if(newToken){
-              _enterWithSession();
-            } else {
-              // Refresh falló — si hay token aún válido, entrar igual
-              // Solo pedir login si no hay absolutamente ningún token
-              if(hasToken&&tokenExp>Date.now()){
-                _enterWithSession();
-              } else {
-                localStorage.removeItem('cp4_auth_token');
-                localStorage.removeItem('cp4_refresh_token');
-                localStorage.removeItem('cp4_session');
-                showLoginScreen();
-              }
-            }
-          }).catch(function(){
-            // Error de red — entrar con lo que tenemos
-            _enterWithSession();
-          });
-        } else if(!hasToken&&!hasRefresh){
-          // Sin token ni refresh — pedir login
-          showLoginScreen();
-        } else {
-          _enterWithSession();
+          refreshAuthToken().catch(function(){}); // silencioso, no bloquea
         }
+        _enterWithSession();
         return;
       }
     }catch(e){}
@@ -8057,6 +8048,7 @@ document.addEventListener('keydown',function(){ window._lastInteraction=Date.now
     if(h2) h2.style.display='block';
   }
 })();
+
 </script>
 </body>
 </html>
