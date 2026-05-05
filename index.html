@@ -7450,17 +7450,16 @@ function inicioRenderAlertas(){
   if(!container) return;
   try{
     var remData=window._remData||[];
-    if(!window._remRender){ container.innerHTML=''; return; }
+    if(!window._remCardHtml){ container.innerHTML=''; return; }
     var t=(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
-    // Show active reminders: overdue + today + upcoming (max 5)
-    var active=(remData).filter(function(r){return !r.done;})
+
+    var active=remData.filter(function(r){return !r.done;})
       .sort(function(a,b){
-        // overdue first, then today, then future, then undecided
         var ord={overdue:0,today:1,future:2,undecided:3};
-        function urg(r){ return !r.date?'undecided':r.date<t?'overdue':r.date===t?'today':'future'; }
+        function urg(r){return !r.date?'undecided':r.date<t?'overdue':r.date===t?'today':'future';}
         return (ord[urg(a)]||3)-(ord[urg(b)]||3);
       })
-      .slice(0,5);
+      .slice(0,10);
 
     if(!active.length){
       container.innerHTML='<div style="text-align:center;padding:28px 16px;color:var(--txt3);font-size:13px">'+
@@ -7470,52 +7469,11 @@ function inicioRenderAlertas(){
       return;
     }
 
-    function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-    function fmtDate(str){
-      if(!str) return '❓ Por decidir';
-      var p=str.split('-').map(Number);var dt=new Date(p[0],p[1]-1,p[2]);
-      var today=new Date();today.setHours(0,0,0,0);
-      var tom=new Date(today);tom.setDate(tom.getDate()+1);
-      if(dt.getTime()===today.getTime()) return 'Hoy';
-      if(dt.getTime()===tom.getTime()) return 'Mañana';
-      var days=['dom','lun','mar','mié','jue','vie','sáb'];
-      var mons=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-      return days[dt.getDay()]+' '+p[2]+' '+mons[p[1]-1];
-    }
+    var html=active.map(function(rem){ return window._remCardHtml(rem,t); }).join('');
 
-    var calSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:11px;height:11px;flex-shrink:0"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
-    var html=active.map(function(rem){
-      var urg=!rem.date?'undecided':rem.date<t?'overdue':rem.date===t?'today':'future';
-      var urgColors={
-        overdue:'rgba(255,107,107,.18)',today:'rgba(245,207,85,.15)',
-        future:'rgba(106,170,255,.12)',undecided:'rgba(181,157,255,.1)'
-      };
-      var urgBorder={
-        overdue:'rgba(255,107,107,.3)',today:'rgba(245,207,85,.3)',
-        future:'rgba(106,170,255,.2)',undecided:'rgba(181,157,255,.2)'
-      };
-      var urgText={overdue:'#ff8a8a',today:'var(--gold)',future:'#8ec4ff',undecided:'#cbb8ff'};
-      var urgBar={overdue:'var(--red)',today:'var(--gold)',future:'var(--blue)',undecided:'var(--purp)'};
-      var dlabel=rem.date?fmtDate(rem.date)+(rem.time?' · '+rem.time:''):'Por decidir';
-      return '<div style="background:'+urgColors[urg]+';border:1.5px solid '+urgBorder[urg]+';border-radius:16px;padding:0;margin-bottom:10px;overflow:hidden;position:relative;" data-rid="'+rem.id+'">'
-        +'<div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:'+urgBar[urg]+';border-radius:16px 0 0 16px"></div>'
-        +'<div style="padding:14px 14px 12px 18px">'
-        +'<div style="font-size:15px;font-weight:800;color:#fff;font-family:Syne,sans-serif;line-height:1.3;margin-bottom:8px">'+esc(rem.title)+'</div>'
-        +'<div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;background:rgba(0,0,0,.2);color:'+urgText[urg]+'">'
-        +calSvg+dlabel+'</div>'
-        +(rem.notes?'<div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:8px;line-height:1.5">'+esc(rem.notes.length>80?rem.notes.slice(0,80)+'…':rem.notes)+'</div>':'')
-        +'</div>'
-        +'<div style="display:flex;border-top:1px solid rgba(255,255,255,.07)">'
-        +'<button style="flex:1;padding:11px;font-size:12px;font-weight:800;color:var(--gold);background:transparent;border:none;cursor:pointer;font-family:inherit" data-rid="'+rem.id+'" onclick="remOpenEdit(this.dataset.rid)">✏️ Editar</button>'
-        +'<button style="flex:1;padding:11px;font-size:12px;font-weight:800;color:var(--green);background:transparent;border:none;cursor:pointer;font-family:inherit;border-left:1px solid rgba(255,255,255,.07)" data-rid="'+rem.id+'" onclick="inicioToggleDone(this.dataset.rid)">✓ Listo</button>'
-        +'</div>'
-        +'</div>';
-    }).join('');
-
-    // Show count if more than 5
-    var total=(remData).filter(function(r){return !r.done;}).length;
+    var total=remData.filter(function(r){return !r.done;}).length;
     if(total>10){
-      html+='<div onclick="navigate(\'recordatorios\')" style="text-align:center;padding:12px;font-size:13px;font-weight:700;color:var(--gold);cursor:pointer;background:rgba(245,207,85,.06);border-radius:12px;border:1px solid rgba(245,207,85,.15)">'
+      html+='<div data-nav="recordatorios" onclick="navigate(this.dataset.nav)" style="text-align:center;padding:12px;font-size:13px;font-weight:700;color:var(--gold);cursor:pointer;background:rgba(245,207,85,.06);border-radius:12px;border:1px solid rgba(245,207,85,.15)">'
         +'+ '+(total-10)+' más → Ver todas</div>';
     }
 
@@ -7523,7 +7481,6 @@ function inicioRenderAlertas(){
   }catch(e){ console.warn('[inicioAlertas]',e); }
 }
 
-// Mark done from inicio screen
 function inicioToggleDone(id){
   if(typeof remToggleDone==='function') remToggleDone(id);
   setTimeout(inicioRenderAlertas, 200);
@@ -8176,6 +8133,7 @@ function inicioToggleDone(id){
 
   // ── PUBLIC API (called by navigate hook) ──────────────────────────
   Object.defineProperty(window,'_remData',{get:function(){return remData;},configurable:true});
+  window._remCardHtml=function(rem,t){ try{return card(rem);}catch(e){return '';} };
   window._remRender=function(){
     try{
       // Always render existing data instantly — zero flash
