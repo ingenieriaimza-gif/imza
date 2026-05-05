@@ -7909,12 +7909,12 @@ function inicioToggleDone(id){
 
         return (
           '<div class="rem-card rurg-'+urg+(isDone?' rdone':'')+'" id="rcard-'+id+'">'+
+          (idx!=null?'<div style="position:absolute;top:10px;right:12px;background:var(--card3);border:1.5px solid var(--line2);border-radius:10px;padding:3px 9px;font-size:12px;font-weight:800;color:var(--txt2);font-family:Syne,sans-serif;letter-spacing:-.01em;z-index:1">#'+idx+'</div>':'')+
           '<div class="rem-card-inner">'+
           '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:10px">'+
             '<div class="rem-check '+ckCls+'" data-rid="'+id+'" onclick="remToggleDone(this.dataset.rid)" style="margin-top:3px">'+
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>'+
             '<div style="flex:1;min-width:0">'+
-            (idx!=null?'<div style="font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--txt3);margin-bottom:3px;text-transform:uppercase">#'+idx+'</div>':'')+
             '<div class="rem-title">'+esc(rem.title)+'</div>'+
             '</div>'+
           '</div>'+
