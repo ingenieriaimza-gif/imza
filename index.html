@@ -778,27 +778,46 @@ if('serviceWorker' in navigator){
           </div>
         </div>
       </div>
-      <div class="sec" style="margin-top:20px"><div class="sec-lbl">Acciones rápidas</div></div>
-      <div class="agrid" style="margin-bottom:4px">
-        <div class="atile" onclick="navigate('actividad');openActM()">
-          <div class="aicon" style="background:rgba(240,201,74,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#f0c94a" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
-          <div><div class="aname">Actividad</div><div class="adesc">Registrar jornada</div></div>
+      <!-- Admin: alertas en inicio | Otros: acciones + recientes -->
+      <div id="inicio-no-admin">
+        <div class="sec" style="margin-top:20px"><div class="sec-lbl">Acciones rápidas</div></div>
+        <div class="agrid" style="margin-bottom:4px">
+          <div class="atile" onclick="navigate('actividad');openActM()">
+            <div class="aicon" style="background:rgba(240,201,74,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#f0c94a" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
+            <div><div class="aname">Actividad</div><div class="adesc">Registrar jornada</div></div>
+          </div>
+          <div class="atile" onclick="navigate('proyectos');openProjM()">
+            <div class="aicon" style="background:rgba(91,156,246,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#5b9cf6" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/></svg></div>
+            <div><div class="aname">Proyecto</div><div class="adesc">Nuevo proyecto</div></div>
+          </div>
+          <div class="atile" onclick="navigate('personal');openPersM()">
+            <div class="aicon" style="background:rgba(167,139,250,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
+            <div><div class="aname">Trabajador</div><div class="adesc">Agregar personal</div></div>
+          </div>
+          <div class="atile" onclick="navigate('historial')">
+            <div class="aicon" style="background:rgba(61,214,140,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#3dd68c" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div><div class="aname">Historial</div><div class="adesc">Ver registros</div></div>
+          </div>
         </div>
-        <div class="atile" onclick="navigate('proyectos');openProjM()">
-          <div class="aicon" style="background:rgba(91,156,246,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#5b9cf6" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/></svg></div>
-          <div><div class="aname">Proyecto</div><div class="adesc">Nuevo proyecto</div></div>
-        </div>
-        <div class="atile" onclick="navigate('personal');openPersM()">
-          <div class="aicon" style="background:rgba(167,139,250,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
-          <div><div class="aname">Trabajador</div><div class="adesc">Agregar personal</div></div>
-        </div>
-        <div class="atile" onclick="navigate('historial')">
-          <div class="aicon" style="background:rgba(61,214,140,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#3dd68c" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-          <div><div class="aname">Historial</div><div class="adesc">Ver registros</div></div>
-        </div>
+        <div class="sec" style="margin-top:20px"><div class="sec-lbl">Recientes</div></div>
+        <div id="rc-list"></div>
       </div>
-      <div class="sec" style="margin-top:20px"><div class="sec-lbl">Recientes</div></div>
-      <div id="rc-list"></div>
+
+      <!-- Admin-only: alertas embebidas en inicio -->
+      <div id="inicio-admin-alertas" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:10px;height:10px;border-radius:50%;background:var(--gold);box-shadow:0 0 10px rgba(245,207,85,.6)"></div>
+            <div style="font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--txt2)">Mis Alertas</div>
+          </div>
+          <button onclick="navigate('recordatorios')" style="font-size:12px;font-weight:700;color:var(--gold);background:rgba(245,207,85,.1);border:1px solid rgba(245,207,85,.2);border-radius:20px;padding:5px 12px;cursor:pointer;font-family:inherit">Ver todas →</button>
+        </div>
+        <button onclick="remOpenAdd()" style="width:100%;padding:13px;border-radius:14px;border:none;background:var(--gold);color:#0a0c10;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:14px;letter-spacing:.02em">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nuevo recordatorio
+        </button>
+        <div id="inicio-rem-list"></div>
+      </div>
     </div>
 
     <!-- ACTIVIDAD -->
@@ -2761,7 +2780,7 @@ function rInicio(){
   let dates=Object.keys(S.actividades).filter(d=>(S.actividades[d]||[]).length).sort((a,b)=>b.localeCompare(a));
   // Put selected date at top if has activity
   if(dates.includes(selDate)){
-    dates=[selDate,...dates.filter(d=>d!==selDate)].slice(0,5);
+    dates=[selDate,...dates.filter(d=>d!==selDate)].slice(0,10);
   } else {
     // Show selected date even if empty
     dates=[selDate,...dates.slice(0,4)];
@@ -6769,6 +6788,12 @@ function applyRoleRestrictions(){
   if(calBtn) calBtn.style.display='flex';
 
   rUsersConfig();
+  // Mostrar sección correcta en inicio según rol
+  var noAdminEl = document.getElementById('inicio-no-admin');
+  var adminAlEl = document.getElementById('inicio-admin-alertas');
+  if(noAdminEl) noAdminEl.style.display = isAdmin ? 'none' : 'block';
+  if(adminAlEl) adminAlEl.style.display = isAdmin ? 'block' : 'none';
+  if(isAdmin) inicioRenderAlertas();
   // WebSocket Realtime para actualizaciones instantáneas + polling ligero cada 3s como respaldo
   startRealtime();
   startLiveSync();
@@ -7419,6 +7444,91 @@ load();updDates();rAll();
 
 
 
+// ── Alertas en pantalla Inicio (admin) ───────────────────────────────────────
+function inicioRenderAlertas(){
+  var container=document.getElementById('inicio-rem-list');
+  if(!container) return;
+  try{
+    if(typeof remData==='undefined'||!window._remRender){ container.innerHTML=''; return; }
+    var t=(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+    // Show active reminders: overdue + today + upcoming (max 5)
+    var active=(remData||[]).filter(function(r){return !r.done;})
+      .sort(function(a,b){
+        // overdue first, then today, then future, then undecided
+        var ord={overdue:0,today:1,future:2,undecided:3};
+        function urg(r){ return !r.date?'undecided':r.date<t?'overdue':r.date===t?'today':'future'; }
+        return (ord[urg(a)]||3)-(ord[urg(b)]||3);
+      })
+      .slice(0,5);
+
+    if(!active.length){
+      container.innerHTML='<div style="text-align:center;padding:28px 16px;color:var(--txt3);font-size:13px">'+
+        '<div style="font-size:28px;margin-bottom:8px">🎉</div>'+
+        '<div style="font-weight:700;color:var(--txt2);margin-bottom:4px">Sin pendientes</div>'+
+        '<div>Todos tus recordatorios están al día</div></div>';
+      return;
+    }
+
+    function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    function fmtDate(str){
+      if(!str) return '❓ Por decidir';
+      var p=str.split('-').map(Number);var dt=new Date(p[0],p[1]-1,p[2]);
+      var today=new Date();today.setHours(0,0,0,0);
+      var tom=new Date(today);tom.setDate(tom.getDate()+1);
+      if(dt.getTime()===today.getTime()) return 'Hoy';
+      if(dt.getTime()===tom.getTime()) return 'Mañana';
+      var days=['dom','lun','mar','mié','jue','vie','sáb'];
+      var mons=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+      return days[dt.getDay()]+' '+p[2]+' '+mons[p[1]-1];
+    }
+
+    var calSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:11px;height:11px;flex-shrink:0"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+    var html=active.map(function(rem){
+      var urg=!rem.date?'undecided':rem.date<t?'overdue':rem.date===t?'today':'future';
+      var urgColors={
+        overdue:'rgba(255,107,107,.18)',today:'rgba(245,207,85,.15)',
+        future:'rgba(106,170,255,.12)',undecided:'rgba(181,157,255,.1)'
+      };
+      var urgBorder={
+        overdue:'rgba(255,107,107,.3)',today:'rgba(245,207,85,.3)',
+        future:'rgba(106,170,255,.2)',undecided:'rgba(181,157,255,.2)'
+      };
+      var urgText={overdue:'#ff8a8a',today:'var(--gold)',future:'#8ec4ff',undecided:'#cbb8ff'};
+      var urgBar={overdue:'var(--red)',today:'var(--gold)',future:'var(--blue)',undecided:'var(--purp)'};
+      var dlabel=rem.date?fmtDate(rem.date)+(rem.time?' · '+rem.time:''):'Por decidir';
+      return '<div style="background:'+urgColors[urg]+';border:1.5px solid '+urgBorder[urg]+';border-radius:16px;padding:0;margin-bottom:10px;overflow:hidden;position:relative;" data-rid="'+rem.id+'">'
+        +'<div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:'+urgBar[urg]+';border-radius:16px 0 0 16px"></div>'
+        +'<div style="padding:14px 14px 12px 18px">'
+        +'<div style="font-size:15px;font-weight:800;color:#fff;font-family:Syne,sans-serif;line-height:1.3;margin-bottom:8px">'+esc(rem.title)+'</div>'
+        +'<div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;background:rgba(0,0,0,.2);color:'+urgText[urg]+'">'
+        +calSvg+dlabel+'</div>'
+        +(rem.notes?'<div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:8px;line-height:1.5">'+esc(rem.notes.length>80?rem.notes.slice(0,80)+'…':rem.notes)+'</div>':'')
+        +'</div>'
+        +'<div style="display:flex;border-top:1px solid rgba(255,255,255,.07)">'
+        +'<button style="flex:1;padding:11px;font-size:12px;font-weight:800;color:var(--gold);background:transparent;border:none;cursor:pointer;font-family:inherit" data-rid="'+rem.id+'" onclick="remOpenEdit(this.dataset.rid)">✏️ Editar</button>'
+        +'<button style="flex:1;padding:11px;font-size:12px;font-weight:800;color:var(--green);background:transparent;border:none;cursor:pointer;font-family:inherit;border-left:1px solid rgba(255,255,255,.07)" data-rid="'+rem.id+'" onclick="inicioToggleDone(this.dataset.rid)">✓ Listo</button>'
+        +'</div>'
+        +'</div>';
+    }).join('');
+
+    // Show count if more than 5
+    var total=(remData||[]).filter(function(r){return !r.done;}).length;
+    if(total>10){
+      html+='<div onclick="navigate(\'recordatorios\')" style="text-align:center;padding:12px;font-size:13px;font-weight:700;color:var(--gold);cursor:pointer;background:rgba(245,207,85,.06);border-radius:12px;border:1px solid rgba(245,207,85,.15)">'
+        +'+ '+(total-10)+' más → Ver todas</div>';
+    }
+
+    if(container.innerHTML!==html) container.innerHTML=html;
+  }catch(e){ console.warn('[inicioAlertas]',e); }
+}
+
+// Mark done from inicio screen
+function inicioToggleDone(id){
+  if(typeof remToggleDone==='function') remToggleDone(id);
+  setTimeout(inicioRenderAlertas, 200);
+}
+
+
 // ═══════════════════════════════════════════════════════════════════
 // RECORDATORIOS MODULE v3 — completamente aislado, no toca enterApp
 // ═══════════════════════════════════════════════════════════════════
@@ -7881,6 +7991,7 @@ load();updDates();rAll();
       remCancelTimers(id); if(!r.done) remScheduleOne(r);
       remRender();
       remPatch(id,{done:r.done,done_at:r.doneAt});
+      try{if(typeof inicioRenderAlertas==='function')inicioRenderAlertas();}catch(e){}
       _toast(r.done?'✅ Marcado como realizado':'↩ Desmarcado','ok');
     }catch(e){}
   };
@@ -8086,6 +8197,8 @@ load();updDates();rAll();
           remData=newData;
           remRender();
           remScheduleAllPending();
+          // Also refresh inicio if admin is there
+          try{if(typeof inicioRenderAlertas==='function')inicioRenderAlertas();}catch(e){}
         }
         remUpdateNotifUI();
       })
