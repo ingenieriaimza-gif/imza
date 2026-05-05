@@ -7493,7 +7493,7 @@ function inicioRenderAlertas(){
       return;
     }
 
-    var html=active.map(function(rem){ return window._remCardHtml(rem); }).join('');
+    var html=active.map(function(rem,i){ return window._remCardHtml(rem,i+1); }).join('');
 
     var total=remData.filter(function(r){return !r.done;}).length;
     if(total>10){
@@ -7863,7 +7863,7 @@ function inicioToggleDone(id){
     return out;
   }
 
-  function _remCard(rem,t){
+  function _remCard(rem,t,idx){
         var isDone=rem.done;
         var isOver=!isDone&&rem.date&&rem.date<t;
         var isTod =!isDone&&rem.date===t;
@@ -7913,7 +7913,10 @@ function inicioToggleDone(id){
           '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:10px">'+
             '<div class="rem-check '+ckCls+'" data-rid="'+id+'" onclick="remToggleDone(this.dataset.rid)" style="margin-top:3px">'+
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>'+
+            '<div style="flex:1;min-width:0">'+
+            (idx!=null?'<div style="font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--txt3);margin-bottom:3px;text-transform:uppercase">#'+idx+'</div>':'')+
             '<div class="rem-title">'+esc(rem.title)+'</div>'+
+            '</div>'+
           '</div>'+
           datePill+
           (rem.notes?'<div class="rem-notes">'+esc(rem.notes.length>200?rem.notes.slice(0,200)+'…':rem.notes)+'</div>':'')+
@@ -7947,21 +7950,21 @@ function inicioToggleDone(id){
           '<div class="rem-sec-title">'+lbl+'</div><div class="rem-sec-count">'+n+'</div></div>';
       }
 
-      function card(rem){ return _remCard(rem,t); }
+      function card(rem,idx){ return _remCard(rem,t,idx!=null?idx:null); }
       var html='';
       if(remTab==='all'){
         var ov=filtered.filter(function(r){return r.date&&r.date<t;});
         var td=filtered.filter(function(r){return r.date===t;});
         var fu=filtered.filter(function(r){return r.date&&r.date>t;});
         var un=filtered.filter(function(r){return !r.date;});
-        if(ov.length||td.length){html+=sh('today','Hoy',ov.length+td.length);ov.concat(td).forEach(function(r){html+=card(r);});}
-        if(fu.length){html+=sh('future','Próximos',fu.length);fu.forEach(function(r){html+=card(r);});}
-        if(un.length){html+=sh('undecided','Por decidir',un.length);un.forEach(function(r){html+=card(r);});}
+        if(ov.length||td.length){html+=sh('today','Hoy',ov.length+td.length);ov.concat(td).forEach(function(r,i){html+=card(r,i+1);});}
+        if(fu.length){html+=sh('future','Próximos',fu.length);fu.forEach(function(r,i){html+=card(r,i+1);});}
+        if(un.length){html+=sh('undecided','Por decidir',un.length);un.forEach(function(r,i){html+=card(r,i+1);});}
       } else {
         var dm={today:'today',upcoming:'future',undecided:'undecided',done:'done'};
         var lm={today:'Hoy',upcoming:'Próximos',undecided:'Por decidir',done:'Realizados'};
         html+=sh(dm[remTab]||'today',lm[remTab]||'',filtered.length);
-        filtered.forEach(function(r){html+=card(r);});
+        filtered.forEach(function(r,i){html+=card(r,i+1);});
       }
       // Only update DOM if content actually changed — eliminates flash
       if(container.innerHTML !== html){
@@ -8184,7 +8187,7 @@ function inicioToggleDone(id){
 
   // ── PUBLIC API (called by navigate hook) ──────────────────────────
   Object.defineProperty(window,'_remData',{get:function(){return remData;},configurable:true});
-  window._remCardHtml=function(rem){ try{var t=remToday();return _remCard(rem,t);}catch(e){return '';} };
+  window._remCardHtml=function(rem,idx){ try{var t=remToday();return _remCard(rem,t,idx);}catch(e){return '';} };
   window._remRender=function(){
     try{
       // Always render existing data instantly — zero flash
