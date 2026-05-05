@@ -7415,7 +7415,7 @@ load();updDates();rAll();
 
   // ── CONFIG ────────────────────────────────────────────────────────
   var TABLE   = 'imza_recordatorios';
-  var POLL_MS = 28000;   // sync interval
+  var POLL_MS = 15000;   // sync interval
   var VIS_MIN = 16000;   // min ms before re-fetch on visibilitychange
 
   // ── STATE ─────────────────────────────────────────────────────────
@@ -7637,8 +7637,8 @@ load();updDates();rAll();
     if(!email){ remRender(); if(cb) cb(); return; }
     if(remLoading){ if(cb) cb(); return; }
     remLoading=true;
-    // Solo mostrar spinner si no hay datos aún (primera carga)
-    if(remData.length===0) remShowLoading(true);
+    // Spinner solo en primera carga absoluta, nunca si ya hay datos
+    if(remData.length===0 && !remReady) remShowLoading(true);
     remSbFetch('/rest/v1/'+TABLE+'?user_email=eq.'+encodeURIComponent(email)+'&order=created_at.desc&limit=500')
       .then(function(rows){
         remLoading=false; remShowLoading(false); remLastFetch=Date.now(); remReady=true;
@@ -7679,7 +7679,7 @@ load();updDates();rAll();
     remPollTimer=setInterval(function(){
       try{
         if(document.visibilityState!=='visible') return;
-        if(Date.now()-remLastFetch < POLL_MS-2000) return;
+        if(Date.now()-remLastFetch < POLL_MS) return;
         if(!remEmail()) return;
         remFetch();
       }catch(e){}
@@ -7689,7 +7689,7 @@ load();updDates();rAll();
 
   document.addEventListener('visibilitychange', function(){
     try{
-      if(document.visibilityState==='visible' && remEmail() && Date.now()-remLastFetch>VIS_MIN){
+      if(document.visibilityState==='visible' && remEmail() && Date.now()-remLastFetch>15000){
         remFetch();
       }
     }catch(e){}
@@ -8048,13 +8048,34 @@ load();updDates();rAll();
   // ── PUBLIC API (called by navigate hook) ──────────────────────────
   window._remRender=function(){
     try{
-      // Render existing data immediately (no flash)
-      if(remData.length>0) remRender();
-      // Then refresh from cloud silently in background
-      if(remEmail()) remFetch();
-      else if(!remReady) remFetch();
+      // Always render existing data instantly — zero flash
+      remRender();
+      // Only hit the network if data is stale (>60s) or first load
+      var stale = Date.now() - remLastFetch > 30000;
+      if(!remReady || stale){
+        // Fetch silently: never show loading spinner if we already have data
+        _remSilentFetch();
+      }
     }catch(e){}
   };
+
+  function _remSilentFetch(){
+    var email=remEmail(); if(!email||remLoading) return;
+    remLoading=true;
+    remSbFetch('/rest/v1/'+TABLE+'?user_email=eq.'+encodeURIComponent(email)+'&order=created_at.desc&limit=500')
+      .then(function(rows){
+        remLoading=false; remLastFetch=Date.now(); remReady=true;
+        var newData=(rows||[]).map(remRowToLocal);
+        // Only re-render if data actually changed
+        if(JSON.stringify(newData)!==JSON.stringify(remData)){
+          remData=newData;
+          remRender();
+          remScheduleAllPending();
+        }
+        remUpdateNotifUI();
+      })
+      .catch(function(){ remLoading=false; });
+  }
   window._remFetch=function(){
     try{ remFetch(); }catch(e){}
   };
