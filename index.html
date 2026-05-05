@@ -5994,8 +5994,6 @@ function enterApp(found, sessionData){
   var splash=document.getElementById('splash-screen');
   if(splash) splash.style.display='none';
   document.getElementById('login-screen').style.display='none';
-  // Fire event for Recordatorios module to load data
-  setTimeout(function(){ document.dispatchEvent(new Event('remUserReady')); }, 400);
   document.getElementById('app').style.display='';
   applyRoleRestrictions();
   // Siempre bajar datos frescos al entrar — ignorar _remoteUpdatedAt
@@ -7363,23 +7361,61 @@ load();updDates();rAll();
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// RECORDATORIOS MODULE — Supabase sync + pre-alertas avanzadas + edición
+// RECORDATORIOS MODULE v3 — completamente aislado, no toca enterApp
 // ═══════════════════════════════════════════════════════════════════
 (function(){
+  'use strict';
+
+  // ── CONFIG ────────────────────────────────────────────────────────
+  var TABLE   = 'imza_recordatorios';
+  var POLL_MS = 28000;   // sync interval
+  var VIS_MIN = 16000;   // min ms before re-fetch on visibilitychange
+
   // ── STATE ─────────────────────────────────────────────────────────
-  var remData       = [];
-  var remTab        = 'all';
-  var remFormMode   = 'add';   // 'add' | 'edit'
-  var remEditId     = null;
-  var remHasDate_   = true;
-  var remTimers     = {};      // id → [timeoutId,...]
-  var remSwReg      = null;
-  var remLoading    = false;
-  var remPollTimer  = null;
-  var remRealtimeCh = null;
-  var remLastFetch  = 0;
-  var REM_TABLE     = 'imza_recordatorios';
+  var remData      = [];
+  var remTab       = 'all';
+  var remFormMode  = 'add';
+  var remEditId    = null;
+  var remHasDate_  = true;
+  var remTimers    = {};
+  var remSwReg     = null;
+  var remLoading   = false;
+  var remPollTimer = null;
+  var remLastFetch = 0;
+  var remReady     = false;  // true once user detected + first fetch done
+
+  // ── USER DETECTION — polling, never modifies enterApp ─────────────
+  var _userPollTimer = null;
+  function remWaitForUser(){
+    if(_userPollTimer) return;
+    _userPollTimer = setInterval(function(){
+      try{
+        if(typeof _currentUser !== 'undefined' && _currentUser && _currentUser.email){
+          clearInterval(_userPollTimer); _userPollTimer = null;
+          remOnUserReady();
+        }
+      }catch(e){}
+    }, 600);
+    // Timeout: stop after 2 min to avoid zombie timers
+    setTimeout(function(){
+      if(_userPollTimer){ clearInterval(_userPollTimer); _userPollTimer = null; }
+    }, 120000);
+  }
+
+  function remOnUserReady(){
+    remFetch(function(){
+      remScheduleAllPending();
+      remStartPoll();
+    });
+  }
+
+  function remEmail(){
+    try{ return (typeof _currentUser!=='undefined'&&_currentUser&&_currentUser.email)
+      ? _currentUser.email.toLowerCase() : null; }
+    catch(e){ return null; }
+  }
 
   // ── SERVICE WORKER ────────────────────────────────────────────────
   function remInitSW(){
@@ -7389,8 +7425,8 @@ load();updDates();rAll();
       "self.addEventListener('activate',e=>e.waitUntil(clients.claim()));",
       "self.addEventListener('notificationclick',e=>{",
       "  e.notification.close();",
-      "  e.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(list=>{",
-      "    for(var cl of list){if('focus'in cl){cl.focus();return;}}",
+      "  e.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(l=>{",
+      "    for(var c of l){if('focus'in c){c.focus();return;}}",
       "    if(clients.openWindow)clients.openWindow('./');",
       "  }));",
       "});"
@@ -7398,103 +7434,105 @@ load();updDates();rAll();
     try{
       var url=URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
       navigator.serviceWorker.register(url,{scope:'./'})
-        .then(function(r){remSwReg=r;})
-        .catch(function(){navigator.serviceWorker.getRegistration().then(function(r){remSwReg=r||null;});});
+        .then(function(r){ remSwReg=r; })
+        .catch(function(){ navigator.serviceWorker.getRegistration().then(function(r){ remSwReg=r||null; }); });
     }catch(e){}
   }
 
   // ── NOTIFICATIONS ─────────────────────────────────────────────────
-  function remGetPerm(){ return ('Notification' in window)?Notification.permission:'denied'; }
+  function remGetPerm(){ return ('Notification' in window) ? Notification.permission : 'denied'; }
 
-  window.remRequestNotif=function(){
-    if(!('Notification' in window)){toast('Tu navegador no soporta notificaciones','err');return;}
+  window.remRequestNotif = function(){
+    if(!('Notification' in window)){ _toast('Tu navegador no soporta notificaciones','err'); return; }
     Notification.requestPermission().then(function(p){
       remUpdateNotifUI();
       if(p==='granted'){
-        toast('🔔 Notificaciones activadas','ok');
-        document.getElementById('rem-perm-banner').style.display='none';
-        remData.filter(function(r){return !r.done&&r.date;}).forEach(remScheduleOne);
-      } else { toast('Notificaciones bloqueadas','err'); }
+        _toast('🔔 Notificaciones activadas','ok');
+        var b=document.getElementById('rem-perm-banner'); if(b) b.style.display='none';
+        remData.filter(function(r){ return !r.done&&r.date; }).forEach(remScheduleOne);
+      } else { _toast('Notificaciones bloqueadas','err'); }
     });
   };
 
-  function remFireNotif(title,body,tag){
-    if(remGetPerm()!=='granted') return;
-    if(remSwReg&&remSwReg.showNotification){
-      remSwReg.showNotification(title,{body:body,vibrate:[200,100,200],tag:tag,renotify:true});
-    } else { try{new Notification(title,{body:body,tag:tag});}catch(e){} }
+  // Safe toast wrapper — uses app's toast if available, else console
+  function _toast(msg, type){
+    try{ if(typeof toast==='function') toast(msg, type); else console.log('[REM]',msg); }
+    catch(e){}
   }
 
-  // Schedule ALL notifications for one reminder
+  function remFireNotif(title,body,tag){
+    if(remGetPerm()!=='granted') return;
+    try{
+      if(remSwReg&&remSwReg.showNotification){
+        remSwReg.showNotification(title,{body:body,vibrate:[200,100,200],tag:tag,renotify:true});
+      } else { new Notification(title,{body:body,tag:tag}); }
+    }catch(e){}
+  }
+
   function remScheduleOne(rem){
     remCancelTimers(rem.id);
     if(rem.done||!rem.date||remGetPerm()!=='granted') return;
-
-    var timePart = rem.time || '09:00';
+    var timePart = rem.time||'09:00';
     var eventTs  = new Date(rem.date+'T'+timePart).getTime();
     var now      = Date.now();
     var ids      = [];
 
-    // 1. Main notification at exact time
+    // Main alert
     if(rem.notify && eventTs>now){
       ids.push(setTimeout(function(){
         remFireNotif('⏰ '+rem.title, rem.time?'Hoy a las '+rem.time:'Hoy', 'rm-'+rem.id);
       }, eventTs-now));
     }
 
-    // 2. Days-before notifications (fired at 09:00 on each target day)
-    var daysBefore = rem.daysBefore || [];
-    daysBefore.forEach(function(d){
-      var fireDate = new Date(rem.date);
-      fireDate.setDate(fireDate.getDate()-d);
-      var fireTs = new Date(fireDate.getFullYear()+'-'+
-        String(fireDate.getMonth()+1).padStart(2,'0')+'-'+
-        String(fireDate.getDate()).padStart(2,'0')+'T09:00').getTime();
-      if(fireTs>now){
-        var lbl = d===1?'mañana':d===7?'en 1 semana':d===14?'en 2 semanas':d===30?'en 1 mes':'en '+d+' días';
+    // Days-before (fired at 09:00)
+    (rem.daysBefore||[]).forEach(function(d){
+      var fd=new Date(rem.date); fd.setDate(fd.getDate()-d);
+      var y=fd.getFullYear(),mo=String(fd.getMonth()+1).padStart(2,'0'),dy=String(fd.getDate()).padStart(2,'0');
+      var fts=new Date(y+'-'+mo+'-'+dy+'T09:00').getTime();
+      if(fts>now){
+        var lbl=d===1?'mañana':d===7?'en 1 semana':d===14?'en 2 semanas':d===30?'en 1 mes':'en '+d+' días';
         ids.push(setTimeout(function(){
-          remFireNotif('📅 '+rem.title,'Recordatorio '+lbl+(rem.time?' a las '+rem.time:''),'rm-day-'+rem.id+'-'+d);
-        }, fireTs-now));
+          remFireNotif('📅 '+rem.title,'Recordatorio '+lbl+(rem.time?' a las '+rem.time:''),'rm-db-'+rem.id+'-'+d);
+        }, fts-now));
       }
     });
 
-    // 3. Same-day pre-alerts: sdCount times, each sdInterval minutes before
-    var sdCount = rem.sdCount || 0;
-    var sdIntv  = rem.sdInterval || 30; // minutes (hours*60 + mins)
-    for(var i=1;i<=sdCount;i++){
+    // Same-day pre-alerts
+    var cnt  = rem.sdCount||0;
+    var intv = rem.sdInterval||30;
+    for(var i=1;i<=cnt;i++){
       (function(step){
-        var preTs = eventTs - step*sdIntv*60000;
+        var preTs=eventTs-step*intv*60000;
         if(preTs>now){
-          var totalMin = step*sdIntv;
-          var h = Math.floor(totalMin/60);
-          var m = totalMin%60;
-          var lbl = (h>0?h+'h ':'')+(m>0?m+'min':'');
+          var total=step*intv; var h=Math.floor(total/60); var m=total%60;
+          var lbl=(h>0?h+'h ':'')+(m>0?m+'min':'');
           ids.push(setTimeout(function(){
             remFireNotif('🔔 '+rem.title,'En '+lbl.trim()+(rem.time?' · '+rem.time:''),'rm-pre-'+rem.id+'-'+step);
           }, preTs-now));
         }
       })(i);
     }
-
     if(ids.length) remTimers[rem.id]=ids;
   }
 
   function remCancelTimers(id){
-    if(remTimers[id]){remTimers[id].forEach(function(t){clearTimeout(t);});delete remTimers[id];}
+    if(remTimers[id]){ remTimers[id].forEach(function(t){ clearTimeout(t); }); delete remTimers[id]; }
   }
   function remScheduleAllPending(){
-    remData.filter(function(r){return !r.done&&r.date;}).forEach(remScheduleOne);
+    remData.filter(function(r){ return !r.done&&r.date; }).forEach(remScheduleOne);
   }
 
   function remUpdateNotifUI(){
-    var p=remGetPerm();
-    var dot=document.getElementById('rem-nav-dot');
-    var banner=document.getElementById('rem-perm-banner');
-    if(!dot||!banner) return;
-    var active=remData.filter(function(r){return !r.done;}).length;
-    if(p==='granted'){dot.style.display=active?'block':'none';banner.style.display='none';}
-    else if(p==='denied'){dot.style.display='none';banner.style.display='none';}
-    else{dot.style.display='none';var hd=remData.some(function(r){return !r.done&&r.date;});banner.style.display=hd?'flex':'none';}
+    try{
+      var p=remGetPerm();
+      var dot=document.getElementById('rem-nav-dot');
+      var banner=document.getElementById('rem-perm-banner');
+      if(!dot||!banner) return;
+      var active=remData.filter(function(r){ return !r.done; }).length;
+      if(p==='granted'){ dot.style.display=active?'block':'none'; banner.style.display='none'; }
+      else if(p==='denied'){ dot.style.display='none'; banner.style.display='none'; }
+      else{ dot.style.display='none'; banner.style.display=remData.some(function(r){return !r.done&&r.date;})?'flex':'none'; }
+    }catch(e){}
   }
 
   // ── DATE UTILS ────────────────────────────────────────────────────
@@ -7504,118 +7542,137 @@ load();updDates();rAll();
   }
   function remFmtDate(str){
     if(!str) return '';
-    var p=str.split('-').map(Number);
-    var dt=new Date(p[0],p[1]-1,p[2]);
-    var today=new Date();today.setHours(0,0,0,0);
-    var tom=new Date(today);tom.setDate(tom.getDate()+1);
-    if(dt.getTime()===today.getTime()) return 'Hoy';
-    if(dt.getTime()===tom.getTime()) return 'Mañana';
-    var days=['dom','lun','mar','mié','jue','vie','sáb'];
-    var mons=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-    return days[dt.getDay()]+' '+p[2]+' '+mons[p[1]-1];
+    try{
+      var p=str.split('-').map(Number); var dt=new Date(p[0],p[1]-1,p[2]);
+      var today=new Date(); today.setHours(0,0,0,0);
+      var tom=new Date(today); tom.setDate(tom.getDate()+1);
+      if(dt.getTime()===today.getTime()) return 'Hoy';
+      if(dt.getTime()===tom.getTime()) return 'Mañana';
+      var days=['dom','lun','mar','mié','jue','vie','sáb'];
+      var mons=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+      return days[dt.getDay()]+' '+p[2]+' '+mons[p[1]-1];
+    }catch(e){ return str; }
   }
 
-  // ── SUPABASE CRUD ─────────────────────────────────────────────────
-  function remEmail(){return _currentUser?(_currentUser.email||'').toLowerCase():null;}
+  // ── SUPABASE HELPERS ──────────────────────────────────────────────
+  // Uses the same sbFetch as the rest of the app — isolated in try/catch
+  function remSbFetch(path, opts){
+    return new Promise(function(resolve, reject){
+      try{
+        sbFetch(path, opts).then(resolve).catch(reject);
+      }catch(e){ reject(e); }
+    });
+  }
 
   function remRowToLocal(row){
-    var db=[];
-    try{db=JSON.parse(row.days_before||'[]');}catch(e){}
+    var db=[]; try{ db=JSON.parse(row.days_before||'[]'); }catch(e){}
     return{
-      id:row.id, title:row.title, notes:row.notes||'',
+      id:row.id, title:row.title||'', notes:row.notes||'',
       date:row.date||null, time:row.time||null,
-      notify:!!row.notify,
-      daysBefore: db,
-      sdCount:    row.sd_count||0,
-      sdInterval: row.sd_interval||30,
+      notify:!!row.notify, daysBefore:db,
+      sdCount:row.sd_count||0, sdInterval:row.sd_interval||30,
       done:!!row.done, doneAt:row.done_at||null, createdAt:row.created_at
     };
   }
 
-  function remToRow(rem){
+  function remToDbRow(rem){
     return{
       title:rem.title, notes:rem.notes||'',
       date:rem.date||null, time:rem.time||null,
-      notify:rem.notify,
-      days_before: JSON.stringify(rem.daysBefore||[]),
-      sd_count:    rem.sdCount||0,
-      sd_interval: rem.sdInterval||30,
-      done:rem.done, done_at:rem.doneAt||null
+      notify:!!rem.notify,
+      days_before:JSON.stringify(rem.daysBefore||[]),
+      sd_count:rem.sdCount||0, sd_interval:rem.sdInterval||30,
+      done:!!rem.done, done_at:rem.doneAt||null
     };
   }
 
+  // ── FETCH ─────────────────────────────────────────────────────────
   function remFetch(cb){
-    var email=remEmail();if(!email){remRender();if(cb)cb();return;}
-    remLoading=true;remShowLoading(true);
-    sbFetch('/rest/v1/'+REM_TABLE+'?user_email=eq.'+encodeURIComponent(email)+'&order=created_at.desc&limit=500')
+    var email=remEmail();
+    if(!email){ remRender(); if(cb) cb(); return; }
+    if(remLoading){ if(cb) cb(); return; }
+    remLoading=true; remShowLoading(true);
+    remSbFetch('/rest/v1/'+TABLE+'?user_email=eq.'+encodeURIComponent(email)+'&order=created_at.desc&limit=500')
       .then(function(rows){
-        remLoading=false;remShowLoading(false);remLastFetch=Date.now();
+        remLoading=false; remShowLoading(false); remLastFetch=Date.now(); remReady=true;
         remData=(rows||[]).map(remRowToLocal);
-        remRender();remScheduleAllPending();remUpdateNotifUI();if(cb)cb();
+        remRender(); remUpdateNotifUI(); if(cb) cb();
       })
-      .catch(function(e){remLoading=false;remShowLoading(false);console.warn('remFetch',e);if(cb)cb(e);});
+      .catch(function(e){
+        remLoading=false; remShowLoading(false);
+        console.warn('[REM] fetch error:', e);
+        // Show error only in reminders screen, never crash the main app
+        var el=document.getElementById('rem-list');
+        if(el) el.innerHTML='<div style="text-align:center;padding:30px;color:var(--txt3);font-size:13px">⚠️ Error al cargar. Verifica que la tabla exista en Supabase.</div>';
+        if(cb) cb(e);
+      });
   }
 
-  function remInsert(rem,cb){
-    var email=remEmail();if(!email)return;
-    var row=Object.assign({id:rem.id,user_email:email,created_at:rem.createdAt},remToRow(rem));
-    sbFetch('/rest/v1/'+REM_TABLE,{method:'POST',body:JSON.stringify(row)})
-      .then(function(){if(cb)cb();}).catch(function(e){if(cb)cb(e);});
+  function remInsert(rem, cb){
+    var email=remEmail(); if(!email){ if(cb) cb(new Error('no user')); return; }
+    var row=Object.assign({id:rem.id, user_email:email, created_at:rem.createdAt}, remToDbRow(rem));
+    remSbFetch('/rest/v1/'+TABLE, {method:'POST', body:JSON.stringify(row)})
+      .then(function(){ if(cb) cb(); })
+      .catch(function(e){ console.warn('[REM] insert error:', e); if(cb) cb(e); });
   }
 
-  function remPatch(id,fields,cb){
-    sbFetch('/rest/v1/'+REM_TABLE+'?id=eq.'+id,{method:'PATCH',body:JSON.stringify(fields)})
-      .then(function(){if(cb)cb();}).catch(function(e){if(cb)cb(e);});
+  function remPatch(id, fields){
+    remSbFetch('/rest/v1/'+TABLE+'?id=eq.'+id, {method:'PATCH', body:JSON.stringify(fields)})
+      .catch(function(e){ console.warn('[REM] patch error:', e); });
   }
 
-  function remDeleteSB(id,cb){
-    sbFetch('/rest/v1/'+REM_TABLE+'?id=eq.'+id,{method:'DELETE'})
-      .then(function(){if(cb)cb();}).catch(function(e){if(cb)cb(e);});
+  function remDeleteSB(id){
+    remSbFetch('/rest/v1/'+TABLE+'?id=eq.'+id, {method:'DELETE'})
+      .catch(function(e){ console.warn('[REM] delete error:', e); });
   }
 
-  // ── SYNC ──────────────────────────────────────────────────────────
-  function remSubscribeRealtime(){
-    var email=remEmail();if(!email)return;
-    try{
-      var client=getSbClient();if(!client||!client.channel)return;
-      if(remRealtimeCh){try{client.removeChannel(remRealtimeCh);}catch(e){}remRealtimeCh=null;}
-      var token=localStorage.getItem('cp4_auth_token');
-      if(token&&client.realtime&&client.realtime.setAuth)client.realtime.setAuth(token);
-      remRealtimeCh=client.channel('rem:'+email.replace(/[^a-z0-9]/g,'_'))
-        .on('postgres_changes',{event:'*',schema:'public',table:REM_TABLE},function(){remFetch();})
-        .subscribe(function(s){console.log('[Rem RT]',s);});
-    }catch(e){console.warn('remRT',e);}
-  }
-
+  // ── SYNC: polling + visibilitychange (no Realtime to avoid WS conflict) ──
   function remStartPoll(){
     remStopPoll();
     remPollTimer=setInterval(function(){
-      if(document.visibilityState!=='visible')return;
-      if(Date.now()-remLastFetch<20000)return;
-      remFetch();
-    },25000);
+      try{
+        if(document.visibilityState!=='visible') return;
+        if(Date.now()-remLastFetch < POLL_MS-2000) return;
+        if(!remEmail()) return;
+        remFetch();
+      }catch(e){}
+    }, POLL_MS);
   }
-  function remStopPoll(){if(remPollTimer){clearInterval(remPollTimer);remPollTimer=null;}}
+  function remStopPoll(){ if(remPollTimer){ clearInterval(remPollTimer); remPollTimer=null; } }
 
-  document.addEventListener('visibilitychange',function(){
-    if(document.visibilityState==='visible'&&remEmail()&&Date.now()-remLastFetch>15000)remFetch();
+  document.addEventListener('visibilitychange', function(){
+    try{
+      if(document.visibilityState==='visible' && remEmail() && Date.now()-remLastFetch>VIS_MIN){
+        remFetch();
+      }
+    }catch(e){}
+  });
+
+  // Re-detect user on page focus (handles login state changes)
+  window.addEventListener('focus', function(){
+    try{
+      if(!remEmail()){ remWaitForUser(); return; }
+      if(Date.now()-remLastFetch > VIS_MIN) remFetch();
+    }catch(e){}
   });
 
   // ── LOADING ───────────────────────────────────────────────────────
   function remShowLoading(on){
-    var el=document.getElementById('rem-list');if(!el||!on)return;
+    var el=document.getElementById('rem-list'); if(!el||!on) return;
     el.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--txt3)">'+
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:28px;height:28px;opacity:.3;animation:pulse 1.4s ease infinite">'+
-      '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>'+
-      '<div style="margin-top:10px;font-size:13px">Cargando…</div></div>';
+      '<div style="font-size:24px;margin-bottom:8px;opacity:.4">🔔</div>'+
+      '<div style="font-size:13px">Cargando recordatorios…</div></div>';
   }
 
   // ── TABS ──────────────────────────────────────────────────────────
   window.remSetTab=function(tab){
     remTab=tab;
-    document.querySelectorAll('.rem-tab').forEach(function(el){el.classList.toggle('active',el.dataset.rtab===tab);});
+    document.querySelectorAll('.rem-tab').forEach(function(el){
+      el.classList.toggle('active',el.dataset.rtab===tab);
+    });
     remRender();
   };
+
   function remGetFiltered(){
     var t=remToday();
     switch(remTab){
@@ -7626,9 +7683,10 @@ load();updDates();rAll();
       default:         return remData.filter(function(r){return !r.done;});
     }
   }
+
   function remUpdateCounts(){
     var t=remToday();
-    function sc(id,v){var el=document.getElementById(id);if(el)el.textContent=v;}
+    function sc(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
     sc('rcnt-all',       remData.filter(function(r){return !r.done;}).length);
     sc('rcnt-today',     remData.filter(function(r){return !r.done&&r.date===t;}).length);
     sc('rcnt-upcoming',  remData.filter(function(r){return !r.done&&r.date&&r.date>t;}).length);
@@ -7637,292 +7695,294 @@ load();updDates();rAll();
   }
 
   // ── RENDER ────────────────────────────────────────────────────────
-
-  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   function remAlertBadges(rem){
     if(rem.done||!rem.date) return '';
     var out='';
-    if(rem.notify) out+='<div class="rem-notif-badge">'+
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Exacta</div>';
-    if(rem.daysBefore&&rem.daysBefore.length){
-      out+='<div class="rem-notif-badge" style="background:rgba(106,170,255,.1);color:var(--blue)">'+
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'+
-        rem.daysBefore.length+'d antes</div>';
-    }
+    if(rem.notify) out+='<span class="rem-notif-badge">🔔 Exacta</span>';
+    if(rem.daysBefore&&rem.daysBefore.length)
+      out+='<span class="rem-notif-badge" style="background:rgba(106,170,255,.1);color:var(--blue)">📅 '+rem.daysBefore.length+'d antes</span>';
     if(rem.sdCount>0){
       var h=Math.floor(rem.sdInterval/60),m=rem.sdInterval%60;
-      var lbl=(h>0?h+'h ':'')+(m>0?m+'min':'');
-      out+='<div class="rem-notif-badge" style="background:rgba(181,157,255,.1);color:var(--purp)">'+
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'+
-        rem.sdCount+'× c/'+lbl.trim()+'</div>';
+      out+='<span class="rem-notif-badge" style="background:rgba(181,157,255,.1);color:var(--purp)">⏱ '+rem.sdCount+'× c/'+(h>0?h+'h ':'')+(m>0?m+'min':'')+'</span>';
     }
     return out;
   }
 
   function remRender(){
-    remUpdateCounts();remUpdateNotifUI();
-    var el=document.getElementById('rem-list');if(!el||remLoading)return;
-    var filtered=remGetFiltered();var t=remToday();
-    if(!filtered.length){
-      var msgs={all:['🔔','Sin recordatorios activos','Crea uno con el botón de arriba'],
-        today:['☀️','Sin recordatorios para hoy',''],upcoming:['📅','Sin próximos',''],
-        undecided:['❓','Sin recordatorios por decidir',''],done:['✅','Nada realizado aún','']};
-      var m=msgs[remTab]||msgs.all;
-      el.innerHTML='<div style="text-align:center;padding:40px 20px">'+
-        '<div style="font-size:36px;margin-bottom:10px">'+m[0]+'</div>'+
-        '<div style="font-size:15px;font-weight:700;color:var(--txt2);margin-bottom:5px">'+m[1]+'</div>'+
-        '<div style="font-size:13px;color:var(--txt3)">'+m[2]+'</div></div>';
-      return;
-    }
-    function sh(dot,lbl,n){
-      return '<div class="rem-sec-hdr"><div class="rem-sec-dot rdot-'+dot+'"></div>'+
-        '<div class="rem-sec-title">'+lbl+'</div><div class="rem-sec-count">'+n+'</div></div>';
-    }
-    function card(rem){
-      var isDone=rem.done;
-      var isOver=!isDone&&rem.date&&rem.date<t;var isTod=!isDone&&rem.date===t;
-      var dc=isOver?'roverdue':isTod?'rtoday':'';
-      var dh=rem.date
-        ?'<div class="rem-date-badge '+dc+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'+remFmtDate(rem.date)+(rem.time?' · '+rem.time:'')+'</div>'
-        :'<div class="rem-date-badge" style="color:var(--purp)">❓ Por decidir</div>';
-      var acts=isDone
-        ?'<button class="rem-act-btn rdel" onclick="remDelete(\''+rem.id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>Eliminar</button>'
-        :'<button class="rem-act-btn" style="color:var(--gold);border-color:rgba(245,207,85,.3)" onclick="remOpenEdit(\''+rem.id+'\')">'+
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Editar</button>'+
-          '<button class="rem-act-btn rdel" onclick="remDelete(\''+rem.id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>Eliminar</button>';
-      return '<div class="rem-card rtype-other'+(isDone?' rdone':'')+'" id="rcard-'+rem.id+'">'+
-        '<div style="display:flex;align-items:flex-start;gap:10px">'+
-        '<div class="rem-check '+(isDone?'rchecked':'')+'" onclick="remToggleDone(\''+rem.id+'\')">'+
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>'+
-        '<div style="flex:1;min-width:0">'+
-        '<div class="rem-title">'+esc(rem.title)+'</div>'+
-        '<div class="rem-meta">'+dh+remAlertBadges(rem)+'</div>'+
-        (rem.notes?'<div style="font-size:12px;color:var(--txt3);margin-top:5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;padding-left:32px">'+esc(rem.notes.length>120?rem.notes.slice(0,120)+'…':rem.notes)+'</div>':'')+
-        '</div></div><div class="rem-actions">'+acts+'</div></div>';
-    }
-    var html='';
-    if(remTab==='all'){
-      var ov=filtered.filter(function(r){return r.date&&r.date<t;});
-      var td=filtered.filter(function(r){return r.date===t;});
-      var fu=filtered.filter(function(r){return r.date&&r.date>t;});
-      var un=filtered.filter(function(r){return !r.date;});
-      if(ov.length||td.length){html+=sh('today','Hoy',ov.length+td.length);ov.concat(td).forEach(function(r){html+=card(r);});}
-      if(fu.length){html+=sh('future','Próximos',fu.length);fu.forEach(function(r){html+=card(r);});}
-      if(un.length){html+=sh('undecided','Por decidir',un.length);un.forEach(function(r){html+=card(r);});}
-    } else {
-      var dm={today:'today',upcoming:'future',undecided:'undecided',done:'done'};
-      var lm={today:'Hoy',upcoming:'Próximos',undecided:'Por decidir',done:'Realizados'};
-      html+=sh(dm[remTab]||'today',lm[remTab]||'',filtered.length);
-      filtered.forEach(function(r){html+=card(r);});
-    }
-    el.innerHTML=html;
+    try{
+      remUpdateCounts(); remUpdateNotifUI();
+      var container=document.getElementById('rem-list'); if(!container||remLoading) return;
+      var filtered=remGetFiltered(); var t=remToday();
+
+      if(!filtered.length){
+        var msgs={all:['🔔','Sin recordatorios activos','Crea uno con el botón de arriba'],
+          today:['☀️','Sin recordatorios para hoy',''],upcoming:['📅','Sin próximos',''],
+          undecided:['❓','Por decidir',''],done:['✅','Nada realizado aún','']};
+        var m=msgs[remTab]||msgs.all;
+        container.innerHTML='<div style="text-align:center;padding:40px 20px">'+
+          '<div style="font-size:36px;margin-bottom:10px">'+m[0]+'</div>'+
+          '<div style="font-size:15px;font-weight:700;color:var(--txt2);margin-bottom:5px">'+m[1]+'</div>'+
+          '<div style="font-size:13px;color:var(--txt3)">'+m[2]+'</div></div>';
+        return;
+      }
+
+      function sh(dot,lbl,n){
+        return '<div class="rem-sec-hdr"><div class="rem-sec-dot rdot-'+dot+'"></div>'+
+          '<div class="rem-sec-title">'+lbl+'</div><div class="rem-sec-count">'+n+'</div></div>';
+      }
+
+      function card(rem){
+        var isDone=rem.done;
+        var isOver=!isDone&&rem.date&&rem.date<t; var isTod=!isDone&&rem.date===t;
+        var dc=isOver?'roverdue':isTod?'rtoday':'';
+        var dh=rem.date
+          ?'<span class="rem-date-badge '+dc+'">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;vertical-align:middle;margin-right:2px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'+
+            remFmtDate(rem.date)+(rem.time?' · '+rem.time:'')+'</span>'
+          :'<span class="rem-date-badge" style="color:var(--purp)">❓ Por decidir</span>';
+
+        var acts=isDone
+          ?'<button class="rem-act-btn rdel" onclick="remDelete(\''+rem.id+'\')" title="Eliminar">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>Eliminar</button>'
+          :'<button class="rem-act-btn" style="color:var(--gold);border-color:rgba(245,207,85,.25)" onclick="remOpenEdit(\''+rem.id+'\')" title="Editar">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>Editar</button>'+
+            '<button class="rem-act-btn rdel" onclick="remDelete(\''+rem.id+'\')" title="Eliminar">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>Eliminar</button>';
+
+        return '<div class="rem-card rtype-other'+(isDone?' rdone':'')+'" id="rcard-'+rem.id+'">'+
+          '<div style="display:flex;align-items:flex-start;gap:10px">'+
+          '<div class="rem-check '+(isDone?'rchecked':'')+'" onclick="remToggleDone(\''+rem.id+'\')">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>'+
+          '<div style="flex:1;min-width:0">'+
+          '<div class="rem-title">'+esc(rem.title)+'</div>'+
+          '<div class="rem-meta">'+dh+remAlertBadges(rem)+'</div>'+
+          (rem.notes?'<div style="font-size:12px;color:var(--txt3);margin-top:5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;padding-left:0">'+esc(rem.notes.length>140?rem.notes.slice(0,140)+'…':rem.notes)+'</div>':'')+
+          '</div></div>'+
+          '<div class="rem-actions">'+acts+'</div></div>';
+      }
+
+      var html='';
+      if(remTab==='all'){
+        var ov=filtered.filter(function(r){return r.date&&r.date<t;});
+        var td=filtered.filter(function(r){return r.date===t;});
+        var fu=filtered.filter(function(r){return r.date&&r.date>t;});
+        var un=filtered.filter(function(r){return !r.date;});
+        if(ov.length||td.length){html+=sh('today','Hoy',ov.length+td.length);ov.concat(td).forEach(function(r){html+=card(r);});}
+        if(fu.length){html+=sh('future','Próximos',fu.length);fu.forEach(function(r){html+=card(r);});}
+        if(un.length){html+=sh('undecided','Por decidir',un.length);un.forEach(function(r){html+=card(r);});}
+      } else {
+        var dm={today:'today',upcoming:'future',undecided:'undecided',done:'done'};
+        var lm={today:'Hoy',upcoming:'Próximos',undecided:'Por decidir',done:'Realizados'};
+        html+=sh(dm[remTab]||'today',lm[remTab]||'',filtered.length);
+        filtered.forEach(function(r){html+=card(r);});
+      }
+      container.innerHTML=html;
+    }catch(e){ console.warn('[REM] render error:', e); }
   }
 
   // ── ACTIONS ───────────────────────────────────────────────────────
   window.remToggleDone=function(id){
-    var r=remData.find(function(x){return x.id===id;});if(!r)return;
-    r.done=!r.done;r.doneAt=r.done?new Date().toISOString():null;
-    remCancelTimers(id);if(!r.done)remScheduleOne(r);
-    remRender();remPatch(id,{done:r.done,done_at:r.doneAt});
-    toast(r.done?'✅ Marcado como realizado':'↩ Desmarcado','ok');
-  };
-  window.remDelete=function(id){
-    remCancelTimers(id);remData=remData.filter(function(x){return x.id!==id;});
-    remRender();remDeleteSB(id);toast('🗑 Recordatorio eliminado','ok');
+    try{
+      var r=remData.find(function(x){return x.id===id;}); if(!r) return;
+      r.done=!r.done; r.doneAt=r.done?new Date().toISOString():null;
+      remCancelTimers(id); if(!r.done) remScheduleOne(r);
+      remRender();
+      remPatch(id,{done:r.done,done_at:r.doneAt});
+      _toast(r.done?'✅ Marcado como realizado':'↩ Desmarcado','ok');
+    }catch(e){}
   };
 
-  // ── FORM HELPERS ──────────────────────────────────────────────────
+  window.remDelete=function(id){
+    try{
+      remCancelTimers(id);
+      remData=remData.filter(function(x){return x.id!==id;});
+      remRender(); remDeleteSB(id);
+      _toast('🗑 Recordatorio eliminado','ok');
+    }catch(e){}
+  };
+
+  // ── FORM: read ────────────────────────────────────────────────────
   function remReadForm(){
-    var title=(document.getElementById('rf-title').value||'').trim();
-    var notes=(document.getElementById('rf-notes').value||'').trim();
+    var title =(document.getElementById('rf-title').value||'').trim();
+    var notes =(document.getElementById('rf-notes').value||'').trim();
     var hasDate=remHasDate_;
-    var date=hasDate?(document.getElementById('rf-date').value||null):null;
-    var time=hasDate?(document.getElementById('rf-time').value||null):null;
-    var notify=hasDate&&document.getElementById('rf-notif').checked;
-    // Days before
+    var date  = hasDate?(document.getElementById('rf-date').value||null):null;
+    var time  = hasDate?(document.getElementById('rf-time').value||null):null;
+    var notify= hasDate&&document.getElementById('rf-notif').checked;
     var daysBefore=[];
     document.querySelectorAll('#rf-days-chips .rem-day-chip.active').forEach(function(el){
       daysBefore.push(parseInt(el.dataset.days));
     });
-    // Same-day
-    var sdOn=hasDate&&(document.getElementById('rf-sameday')||{}).checked;
-    var sdCount=sdOn?parseInt(document.getElementById('rf-sd-count').value)||2:0;
-    var sdH=sdOn?parseInt(document.getElementById('rf-sd-hours').value)||0:0;
-    var sdM=sdOn?parseInt(document.getElementById('rf-sd-mins').value)||30:30;
-    var sdInterval=sdH*60+sdM; if(sdInterval<1)sdInterval=30;
+    var sdOn  = hasDate&&(document.getElementById('rf-sameday')||{}).checked;
+    var sdCount= sdOn?parseInt((document.getElementById('rf-sd-count')||{}).value)||2:0;
+    var sdH   = sdOn?parseInt((document.getElementById('rf-sd-hours')||{}).value)||0:0;
+    var sdM   = sdOn?parseInt((document.getElementById('rf-sd-mins')||{}).value)||30:30;
+    var sdInterval= sdH*60+sdM; if(sdInterval<1) sdInterval=30;
     return{title:title,notes:notes,date:date,time:time,notify:notify,
-      daysBefore:daysBefore,sdCount:sdCount,sdInterval:sdInterval};
+           daysBefore:daysBefore,sdCount:sdCount,sdInterval:sdInterval};
   }
 
+  // ── FORM: populate (edit) ─────────────────────────────────────────
   function remPopulateForm(rem){
-    // Title
-    var t=document.getElementById('rf-title');if(t)t.value=rem.title||'';
-    // Notes
-    var nt=document.getElementById('rf-notes');if(nt)nt.value=rem.notes||'';
-    // Date mode
+    var f=function(id,v){var e=document.getElementById(id);if(e)e.value=v||'';};
+    f('rf-title', rem.title);
+    f('rf-notes', rem.notes);
     remHasDate_=!!rem.date;
     remToggleDate(remHasDate_);
-    if(rem.date){var d=document.getElementById('rf-date');if(d)d.value=rem.date;}
-    if(rem.time){var tm=document.getElementById('rf-time');if(tm)tm.value=rem.time;}
-    else{var tm2=document.getElementById('rf-time');if(tm2)tm2.value='';}
-    // Notify
+    if(rem.date) f('rf-date', rem.date);
+    f('rf-time', rem.time||'');
     var n=document.getElementById('rf-notif');
-    if(n){n.checked=!!rem.notify;remUpdNotifToggle('rf-notif','rf-notif-track','rf-notif-thumb');}
-    // Days before chips
+    if(n){n.checked=!!rem.notify; remUpdNotifToggle('rf-notif','rf-notif-track','rf-notif-thumb');}
     document.querySelectorAll('#rf-days-chips .rem-day-chip').forEach(function(el){
       el.classList.toggle('active',(rem.daysBefore||[]).indexOf(parseInt(el.dataset.days))!==-1);
     });
-    // Same-day
     var sdOn=(rem.sdCount||0)>0;
-    var sd=document.getElementById('rf-sameday');if(sd)sd.checked=sdOn;
+    var sd=document.getElementById('rf-sameday'); if(sd) sd.checked=sdOn;
     remToggleSameday(sdOn);
     if(sdOn){
-      var sc=document.getElementById('rf-sd-count');if(sc)sc.value=rem.sdCount||2;
-      var sh=document.getElementById('rf-sd-hours');
-      var sm=document.getElementById('rf-sd-mins');
-      var intv=rem.sdInterval||30;
-      var hh=Math.floor(intv/60);var mm=intv%60;
-      if(sh)sh.value=hh;if(sm)sm.value=mm;
+      var sc=document.getElementById('rf-sd-count');  if(sc) sc.value=rem.sdCount||2;
+      var sh=document.getElementById('rf-sd-hours');  if(sh) sh.value=Math.floor((rem.sdInterval||30)/60);
+      var sm=document.getElementById('rf-sd-mins');   if(sm) sm.value=(rem.sdInterval||30)%60;
       remUpdateSamedayPreview();
     }
   }
 
-  // ── ADD ───────────────────────────────────────────────────────────
+  // ── OPEN ADD ──────────────────────────────────────────────────────
   window.remOpenAdd=function(){
-    if(!_currentUser){toast('Inicia sesión primero','err');return;}
-    remFormMode='add';remEditId=null;
-    var ft=document.getElementById('rem-form-title');if(ft)ft.textContent='Nuevo recordatorio';
-    var sb=document.getElementById('rf-save-btn');if(sb)sb.textContent='Agregar recordatorio';
-    remHasDate_=true;
-    var ti=document.getElementById('rf-title');if(ti)ti.value='';
-    var ni=document.getElementById('rf-notes');if(ni)ni.value='';
-    var rd=document.getElementById('rf-date');if(rd)rd.value=remToday();
-    var rt=document.getElementById('rf-time');if(rt)rt.value='';
-    var rn=document.getElementById('rf-notif');if(rn){rn.checked=true;remUpdNotifToggle('rf-notif','rf-notif-track','rf-notif-thumb');}
+    if(!remEmail()){_toast('Inicia sesión primero','err');return;}
+    remFormMode='add'; remEditId=null; remHasDate_=true;
+    var ft=document.getElementById('rem-form-title'); if(ft) ft.textContent='Nuevo recordatorio';
+    var sb=document.getElementById('rf-save-btn');    if(sb) sb.textContent='Agregar recordatorio';
+    var f=function(id,v){var e=document.getElementById(id);if(e)e.value=v;};
+    f('rf-title',''); f('rf-notes',''); f('rf-date',remToday()); f('rf-time','');
+    var n=document.getElementById('rf-notif'); if(n){n.checked=true;remUpdNotifToggle('rf-notif','rf-notif-track','rf-notif-thumb');}
     document.querySelectorAll('#rf-days-chips .rem-day-chip').forEach(function(el){el.classList.remove('active');});
-    var rsd=document.getElementById('rf-sameday');if(rsd)rsd.checked=false;
-    remToggleDate(true);remToggleSameday(false);
+    var sd=document.getElementById('rf-sameday'); if(sd) sd.checked=false;
+    remToggleDate(true); remToggleSameday(false);
     remOpenModal('rem-form-ov');
-    setTimeout(function(){var tf=document.getElementById('rf-title');if(tf)tf.focus();},350);
+    setTimeout(function(){var e=document.getElementById('rf-title');if(e)e.focus();},350);
   };
 
-  // ── EDIT ──────────────────────────────────────────────────────────
+  // ── OPEN EDIT ─────────────────────────────────────────────────────
   window.remOpenEdit=function(id){
-    var r=remData.find(function(x){return x.id===id;});if(!r)return;
-    remFormMode='edit';remEditId=id;
-    var ft=document.getElementById('rem-form-title');if(ft)ft.textContent='Editar recordatorio';
-    var sb=document.getElementById('rf-save-btn');if(sb)sb.textContent='Guardar cambios';
+    var r=remData.find(function(x){return x.id===id;}); if(!r) return;
+    remFormMode='edit'; remEditId=id;
+    var ft=document.getElementById('rem-form-title'); if(ft) ft.textContent='Editar recordatorio';
+    var sb=document.getElementById('rf-save-btn');    if(sb) sb.textContent='Guardar cambios';
     remPopulateForm(r);
     remOpenModal('rem-form-ov');
   };
 
-  // ── SAVE (add or edit) ────────────────────────────────────────────
+  // ── SAVE ──────────────────────────────────────────────────────────
   window.remFormSave=function(){
-    var f=remReadForm();
-    if(!f.title){toast('Escribe un título','err');return;}
-    var isEdit=(remFormMode==='edit');
+    try{
+      var f=remReadForm();
+      if(!f.title){_toast('Escribe un título','err');return;}
+      var isEdit=(remFormMode==='edit');
 
-    if(isEdit){
-      var r=remData.find(function(x){return x.id===remEditId;});if(!r)return;
-      Object.assign(r,{title:f.title,notes:f.notes||'',date:f.date,time:f.time,
-        notify:f.notify,daysBefore:f.daysBefore,sdCount:f.sdCount,sdInterval:f.sdInterval});
-      remCancelTimers(remEditId);remScheduleOne(r);
-      remRender();remCloseModal('rem-form-ov');
-      remPatch(remEditId,remToRow(r));
-      toast('✏️ Recordatorio actualizado','ok');
-    } else {
-      var rem={
-        id:Date.now().toString(36)+Math.random().toString(36).slice(2),
-        title:f.title,notes:f.notes||'',date:f.date,time:f.time,
-        notify:f.notify,daysBefore:f.daysBefore,sdCount:f.sdCount,sdInterval:f.sdInterval,
-        done:false,doneAt:null,createdAt:new Date().toISOString()
-      };
-      remData.unshift(rem);remRender();remCloseModal('rem-form-ov');
-      remInsert(rem,function(err){
-        if(err){remData=remData.filter(function(x){return x.id!==rem.id;});remRender();toast('Error al guardar','err');return;}
-        var hasAlert=f.notify||f.daysBefore.length>0||f.sdCount>0;
-        if(hasAlert&&f.date){
-          if(remGetPerm()==='granted'){remScheduleOne(rem);toast('✅ Guardado con alertas programadas','ok');}
-          else if(remGetPerm()==='default'){toast('Guardado · activa notificaciones','ok');setTimeout(window.remRequestNotif,900);}
-          else{toast('✅ Guardado','ok');}
-        } else {toast('✅ Recordatorio guardado','ok');}
-        remUpdateNotifUI();
-      });
-    }
+      if(isEdit){
+        var r=remData.find(function(x){return x.id===remEditId;}); if(!r) return;
+        Object.assign(r,{title:f.title,notes:f.notes,date:f.date,time:f.time,
+          notify:f.notify,daysBefore:f.daysBefore,sdCount:f.sdCount,sdInterval:f.sdInterval});
+        remCancelTimers(remEditId); remScheduleOne(r);
+        remRender(); remCloseModal('rem-form-ov');
+        remPatch(remEditId, remToDbRow(r));
+        _toast('✏️ Recordatorio actualizado','ok');
+      } else {
+        var rem={
+          id:Date.now().toString(36)+Math.random().toString(36).slice(2),
+          title:f.title, notes:f.notes, date:f.date, time:f.time,
+          notify:f.notify, daysBefore:f.daysBefore, sdCount:f.sdCount, sdInterval:f.sdInterval,
+          done:false, doneAt:null, createdAt:new Date().toISOString()
+        };
+        remData.unshift(rem); remRender(); remCloseModal('rem-form-ov');
+        remInsert(rem, function(err){
+          if(err){
+            remData=remData.filter(function(x){return x.id!==rem.id;});
+            remRender(); _toast('Error al guardar — verifica la tabla en Supabase','err'); return;
+          }
+          var hasAlert=f.notify||f.daysBefore.length>0||f.sdCount>0;
+          if(hasAlert&&f.date){
+            if(remGetPerm()==='granted'){remScheduleOne(rem);_toast('✅ Guardado con alertas','ok');}
+            else if(remGetPerm()==='default'){_toast('Guardado · activa notificaciones','ok');setTimeout(window.remRequestNotif,900);}
+            else{_toast('✅ Guardado','ok');}
+          } else {_toast('✅ Recordatorio guardado','ok');}
+          remUpdateNotifUI();
+        });
+      }
+    }catch(e){ console.warn('[REM] save error:', e); _toast('Error inesperado','err'); }
   };
 
   // ── FORM CONTROLS ─────────────────────────────────────────────────
-
-
   window.remToggleDate=function(yes){
     remHasDate_=yes;
-    var df=document.getElementById('rf-date-fields');if(df)df.style.display=yes?'block':'none';
-    var bd=document.getElementById('rf-btn-date');   if(bd)bd.classList.toggle('selected',yes);
-    var bn=document.getElementById('rf-btn-nodate'); if(bn)bn.classList.toggle('selected',!yes);
+    var df=document.getElementById('rf-date-fields');  if(df) df.style.display=yes?'block':'none';
+    var bd=document.getElementById('rf-btn-date');     if(bd) bd.classList.toggle('selected',yes);
+    var bn=document.getElementById('rf-btn-nodate');   if(bn) bn.classList.toggle('selected',!yes);
   };
 
   window.remUpdNotifToggle=function(cbId,trackId,thumbId){
-    var on=document.getElementById(cbId);
-    var track=document.getElementById(trackId);var thumb=document.getElementById(thumbId);
-    if(!on)return;
-    if(track)track.style.background=on.checked?'var(--gold)':'var(--line2)';
-    if(thumb)thumb.style.transform=on.checked?'translateX(0)':'translateX(-18px)';
+    var on=document.getElementById(cbId); if(!on) return;
+    var tr=document.getElementById(trackId); var th=document.getElementById(thumbId);
+    if(tr) tr.style.background=on.checked?'var(--gold)':'var(--line2)';
+    if(th) th.style.transform=on.checked?'translateX(18px)':'translateX(0)';
   };
 
-  window.remToggleDayChip=function(el){
-    el.classList.toggle('active');
-  };
+  window.remToggleDayChip=function(el){ el.classList.toggle('active'); };
 
   window.remToggleSameday=function(on){
-    var wrap=document.getElementById('rf-sameday-opts');if(wrap)wrap.style.display=on?'block':'none';
-    var cb=document.getElementById('rf-sameday');if(cb&&cb.checked!==on)cb.checked=on;
-    var track=document.getElementById('rf-sameday-track');var thumb=document.getElementById('rf-sameday-thumb');
-    if(track)track.style.background=on?'var(--purp)':'var(--line2)';
-    if(thumb)thumb.style.transform=on?'translateX(18px)':'translateX(0)';
-    if(on)remUpdateSamedayPreview();
+    var wrap=document.getElementById('rf-sameday-opts'); if(wrap) wrap.style.display=on?'block':'none';
+    var cb=document.getElementById('rf-sameday');       if(cb&&cb.checked!==on) cb.checked=on;
+    var tr=document.getElementById('rf-sameday-track'); if(tr) tr.style.background=on?'var(--purp)':'var(--line2)';
+    var th=document.getElementById('rf-sameday-thumb'); if(th) th.style.transform=on?'translateX(18px)':'translateX(0)';
+    if(on) remUpdateSamedayPreview();
   };
 
   function remUpdateSamedayPreview(){
-    var prev=document.getElementById('rf-sameday-preview');if(!prev)return;
+    var prev=document.getElementById('rf-sameday-preview'); if(!prev) return;
     var cnt=parseInt((document.getElementById('rf-sd-count')||{}).value)||2;
     var hh=parseInt((document.getElementById('rf-sd-hours')||{}).value)||0;
     var mm=parseInt((document.getElementById('rf-sd-mins')||{}).value)||0;
-    var intv=hh*60+mm;if(intv<1)intv=30;
+    var intv=hh*60+mm; if(intv<1) intv=30;
     var parts=[];
     for(var i=cnt;i>=1;i--){
-      var total=i*intv;var h2=Math.floor(total/60);var m2=total%60;
+      var total=i*intv; var h2=Math.floor(total/60); var m2=total%60;
       parts.push((h2>0?h2+'h ':'')+(m2>0?m2+'min':'').trim()||intv+'min');
     }
     prev.textContent='Alertas a: '+parts.join(' → ')+' antes del evento';
   }
 
-  // Live preview update
   document.addEventListener('change',function(e){
-    if(['rf-sd-count','rf-sd-hours','rf-sd-mins'].indexOf(e.target.id)!==-1) remUpdateSamedayPreview();
+    try{
+      if(['rf-sd-count','rf-sd-hours','rf-sd-mins'].indexOf(e.target.id)!==-1) remUpdateSamedayPreview();
+    }catch(e_){}
   });
 
-  // ── MODAL HELPERS ─────────────────────────────────────────────────
-  window.remOpenModal  =function(id){document.getElementById(id).classList.add('open');};
-  window.remCloseModal =function(id){document.getElementById(id).classList.remove('open');};
+  // ── MODAL ─────────────────────────────────────────────────────────
+  window.remOpenModal  =function(id){var e=document.getElementById(id);if(e)e.classList.add('open');};
+  window.remCloseModal =function(id){var e=document.getElementById(id);if(e)e.classList.remove('open');};
   window.remOvClick    =function(e,id){if(e.target.id===id)remCloseModal(id);};
 
   document.addEventListener('keydown',function(e){
-    if(e.key==='Escape')remCloseModal('rem-form-ov');
+    if(e.key==='Escape') remCloseModal('rem-form-ov');
   });
 
-  // ── PUBLIC API ────────────────────────────────────────────────────
-  window._remRender            =remRender;
-  window._remUpdateNotifUI     =remUpdateNotifUI;
-  window._remFetch             =remFetch;
-  window._remSubscribeRealtime =remSubscribeRealtime;
-  window._remStartPoll         =remStartPoll;
+  // ── PUBLIC API (called by navigate hook) ──────────────────────────
+  window._remRender=function(){
+    try{ if(!remReady) remFetch(); else remRender(); }catch(e){}
+  };
+  window._remFetch=function(){
+    try{ remFetch(); }catch(e){}
+  };
+  window._remUpdateNotifUI=function(){
+    try{ remUpdateNotifUI(); }catch(e){}
+  };
 
-  // ── INIT ──────────────────────────────────────────────────────────
-  remInitSW();
-  document.addEventListener('remUserReady',function(){
-    remFetch(function(){remSubscribeRealtime();remStartPoll();});
-  });
+  // ── SAFE INIT — never throws ──────────────────────────────────────
+  try{ remInitSW(); }catch(e){}
+  try{ remWaitForUser(); }catch(e){}
 
 })();
 
