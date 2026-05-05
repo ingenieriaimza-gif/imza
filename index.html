@@ -7449,10 +7449,11 @@ function inicioRenderAlertas(){
   var container=document.getElementById('inicio-rem-list');
   if(!container) return;
   try{
-    if(typeof remData==='undefined'||!window._remRender){ container.innerHTML=''; return; }
+    var remData=window._remData||[];
+    if(!window._remRender){ container.innerHTML=''; return; }
     var t=(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
     // Show active reminders: overdue + today + upcoming (max 5)
-    var active=(remData||[]).filter(function(r){return !r.done;})
+    var active=(remData).filter(function(r){return !r.done;})
       .sort(function(a,b){
         // overdue first, then today, then future, then undecided
         var ord={overdue:0,today:1,future:2,undecided:3};
@@ -7512,7 +7513,7 @@ function inicioRenderAlertas(){
     }).join('');
 
     // Show count if more than 5
-    var total=(remData||[]).filter(function(r){return !r.done;}).length;
+    var total=(remData).filter(function(r){return !r.done;}).length;
     if(total>10){
       html+='<div onclick="navigate(\'recordatorios\')" style="text-align:center;padding:12px;font-size:13px;font-weight:700;color:var(--gold);cursor:pointer;background:rgba(245,207,85,.06);border-radius:12px;border:1px solid rgba(245,207,85,.15)">'
         +'+ '+(total-10)+' más → Ver todas</div>';
@@ -7765,7 +7766,9 @@ function inicioToggleDone(id){
       .then(function(rows){
         remLoading=false; remShowLoading(false); remLastFetch=Date.now(); remReady=true;
         remData=(rows||[]).map(remRowToLocal);
-        remRender(); remUpdateNotifUI(); if(cb) cb();
+        remRender(); remUpdateNotifUI();
+        try{if(typeof inicioRenderAlertas==='function')inicioRenderAlertas();}catch(e){}
+        if(cb) cb();
       })
       .catch(function(e){
         remLoading=false; remShowLoading(false);
@@ -8172,6 +8175,7 @@ function inicioToggleDone(id){
   });
 
   // ── PUBLIC API (called by navigate hook) ──────────────────────────
+  Object.defineProperty(window,'_remData',{get:function(){return remData;},configurable:true});
   window._remRender=function(){
     try{
       // Always render existing data instantly — zero flash
