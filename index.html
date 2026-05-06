@@ -1767,59 +1767,9 @@ function handleOnline(){
   _isOnline=true;
   hideOfflineOverlay();
   updateSyncDot(true);
-  if(!_currentUser) return;
-
-  var hasPending=localStorage.getItem('cp4_pending_push')==='1';
-
-  if(hasPending){
-    toast('🔄 Conexión restaurada — verificando versión…','ok');
-    // Pull cloud first to check if it's newer than our local pending changes
-    sbFetch('/rest/v1/imza_data?id=eq.main&select=updated_at').then(function(rows){
-      var cloudUpdatedAt = rows&&rows[0] ? new Date(rows[0].updated_at).getTime() : 0;
-      var localPendingSince = Number(localStorage.getItem('cp4_pending_since')||0);
-
-      if(cloudUpdatedAt > localPendingSince){
-        // Cloud is newer — someone else saved while we were offline
-        // Pull cloud data and merge our pending changes on top
-        pullFromCloud().then(function(updated){
-          if(updated){
-            rAll(true); updateSyncUI(true);
-            // Now push merged state
-            pushToCloud().then(function(ok){
-              if(ok){
-                localStorage.removeItem('cp4_pending_push');
-                localStorage.removeItem('cp4_pending_since');
-                toast('✅ Datos fusionados y sincronizados','ok');
-              }
-            }).catch(function(){});
-          }
-        });
-      } else {
-        // Local is newer — push our changes
-        pushToCloud().then(function(ok){
-          if(ok){
-            localStorage.removeItem('cp4_pending_push');
-            localStorage.removeItem('cp4_pending_since');
-            toast('✅ Cambios sincronizados correctamente','ok');
-            pullFromCloud().then(function(u){ if(u){ rAll(true); updateSyncUI(true); } });
-          }
-        }).catch(function(){});
-      }
-    }).catch(function(){
-      // Can't check cloud — just push local
-      pushToCloud().then(function(ok){
-        if(ok){
-          localStorage.removeItem('cp4_pending_push');
-          localStorage.removeItem('cp4_pending_since');
-        }
-      }).catch(function(){});
-    });
-  } else {
+  if(_currentUser){
     pullFromCloud().then(function(u){ if(u){ rAll(true); updateSyncUI(true); } });
   }
-
-  // Sync pending reminder operations
-  setTimeout(remSyncPendingOps, 1000);
 }
 
 function handleOffline(){
@@ -1851,12 +1801,8 @@ function getLocalData(){
   return d;
 }
 function persistLocal(){
-  // Guardar snapshot local para soporte offline
-  try{
-    var snap=getLocalData();
-    snap._savedAt=new Date().toISOString();
-    localStorage.setItem('cp4_local_snap',JSON.stringify(snap));
-  }catch(e){}
+  // NO guardar datos de negocio en localStorage — solo metadata de sync
+  // Todos los datos vienen de Supabase
 }
 
 
@@ -2059,36 +2005,17 @@ function pushToCloud(){
 
 // ── SAVE ─────────────────────────────────────────────────────────────────────
 function save(){
-  // Siempre guardar localmente primero
-  persistLocal();
+  if(!_isOnline){
+    toast('Sin conexión — cambios no guardados','err');
+    return;
+  }
   if(_currentUser){
     addToChangeLog(new Date().toISOString(),_currentUser.nombre,_lastAction||'Cambio');
     renderChangeLog();
   }
-  if(!_isOnline){
-    // Sin red — marcar como pendiente y notificar
-    localStorage.setItem('cp4_pending_push','1');
-    if(!localStorage.getItem('cp4_pending_since')) localStorage.setItem('cp4_pending_since',String(Date.now()));
-    toast('📋 Sin red — guardado localmente, se subirá al conectarte','ok');
-    _remUpdatePendingIndicator(true);
-    return;
-  }
   pushToCloud().then(function(ok){
-    if(ok){
-      localStorage.removeItem('cp4_pending_push');
-    } else {
-      // Push falló — guardar como pendiente
-      localStorage.setItem('cp4_pending_push','1');
-      if(!localStorage.getItem('cp4_pending_since')) localStorage.setItem('cp4_pending_since',String(Date.now()));
-      toast('📋 Sin red — guardado localmente, se subirá al conectarte','ok');
-      _remUpdatePendingIndicator(true);
-    }
-  }).catch(function(){
-    localStorage.setItem('cp4_pending_push','1');
-    if(!localStorage.getItem('cp4_pending_since')) localStorage.setItem('cp4_pending_since',String(Date.now()));
-    toast('📋 Sin red — guardado localmente, se subirá al conectarte','ok');
-    _remUpdatePendingIndicator(true);
-  });
+    if(!ok) toast('Error al guardar — verifica tu conexión','err');
+  }).catch(function(){ toast('Error al guardar — verifica tu conexión','err'); });
 }
 
 // ── LIVE SYNC ─────────────────────────────────────────────────────────────────
@@ -7541,114 +7468,6 @@ load();updDates();rAll();
 
 
 
-// ═══════════════════════════════════════════════════════════════════
-// OFFLINE QUEUE — recordatorios y datos principales
-// ═══════════════════════════════════════════════════════════════════
-
-// ── REMINDER OPS QUEUE ────────────────────────────────────────────
-var REM_OPS_KEY = 'cp4_rem_ops_q';
-
-function remQueueOp(op){
-  // op = {type:'insert'|'patch'|'delete', id, data, ts}
-  try{
-    var q = JSON.parse(localStorage.getItem(REM_OPS_KEY)||'[]');
-    // Collapse: if same id already in queue, merge/replace
-    if(op.type==='patch'||op.type==='delete'){
-      q = q.filter(function(o){ return o.id!==op.id; });
-    }
-    op.ts = Date.now();
-    q.push(op);
-    localStorage.setItem(REM_OPS_KEY, JSON.stringify(q));
-  }catch(e){}
-}
-
-function remClearOp(id){
-  try{
-    var q = JSON.parse(localStorage.getItem(REM_OPS_KEY)||'[]');
-    q = q.filter(function(o){ return o.id!==id; });
-    localStorage.setItem(REM_OPS_KEY, JSON.stringify(q));
-  }catch(e){}
-}
-
-function remGetQueue(){
-  try{ return JSON.parse(localStorage.getItem(REM_OPS_KEY)||'[]'); }catch(e){ return []; }
-}
-
-// Called by handleOnline — replay all queued reminder ops
-function remSyncPendingOps(){
-  var q = remGetQueue();
-  if(!q.length) return;
-  console.log('[REM] Syncing', q.length, 'pending ops');
-  
-  var done = [];
-  var chain = Promise.resolve();
-  
-  q.forEach(function(op){
-    chain = chain.then(function(){
-      var p;
-      if(op.type==='insert'){
-        p = sbFetch('/rest/v1/imza_recordatorios', {method:'POST', body:JSON.stringify(op.data)});
-      } else if(op.type==='patch'){
-        p = sbFetch('/rest/v1/imza_recordatorios?id=eq.'+op.id, {method:'PATCH', body:JSON.stringify(op.data)});
-      } else if(op.type==='delete'){
-        p = sbFetch('/rest/v1/imza_recordatorios?id=eq.'+op.id, {method:'DELETE'});
-      } else { return; }
-      
-      return p.then(function(){
-        done.push(op.id||op.ts);
-        // Remove from queue
-        var remaining = remGetQueue().filter(function(o){
-          return (o.id||o.ts) !== (op.id||op.ts);
-        });
-        localStorage.setItem(REM_OPS_KEY, JSON.stringify(remaining));
-      }).catch(function(){ /* leave in queue for next retry */ });
-    });
-  });
-  
-  chain.then(function(){
-    if(done.length){
-      // Refresh reminders after sync
-      try{ if(window._remFetch) _remFetch(); }catch(e){}
-      toast('✅ '+done.length+' cambio'+(done.length>1?'s':'')+' de alertas sincronizado'+(done.length>1?'s':''), 'ok');
-    }
-    remUpdatePendingBadge();
-  });
-}
-
-// Pending badge in nav dot
-function remUpdatePendingBadge(){
-  var q = remGetQueue();
-  var dot = document.getElementById('rem-nav-dot');
-  if(!dot) return;
-  if(q.length>0){
-    dot.style.display='block';
-    dot.style.background='var(--orange,#ff9f5a)';
-    dot.title = q.length+' cambio(s) pendiente(s) de sincronizar';
-  } else {
-    // Restore normal behavior
-    dot.style.background='var(--gold)';
-    dot.title='';
-    try{ if(window._remUpdateNotifUI) _remUpdateNotifUI(); }catch(e){}
-  }
-}
-
-
-// ── Pending indicator helper ──────────────────────────────────────
-function _remUpdatePendingIndicator(hasPending){
-  // Show orange dot in sync bar when there are unsynced changes
-  var syncDot = document.getElementById('sync-dot');
-  if(syncDot){
-    if(hasPending){
-      syncDot.style.background='var(--orange,#ff9f5a)';
-      syncDot.title='Cambios pendientes de sincronizar';
-    } else {
-      syncDot.style.background='';
-      syncDot.title='';
-    }
-  }
-  try{ remUpdatePendingBadge(); }catch(e){}
-}
-
 // ── Alertas en pantalla Inicio (admin) ───────────────────────────────────────
 function inicioRenderAlertas(){
   var container=document.getElementById('inicio-rem-list');
@@ -7945,83 +7764,22 @@ function inicioToggleDone(id){
   function remInsert(rem, cb){
     var email=remEmail(); if(!email){ if(cb) cb(new Error('no user')); return; }
     var row=Object.assign({id:rem.id, user_email:email, created_at:rem.createdAt}, remToDbRow(rem));
-    if(typeof _isOnline!=='undefined' && !_isOnline){
-      try{ remQueueOp({type:'insert',id:rem.id,data:row}); remUpdatePendingBadge(); }catch(e){}
-      _toast('📋 Sin red — se guardará al conectarte','ok'); if(cb) cb(); return;
-    }
-    remSbFetch('/rest/v1/'+TABLE,{method:'POST',body:JSON.stringify(row)})
+    remSbFetch('/rest/v1/'+TABLE, {method:'POST', body:JSON.stringify(row)})
       .then(function(){ if(cb) cb(); })
-      .catch(function(){
-        try{ remQueueOp({type:'insert',id:rem.id,data:row}); remUpdatePendingBadge(); }catch(e){}
-        _toast('📋 Sin red — se guardará al conectarte','ok'); if(cb) cb();
-      });
+      .catch(function(e){ console.warn('[REM] insert error:', e); if(cb) cb(e); });
   }
 
-  function remPatch(id, fields, cb){
-    if(typeof _isOnline!=='undefined' && !_isOnline){
-      try{ remQueueOp({type:'patch',id:id,data:fields}); remUpdatePendingBadge(); }catch(e){}
-      if(cb) cb(); return;
-    }
-    remSbFetch('/rest/v1/'+TABLE+'?id=eq.'+id,{method:'PATCH',body:JSON.stringify(fields)})
-      .then(function(){ if(cb) cb(); })
-      .catch(function(){
-        try{ remQueueOp({type:'patch',id:id,data:fields}); remUpdatePendingBadge(); }catch(e){}
-        if(cb) cb();
-      });
+  function remPatch(id, fields){
+    remSbFetch('/rest/v1/'+TABLE+'?id=eq.'+id, {method:'PATCH', body:JSON.stringify(fields)})
+      .catch(function(e){ console.warn('[REM] patch error:', e); });
   }
 
   function remDeleteSB(id){
-    if(typeof _isOnline!=='undefined' && !_isOnline){
-      try{ remQueueOp({type:'delete',id:id}); remUpdatePendingBadge(); }catch(e){} return;
-    }
-    remSbFetch('/rest/v1/'+TABLE+'?id=eq.'+id,{method:'DELETE'})
-      .catch(function(){
-        try{ remQueueOp({type:'delete',id:id}); remUpdatePendingBadge(); }catch(e){}
-      });
+    remSbFetch('/rest/v1/'+TABLE+'?id=eq.'+id, {method:'DELETE'})
+      .catch(function(e){ console.warn('[REM] delete error:', e); });
   }
 
-  // ── FETCH ─────────────────────────────────────────────────────────
-  function remFetch(cb){
-    var email=remEmail();
-    if(!email){ remRender(); if(cb) cb(); return; }
-    if(remLoading){ if(cb) cb(); return; }
-    remLoading=true;
-    if(remData.length===0 && !remReady) remShowLoading(true);
-    remSbFetch('/rest/v1/'+TABLE+'?user_email=eq.'+encodeURIComponent(email)+'&order=created_at.desc&limit=500')
-      .then(function(rows){
-        remLoading=false; remShowLoading(false); remLastFetch=Date.now(); remReady=true;
-        var newData=(rows||[]).map(remRowToLocal);
-        if(JSON.stringify(newData)!==JSON.stringify(remData)){
-          remData=newData; remRender(); remScheduleAllPending();
-          try{if(typeof inicioRenderAlertas==='function')inicioRenderAlertas();}catch(e){}
-        }
-        remUpdateNotifUI(); if(cb) cb();
-      })
-      .catch(function(e){
-        remLoading=false; remShowLoading(false);
-        var el=document.getElementById('rem-list');
-        if(el&&remData.length===0) el.innerHTML='<div style="text-align:center;padding:30px;color:var(--txt3);font-size:13px">⚠️ Error al cargar. Verifica tu conexión.</div>';
-        if(cb) cb(e);
-      });
-  }
-
-  function _remSilentFetch(){
-    var email=remEmail(); if(!email||remLoading) return;
-    remLoading=true;
-    remSbFetch('/rest/v1/'+TABLE+'?user_email=eq.'+encodeURIComponent(email)+'&order=created_at.desc&limit=500')
-      .then(function(rows){
-        remLoading=false; remLastFetch=Date.now(); remReady=true;
-        var newData=(rows||[]).map(remRowToLocal);
-        if(JSON.stringify(newData)!==JSON.stringify(remData)){
-          remData=newData; remRender(); remScheduleAllPending();
-          try{if(typeof inicioRenderAlertas==='function')inicioRenderAlertas();}catch(e){}
-        }
-        remUpdateNotifUI();
-      })
-      .catch(function(){ remLoading=false; });
-  }
-
-  // ── SYNC ──────────────────────────────────────────────────────────
+  // ── SYNC: polling + visibilitychange (no Realtime to avoid WS conflict) ──
   function remStartPoll(){
     remStopPoll();
     remPollTimer=setInterval(function(){
@@ -8035,13 +7793,20 @@ function inicioToggleDone(id){
   }
   function remStopPoll(){ if(remPollTimer){ clearInterval(remPollTimer); remPollTimer=null; } }
 
-  document.addEventListener('visibilitychange',function(){
+  document.addEventListener('visibilitychange', function(){
     try{
-      if(document.visibilityState==='visible'&&remEmail()&&Date.now()-remLastFetch>15000) remFetch();
+      if(document.visibilityState==='visible' && remEmail() && Date.now()-remLastFetch>15000){
+        remFetch();
+      }
     }catch(e){}
   });
-  window.addEventListener('focus',function(){
-    try{ if(!remEmail()){ remWaitForUser(); return; } if(Date.now()-remLastFetch>15000) remFetch(); }catch(e){}
+
+  // Re-detect user on page focus (handles login state changes)
+  window.addEventListener('focus', function(){
+    try{
+      if(!remEmail()){ remWaitForUser(); return; }
+      if(Date.now()-remLastFetch > VIS_MIN) remFetch();
+    }catch(e){}
   });
 
   // ── LOADING ───────────────────────────────────────────────────────
@@ -8055,9 +7820,12 @@ function inicioToggleDone(id){
   // ── TABS ──────────────────────────────────────────────────────────
   window.remSetTab=function(tab){
     remTab=tab;
-    document.querySelectorAll('.rem-tab').forEach(function(el){ el.classList.toggle('active',el.dataset.rtab===tab); });
+    document.querySelectorAll('.rem-tab').forEach(function(el){
+      el.classList.toggle('active',el.dataset.rtab===tab);
+    });
     remRender();
   };
+
   function remGetFiltered(){
     var t=remToday();
     switch(remTab){
@@ -8068,6 +7836,7 @@ function inicioToggleDone(id){
       default:         return remData.filter(function(r){return !r.done;});
     }
   }
+
   function remUpdateCounts(){
     var t=remToday();
     function sc(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
@@ -8078,65 +7847,85 @@ function inicioToggleDone(id){
     sc('rcnt-done',      remData.filter(function(r){return r.done;}).length);
   }
 
-  // ── CARD (module-level, reused by inicioRenderAlertas) ────────────
+  // ── RENDER ────────────────────────────────────────────────────────
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  function _remCard(rem,t,idx){
-    var isDone=rem.done;
-    var isOver=!isDone&&rem.date&&rem.date<t;
-    var isTod =!isDone&&rem.date===t;
-    var urg   = isDone?'done':isOver?'overdue':isTod?'today':rem.date?'future':'undecided';
-    var ckCls = isDone?'rchecked':'rck-'+urg;
-    var id    = rem.id;
-
-    var calSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px;flex-shrink:0"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
-    var datePill='';
-    if(rem.date){
-      var dlabel=remFmtDate(rem.date)+(rem.time?'  '+rem.time:'');
-      datePill='<div class="rem-date-pill rurg-'+urg+'" style="margin-bottom:8px">'+calSvg+dlabel+'</div>';
-    } else {
-      datePill='<div class="rem-date-pill rurg-undecided" style="margin-bottom:8px">❓ Por decidir</div>';
+  function remAlertBadges(rem){
+    if(rem.done||!rem.date) return '';
+    var out='';
+    if(rem.notify) out+='<span class="rem-notif-badge">🔔 Exacta</span>';
+    if(rem.daysBefore&&rem.daysBefore.length)
+      out+='<span class="rem-notif-badge" style="background:rgba(106,170,255,.1);color:var(--blue)">📅 '+rem.daysBefore.length+'d antes</span>';
+    if(rem.sdCount>0){
+      var h=Math.floor(rem.sdInterval/60),m=rem.sdInterval%60;
+      out+='<span class="rem-notif-badge" style="background:rgba(181,157,255,.1);color:var(--purp)">⏱ '+rem.sdCount+'× c/'+(h>0?h+'h ':'')+(m>0?m+'min':'')+'</span>';
     }
-
-    var badges='';
-    if(rem.notify&&rem.date&&!isDone) badges+='<div class="rem-badge rem-badge-exact">🔔 Notif. exacta</div>';
-    if(rem.daysBefore&&rem.daysBefore.length&&!isDone){
-      var dl=rem.daysBefore.slice().sort(function(a,b){return b-a;});
-      badges+='<div class="rem-badge rem-badge-days">📅 '+dl.map(function(d){return d===1?'1d':d===7?'1sem':d===14?'2sem':d===30?'1mes':d+'d';}).join(' · ')+' antes</div>';
-    }
-    if(rem.sdCount>0&&!isDone){
-      var h2=Math.floor(rem.sdInterval/60),m2=rem.sdInterval%60;
-      badges+='<div class="rem-badge rem-badge-pre">⏱ '+rem.sdCount+'× c/'+(h2>0?h2+'h ':'')+( m2>0?m2+'min':'')+'</div>';
-    }
-
-    var editSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>';
-    var delSvg ='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
-    var reactiveSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 16v-4h4"/></svg>';
-
-    var acts=isDone
-      ?('<button class="rem-act-btn" style="color:var(--blue)" data-rid="'+id+'" onclick="remAskReactivate(this.dataset.rid)">'+reactiveSvg+'Reactivar</button>'+
-        '<button class="rem-act-btn rdel" data-rid="'+id+'" onclick="remDelete(this.dataset.rid)">'+delSvg+'Eliminar</button>')
-      :('<button class="rem-act-btn redit" data-rid="'+id+'" onclick="remOpenEdit(this.dataset.rid)">'+editSvg+'Editar</button>'+
-        '<button class="rem-act-btn rdel" data-rid="'+id+'" onclick="remDelete(this.dataset.rid)">'+delSvg+'Eliminar</button>');
-
-    return (
-      (idx!=null?'<div style="position:absolute;top:12px;right:14px;background:var(--gold);border-radius:12px;padding:5px 13px;font-size:16px;font-weight:900;color:#0a0c10;font-family:Syne,sans-serif;letter-spacing:-.02em;z-index:1;box-shadow:0 3px 12px rgba(245,207,85,.45)">#'+idx+'</div>':'')+
-      '<div class="rem-card-inner" style="padding-right:60px">'+
-      '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:10px">'+
-        '<div class="rem-check '+ckCls+'" data-rid="'+id+'" onclick="remToggleDone(this.dataset.rid)" style="margin-top:3px">'+
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>'+
-        '<div class="rem-title">'+esc(rem.title)+'</div>'+
-      '</div>'+
-      datePill+
-      (rem.notes?'<div class="rem-notes">'+esc(rem.notes.length>200?rem.notes.slice(0,200)+'…':rem.notes)+'</div>':'')+
-      (badges?'<div class="rem-badge-row" style="margin-bottom:4px">'+badges+'</div>':'')+
-      '</div>'+
-      '<div class="rem-actions">'+acts+'</div>'
-    );
+    return out;
   }
 
-  // ── RENDER ────────────────────────────────────────────────────────
-  function remAlertBadges(rem){return '';}// badges handled inside _remCard
+  function _remCard(rem,t,idx){
+        var isDone=rem.done;
+        var isOver=!isDone&&rem.date&&rem.date<t;
+        var isTod =!isDone&&rem.date===t;
+        var urg   = isDone?'done':isOver?'overdue':isTod?'today':rem.date?'future':'undecided';
+        var ckCls = isDone?'rchecked':'rck-'+urg;
+
+        // Date pill
+        var calSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px;flex-shrink:0"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+        var datePill='';
+        if(rem.date){
+          var dlabel=remFmtDate(rem.date)+(rem.time?'  '+rem.time:'');
+          datePill='<div class="rem-date-pill rurg-'+urg+'" style="margin-bottom:8px">'+calSvg+dlabel+'</div>';
+        } else {
+          datePill='<div class="rem-date-pill rurg-undecided" style="margin-bottom:8px">❓ Por decidir</div>';
+        }
+
+        // Alert badges
+        var badges='';
+        if(rem.notify&&rem.date&&!isDone)
+          badges+='<div class="rem-badge rem-badge-exact">🔔 Notif. exacta</div>';
+        if(rem.daysBefore&&rem.daysBefore.length&&!isDone){
+          var dl=rem.daysBefore.slice().sort(function(a,b){return b-a;});
+          badges+='<div class="rem-badge rem-badge-days">📅 '+dl.map(function(d){return d===1?'1d':d===7?'1sem':d===14?'2sem':d===30?'1mes':d+'d';}).join(' · ')+' antes</div>';
+        }
+        if(rem.sdCount>0&&!isDone){
+          var h2=Math.floor(rem.sdInterval/60),m2=rem.sdInterval%60;
+          var il=(h2>0?h2+'h ':'')+( m2>0?m2+'min':'');
+          badges+='<div class="rem-badge rem-badge-pre">⏱ '+rem.sdCount+'× c/'+il.trim()+'</div>';
+        }
+
+        // Actions
+        var editSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>';
+        var delSvg ='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+        var id=rem.id;
+        var editSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>';
+        var delSvg ='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+        var reactiveSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 16v-4h4"/></svg>';
+        var acts=isDone
+          ?('<button class="rem-act-btn" style="color:var(--blue)" data-rid="'+id+'" onclick="remAskReactivate(this.dataset.rid)">'+reactiveSvg+'Reactivar</button>'+
+            '<button class="rem-act-btn rdel" data-rid="'+id+'" onclick="remDelete(this.dataset.rid)">'+delSvg+'Eliminar</button>')
+          :('<button class="rem-act-btn redit" data-rid="'+id+'" onclick="remOpenEdit(this.dataset.rid)">'+editSvg+'Editar</button>'+
+            '<button class="rem-act-btn rdel" data-rid="'+id+'" onclick="remDelete(this.dataset.rid)">'+delSvg+'Eliminar</button>');
+
+        return (
+          '<div class="rem-card rurg-'+urg+(isDone?' rdone':'')+'" id="rcard-'+id+'">'+
+          (idx!=null?'<div style="position:absolute;top:12px;right:14px;background:var(--gold);border-radius:12px;padding:5px 13px;font-size:16px;font-weight:900;color:#0a0c10;font-family:Syne,sans-serif;letter-spacing:-.02em;z-index:1;box-shadow:0 3px 12px rgba(245,207,85,.45)">#'+idx+'</div>':'')+
+          '<div class="rem-card-inner">'+
+          '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:10px">'+
+            '<div class="rem-check '+ckCls+'" data-rid="'+id+'" onclick="remToggleDone(this.dataset.rid)" style="margin-top:3px">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>'+
+            '<div style="flex:1;min-width:0">'+
+            '<div class="rem-title">'+esc(rem.title)+'</div>'+
+            '</div>'+
+          '</div>'+
+          datePill+
+          (rem.notes?'<div class="rem-notes">'+esc(rem.notes.length>200?rem.notes.slice(0,200)+'…':rem.notes)+'</div>':'')+
+          (badges?'<div class="rem-badge-row" style="margin-bottom:4px">'+badges+'</div>':'')+
+          '</div>'+
+          '<div class="rem-actions">'+acts+'</div>'+
+          '</div>'
+        );
+      }
 
   function remRender(){
     try{
@@ -8156,9 +7945,12 @@ function inicioToggleDone(id){
         return;
       }
 
-      function card(rem,idx){ return '<div class="rem-card rurg-'+(rem.done?'done':!rem.date?'undecided':rem.date<t?'overdue':rem.date===t?'today':'future')+(rem.done?' rdone':'')+'" id="rcard-'+rem.id+'">'+_remCard(rem,t,idx)+'</div>'; }
-      function sh(dot,lbl,n){ return '<div class="rem-sec-hdr"><div class="rem-sec-dot rdot-'+dot+'"></div><div class="rem-sec-title">'+lbl+'</div><div class="rem-sec-count">'+n+'</div></div>'; }
+      function sh(dot,lbl,n){
+        return '<div class="rem-sec-hdr"><div class="rem-sec-dot rdot-'+dot+'"></div>'+
+          '<div class="rem-sec-title">'+lbl+'</div><div class="rem-sec-count">'+n+'</div></div>';
+      }
 
+      function card(rem,idx){ return _remCard(rem,t,idx!=null?idx:null); }
       var html='';
       if(remTab==='all'){
         var ov=filtered.filter(function(r){return r.date&&r.date<t;});
@@ -8174,76 +7966,89 @@ function inicioToggleDone(id){
         html+=sh(dm[remTab]||'today',lm[remTab]||'',filtered.length);
         filtered.forEach(function(r,i){html+=card(r,i+1);});
       }
-      if(container.innerHTML!==html) container.innerHTML=html;
-    }catch(e){ console.warn('[REM] render error:',e); }
+      // Only update DOM if content actually changed — eliminates flash
+      if(container.innerHTML !== html){
+        container.innerHTML = html;
+      }
+    }catch(e){ console.warn('[REM] render error:', e); }
   }
 
   // ── ACTIONS ───────────────────────────────────────────────────────
+  // Ask confirmation before reactivating
   window.remAskReactivate=function(id){
     var r=remData.find(function(x){return x.id===id;}); if(!r) return;
     var el=document.getElementById('rem-reactivate-id'); if(el) el.value=id;
     var tl=document.getElementById('rem-reactivate-title'); if(tl) tl.textContent=r.title;
     remOpenModal('rem-reactivate-ov');
   };
+
   window.remConfirmReactivate=function(){
     var id=(document.getElementById('rem-reactivate-id')||{}).value; if(!id) return;
     remCloseModal('rem-reactivate-ov');
     var r=remData.find(function(x){return x.id===id;}); if(!r) return;
     r.done=false; r.doneAt=null;
-    remScheduleOne(r); remRender();
+    remScheduleOne(r);
+    remRender();
     remPatch(id,{done:false,done_at:null});
     try{if(typeof inicioRenderAlertas==='function')inicioRenderAlertas();}catch(e){}
     _toast('🔄 Recordatorio reactivado','ok');
   };
+
   window.remToggleDone=function(id){
     try{
       var r=remData.find(function(x){return x.id===id;}); if(!r) return;
-      if(r.done){ window.remAskReactivate(id); return; }
+      if(r.done){
+        // Already done — ask to reactivate with confirmation
+        window.remAskReactivate(id); return;
+      }
       r.done=true; r.doneAt=new Date().toISOString();
-      remCancelTimers(id); remRender();
+      remCancelTimers(id);
+      remRender();
       remPatch(id,{done:true,done_at:r.doneAt});
       try{if(typeof inicioRenderAlertas==='function')inicioRenderAlertas();}catch(e){}
       _toast('✅ Marcado como realizado','ok');
     }catch(e){}
   };
+
   window.remDelete=function(id){
     try{
       remCancelTimers(id);
       remData=remData.filter(function(x){return x.id!==id;});
       remRender(); remDeleteSB(id);
-      try{if(typeof inicioRenderAlertas==='function')inicioRenderAlertas();}catch(e){}
       _toast('🗑 Recordatorio eliminado','ok');
     }catch(e){}
   };
 
-  // ── FORM ──────────────────────────────────────────────────────────
+  // ── FORM: read ────────────────────────────────────────────────────
   function remReadForm(){
-    var title=(document.getElementById('rf-title').value||'').trim();
-    var notes=(document.getElementById('rf-notes').value||'').trim();
+    var title =(document.getElementById('rf-title').value||'').trim();
+    var notes =(document.getElementById('rf-notes').value||'').trim();
     var hasDate=remHasDate_;
-    var date=hasDate?(document.getElementById('rf-date').value||null):null;
-    var time=hasDate?(document.getElementById('rf-time').value||null):null;
-    var notify=hasDate&&document.getElementById('rf-notif').checked;
+    var date  = hasDate?(document.getElementById('rf-date').value||null):null;
+    var time  = hasDate?(document.getElementById('rf-time').value||null):null;
+    var notify= hasDate&&document.getElementById('rf-notif').checked;
     var daysBefore=[];
     document.querySelectorAll('#rf-days-chips .rem-day-chip.active').forEach(function(el){
       daysBefore.push(parseInt(el.dataset.days));
     });
-    var sdOn=hasDate&&(document.getElementById('rf-sameday')||{}).checked;
-    var sdCount=sdOn?parseInt((document.getElementById('rf-sd-count')||{}).value)||2:0;
-    var sdH=sdOn?parseInt((document.getElementById('rf-sd-hours')||{}).value)||0:0;
-    var sdM=sdOn?parseInt((document.getElementById('rf-sd-mins')||{}).value)||30:30;
-    var sdInterval=sdH*60+sdM; if(sdInterval<1) sdInterval=30;
+    var sdOn  = hasDate&&(document.getElementById('rf-sameday')||{}).checked;
+    var sdCount= sdOn?parseInt((document.getElementById('rf-sd-count')||{}).value)||2:0;
+    var sdH   = sdOn?parseInt((document.getElementById('rf-sd-hours')||{}).value)||0:0;
+    var sdM   = sdOn?parseInt((document.getElementById('rf-sd-mins')||{}).value)||30:30;
+    var sdInterval= sdH*60+sdM; if(sdInterval<1) sdInterval=30;
     return{title:title,notes:notes,date:date,time:time,notify:notify,
            daysBefore:daysBefore,sdCount:sdCount,sdInterval:sdInterval};
   }
 
+  // ── FORM: populate (edit) ─────────────────────────────────────────
   function remPopulateForm(rem){
     var f=function(id,v){var e=document.getElementById(id);if(e)e.value=v||'';};
-    f('rf-title',rem.title); f('rf-notes',rem.notes);
+    f('rf-title', rem.title);
+    f('rf-notes', rem.notes);
     remHasDate_=!!rem.date;
     remToggleDate(remHasDate_);
-    if(rem.date) f('rf-date',rem.date);
-    f('rf-time',rem.time||'');
+    if(rem.date) f('rf-date', rem.date);
+    f('rf-time', rem.time||'');
     var n=document.getElementById('rf-notif');
     if(n){n.checked=!!rem.notify; remUpdNotifToggle('rf-notif','rf-notif-track','rf-notif-thumb');}
     document.querySelectorAll('#rf-days-chips .rem-day-chip').forEach(function(el){
@@ -8254,12 +8059,13 @@ function inicioToggleDone(id){
     remToggleSameday(sdOn);
     if(sdOn){
       var sc=document.getElementById('rf-sd-count');  if(sc) sc.value=rem.sdCount||2;
-      var sh_=document.getElementById('rf-sd-hours'); if(sh_) sh_.value=Math.floor((rem.sdInterval||30)/60);
+      var sh=document.getElementById('rf-sd-hours');  if(sh) sh.value=Math.floor((rem.sdInterval||30)/60);
       var sm=document.getElementById('rf-sd-mins');   if(sm) sm.value=(rem.sdInterval||30)%60;
       remUpdateSamedayPreview();
     }
   }
 
+  // ── OPEN ADD ──────────────────────────────────────────────────────
   window.remOpenAdd=function(){
     if(!remEmail()){_toast('Inicia sesión primero','err');return;}
     remFormMode='add'; remEditId=null; remHasDate_=true;
@@ -8275,6 +8081,7 @@ function inicioToggleDone(id){
     setTimeout(function(){var e=document.getElementById('rf-title');if(e)e.focus();},350);
   };
 
+  // ── OPEN EDIT ─────────────────────────────────────────────────────
   window.remOpenEdit=function(id){
     var r=remData.find(function(x){return x.id===id;}); if(!r) return;
     remFormMode='edit'; remEditId=id;
@@ -8284,44 +8091,44 @@ function inicioToggleDone(id){
     remOpenModal('rem-form-ov');
   };
 
+  // ── SAVE ──────────────────────────────────────────────────────────
   window.remFormSave=function(){
     try{
       var f=remReadForm();
       if(!f.title){_toast('Escribe un título','err');return;}
       var isEdit=(remFormMode==='edit');
+
       if(isEdit){
         var r=remData.find(function(x){return x.id===remEditId;}); if(!r) return;
         Object.assign(r,{title:f.title,notes:f.notes,date:f.date,time:f.time,
           notify:f.notify,daysBefore:f.daysBefore,sdCount:f.sdCount,sdInterval:f.sdInterval});
         remCancelTimers(remEditId); remScheduleOne(r);
         remRender(); remCloseModal('rem-form-ov');
-        remPatch(remEditId,remToDbRow(r));
-        try{if(typeof inicioRenderAlertas==='function')inicioRenderAlertas();}catch(e){}
+        remPatch(remEditId, remToDbRow(r));
         _toast('✏️ Recordatorio actualizado','ok');
       } else {
         var rem={
           id:Date.now().toString(36)+Math.random().toString(36).slice(2),
-          title:f.title,notes:f.notes,date:f.date,time:f.time,
-          notify:f.notify,daysBefore:f.daysBefore,sdCount:f.sdCount,sdInterval:f.sdInterval,
-          done:false,doneAt:null,createdAt:new Date().toISOString()
+          title:f.title, notes:f.notes, date:f.date, time:f.time,
+          notify:f.notify, daysBefore:f.daysBefore, sdCount:f.sdCount, sdInterval:f.sdInterval,
+          done:false, doneAt:null, createdAt:new Date().toISOString()
         };
         remData.unshift(rem); remRender(); remCloseModal('rem-form-ov');
-        remInsert(rem,function(err){
-          if(err&&err.message!=='queued'){
+        remInsert(rem, function(err){
+          if(err){
             remData=remData.filter(function(x){return x.id!==rem.id;});
-            remRender(); _toast('Error al guardar','err'); return;
+            remRender(); _toast('Error al guardar — verifica la tabla en Supabase','err'); return;
           }
           var hasAlert=f.notify||f.daysBefore.length>0||f.sdCount>0;
           if(hasAlert&&f.date){
-            if(remGetPerm()==='granted'){ remScheduleOne(rem); _toast('✅ Guardado con alertas','ok'); }
-            else if(remGetPerm()==='default'){ _toast('Guardado · activa notificaciones','ok'); setTimeout(window.remRequestNotif,900); }
-            else { _toast('✅ Guardado','ok'); }
-          } else { _toast('✅ Recordatorio guardado','ok'); }
+            if(remGetPerm()==='granted'){remScheduleOne(rem);_toast('✅ Guardado con alertas','ok');}
+            else if(remGetPerm()==='default'){_toast('Guardado · activa notificaciones','ok');setTimeout(window.remRequestNotif,900);}
+            else{_toast('✅ Guardado','ok');}
+          } else {_toast('✅ Recordatorio guardado','ok');}
           remUpdateNotifUI();
-          try{if(typeof inicioRenderAlertas==='function')inicioRenderAlertas();}catch(e){}
         });
       }
-    }catch(e){ console.warn('[REM] save error:',e); _toast('Error inesperado','err'); }
+    }catch(e){ console.warn('[REM] save error:', e); _toast('Error inesperado','err'); }
   };
 
   // ── FORM CONTROLS ─────────────────────────────────────────────────
@@ -8331,57 +8138,173 @@ function inicioToggleDone(id){
     var bd=document.getElementById('rf-btn-date');     if(bd) bd.classList.toggle('selected',yes);
     var bn=document.getElementById('rf-btn-nodate');   if(bn) bn.classList.toggle('selected',!yes);
   };
+
   window.remUpdNotifToggle=function(cbId,trackId,thumbId){
     var on=document.getElementById(cbId); if(!on) return;
     var tr=document.getElementById(trackId); var th=document.getElementById(thumbId);
     if(tr) tr.style.background=on.checked?'var(--gold)':'var(--line2)';
     if(th) th.style.transform=on.checked?'translateX(18px)':'translateX(0)';
   };
+
   window.remToggleDayChip=function(el){ el.classList.toggle('active'); };
+
   window.remToggleSameday=function(on){
     var wrap=document.getElementById('rf-sameday-opts'); if(wrap) wrap.style.display=on?'block':'none';
-    var cb=document.getElementById('rf-sameday'); if(cb&&cb.checked!==on) cb.checked=on;
+    var cb=document.getElementById('rf-sameday');       if(cb&&cb.checked!==on) cb.checked=on;
     var tr=document.getElementById('rf-sameday-track'); if(tr) tr.style.background=on?'var(--purp)':'var(--line2)';
     var th=document.getElementById('rf-sameday-thumb'); if(th) th.style.transform=on?'translateX(18px)':'translateX(0)';
     if(on) remUpdateSamedayPreview();
   };
+
   function remUpdateSamedayPreview(){
     var prev=document.getElementById('rf-sameday-preview'); if(!prev) return;
     var cnt=parseInt((document.getElementById('rf-sd-count')||{}).value)||2;
     var hh=parseInt((document.getElementById('rf-sd-hours')||{}).value)||0;
     var mm=parseInt((document.getElementById('rf-sd-mins')||{}).value)||0;
     var intv=hh*60+mm; if(intv<1) intv=30;
-    var parts=[]; for(var i=cnt;i>=1;i--){ var total=i*intv; var h2=Math.floor(total/60); var m2=total%60; parts.push((h2>0?h2+'h ':'')+(m2>0?m2+'min':'').trim()||intv+'min'); }
+    var parts=[];
+    for(var i=cnt;i>=1;i--){
+      var total=i*intv; var h2=Math.floor(total/60); var m2=total%60;
+      parts.push((h2>0?h2+'h ':'')+(m2>0?m2+'min':'').trim()||intv+'min');
+    }
     prev.textContent='Alertas a: '+parts.join(' → ')+' antes del evento';
   }
+
   document.addEventListener('change',function(e){
-    try{ if(['rf-sd-count','rf-sd-hours','rf-sd-mins'].indexOf(e.target.id)!==-1) remUpdateSamedayPreview(); }catch(e_){}
+    try{
+      if(['rf-sd-count','rf-sd-hours','rf-sd-mins'].indexOf(e.target.id)!==-1) remUpdateSamedayPreview();
+    }catch(e_){}
   });
 
-  // ── MODAL HELPERS ─────────────────────────────────────────────────
+  // ── MODAL ─────────────────────────────────────────────────────────
   window.remOpenModal  =function(id){var e=document.getElementById(id);if(e)e.classList.add('open');};
   window.remCloseModal =function(id){var e=document.getElementById(id);if(e)e.classList.remove('open');};
   window.remOvClick    =function(e,id){if(e.target.id===id)remCloseModal(id);};
-  document.addEventListener('keydown',function(e){ if(e.key==='Escape') remCloseModal('rem-form-ov'); });
 
-  // ── PUBLIC API ────────────────────────────────────────────────────
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape') remCloseModal('rem-form-ov');
+  });
+
+  // ── PUBLIC API (called by navigate hook) ──────────────────────────
   Object.defineProperty(window,'_remData',{get:function(){return remData;},configurable:true});
   window._remCardHtml=function(rem,idx){ try{var t=remToday();return _remCard(rem,t,idx);}catch(e){return '';} };
   window._remRender=function(){
     try{
+      // Always render existing data instantly — zero flash
       remRender();
-      var stale=Date.now()-remLastFetch>30000;
-      if(!remReady||stale) _remSilentFetch();
+      // Only hit the network if data is stale (>60s) or first load
+      var stale = Date.now() - remLastFetch > 30000;
+      if(!remReady || stale){
+        // Fetch silently: never show loading spinner if we already have data
+        _remSilentFetch();
+      }
     }catch(e){}
   };
-  window._remFetch=function(){ try{ remFetch(); }catch(e){} };
-  window._remUpdateNotifUI=function(){ try{ remUpdateNotifUI(); }catch(e){} };
 
-  // ── INIT ──────────────────────────────────────────────────────────
+  function _remSilentFetch(){
+    var email=remEmail(); if(!email||remLoading) return;
+    remLoading=true;
+    remSbFetch('/rest/v1/'+TABLE+'?user_email=eq.'+encodeURIComponent(email)+'&order=created_at.desc&limit=500')
+      .then(function(rows){
+        remLoading=false; remLastFetch=Date.now(); remReady=true;
+        var newData=(rows||[]).map(remRowToLocal);
+        // Only re-render if data actually changed
+        if(JSON.stringify(newData)!==JSON.stringify(remData)){
+          remData=newData;
+          remRender();
+          remScheduleAllPending();
+          // Also refresh inicio if admin is there
+          try{if(typeof inicioRenderAlertas==='function')inicioRenderAlertas();}catch(e){}
+        }
+        remUpdateNotifUI();
+      })
+      .catch(function(){ remLoading=false; });
+  }
+  window._remFetch=function(){
+    try{ remFetch(); }catch(e){}
+  };
+  window._remUpdateNotifUI=function(){
+    try{ remUpdateNotifUI(); }catch(e){}
+  };
+
+  // ── SAFE INIT — never throws ──────────────────────────────────────
   try{ remInitSW(); }catch(e){}
   try{ remWaitForUser(); }catch(e){}
 
 })();
+
+// Load custom app name
+(function(){
+  const n=localStorage.getItem('cp4_appname')||'IMZA';
+  const c=localStorage.getItem('cp4_logocolor')||'linear-gradient(90deg,#64a0ff 0%,#a78bfa 50%,#64a0ff 100%)';
+  const sz=localStorage.getItem('cp4_logosize')||'19px';
+  applyLogoStyle(n,c,sz);
+  // Aplicar nombre también al splash
+  var splash=document.getElementById('splash-appname');
+  if(splash) splash.textContent=n;
+})();
+</script>
+
+<div id="splash-screen" style="position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999">
+  <div style="width:56px;height:56px;background:linear-gradient(135deg,#1a1f2e,#252b3b);border-radius:16px;border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 0 24px rgba(100,160,255,0.2)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#6aaaff" stroke-width="2" style="width:24px;height:24px"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+  </div>
+  <div id="splash-appname" style="font-size:26px;font-weight:900;letter-spacing:0.08em;background:linear-gradient(90deg,#64a0ff,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">IMZA</div>
+  <div style="margin-top:32px;display:flex;gap:6px;align-items:center">
+    <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);animation:splashDot 1.2s ease infinite"></div>
+    <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);animation:splashDot 1.2s ease 0.2s infinite"></div>
+    <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);animation:splashDot 1.2s ease 0.4s infinite"></div>
+  </div>
+</div>
+
+<div id="login-screen" style="display:none">
+  <div style="width:48px;height:48px;background:linear-gradient(135deg,#1a1f2e,#252b3b);border-radius:14px;border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;margin-bottom:14px">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#6aaaff" stroke-width="2" style="width:20px;height:20px"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+  </div>
+  <div id="login-appname" style="font-size:24px;font-weight:900;letter-spacing:0.08em;background:linear-gradient(90deg,#6aaaff,#b59dff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px">IMZA</div>
+
+  <!-- STEP 1: Enter email -->
+  <div id="login-step-email" style="width:100%;max-width:300px;margin-top:20px">
+    <div id="login-pwa-hint" style="display:none;background:rgba(100,170,255,0.1);border:1px solid rgba(100,170,255,0.25);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--blue);line-height:1.5;text-align:center">
+      📱 <b>iPhone:</b> Al tocar el link del correo se abrirá Safari. Después regresa a esta app desde tu pantalla de inicio.
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--txt3);margin-bottom:8px;text-align:center">Ingresa tu correo</div>
+    <input id="login-email-input" type="email" inputmode="email" autocomplete="email" autocapitalize="off" autocorrect="off" placeholder="tu@correo.com" style="width:100%;box-sizing:border-box;padding:14px 16px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt);font-size:15px;font-family:inherit;outline:none;margin-bottom:12px">
+    <div id="login-error" style="font-size:13px;color:var(--red);margin-bottom:10px;min-height:18px;text-align:center"></div>
+    <button onclick="sendMagicLink()" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--gold);color:#000;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">✉️ Enviar link de acceso</button>
+  </div>
+
+  <!-- STEP 2: Check email -->
+  <div id="login-step-sent" style="display:none;width:100%;max-width:300px;margin-top:20px;text-align:center">
+    <div style="font-size:48px;margin-bottom:16px">📬</div>
+    <div style="font-size:16px;font-weight:800;color:var(--txt);margin-bottom:8px">Revisa tu correo</div>
+    <div id="login-sent-msg" style="font-size:13px;color:var(--txt2);line-height:1.6;margin-bottom:16px"></div>
+    <div id="login-pwa-step2" style="display:none;background:rgba(245,207,85,0.1);border:1px solid rgba(245,207,85,0.25);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--gold);line-height:1.6;text-align:left">
+      <b>Pasos en iPhone:</b><br>
+      1. Toca el link en tu correo<br>
+      2. Se abrirá Safari — espera que cargue<br>
+      3. Regresa a esta app desde tu pantalla de inicio ↩
+    </div>
+    <button onclick="loginBack()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt2);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">← Usar otro correo</button>
+  </div>
+</div>
+<script>
+document.addEventListener('touchstart',function(){ window._lastInteraction=Date.now(); },true);
+document.addEventListener('mousedown',function(){ window._lastInteraction=Date.now(); },true);
+document.addEventListener('keydown',function(){ window._lastInteraction=Date.now(); },true);
+
+// Detectar si corre como PWA en iPhone y mostrar hints de login
+(function(){
+  var isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent);
+  var isPWA=window.navigator.standalone===true;
+  if(isIOS&&isPWA){
+    var h1=document.getElementById('login-pwa-hint');
+    var h2=document.getElementById('login-pwa-step2');
+    if(h1) h1.style.display='block';
+    if(h2) h2.style.display='block';
+  }
+})();
+
 </script>
 </body>
 </html>
