@@ -3519,6 +3519,11 @@ function _buildProjCard(a, date){
 
 // ── REPORTE POR DÍA ───────────────────────────────────────────────────────────
 function shareDay(date){
+  // Primero sincronizar datos frescos de la nube, igual que copyWeekHE
+  toast('Actualizando datos…','ok');
+  pullFromCloud().catch(function(){}).finally(function(){ _shareDayBuild(date); });
+}
+function _shareDayBuild(date){
   var acts=S.actividades[date]||[];
   if(!acts.length){ toast('Sin actividades en este día','err'); return; }
 
@@ -3645,14 +3650,17 @@ function _generarReporteRango(){
   var to=document.getElementById('rr-to').value;
   if(!from||!to){ toast('Selecciona ambas fechas','err'); return; }
   if(from>to){ toast('La fecha inicio debe ser anterior al fin','err'); return; }
-
+  toast('Actualizando datos\u2026','ok');
+  pullFromCloud().catch(function(){}).finally(function(){ _generarReporteRangoBuild(from,to); });
+}
+function _generarReporteRangoBuild(from,to){
   var dates=Object.keys(S.actividades)
     .filter(function(d){ return d>=from && d<=to && (S.actividades[d]||[]).length; })
     .sort();
 
   if(!dates.length){ toast('Sin actividades en ese rango','err'); return; }
 
-  document.getElementById('range-report-overlay').remove();
+  var ov=document.getElementById('range-report-overlay'); if(ov) ov.remove();
   toast('Generando reporte...','ok');
 
   var appName=localStorage.getItem('cp4_appname')||'IMZA';
@@ -3800,7 +3808,9 @@ function shareProj(projId){
       'Completar y generar ✅','var(--green)','Cancelar'
     );
   } else {
-    doGenerate();
+    // Sincronizar datos frescos antes de generar el reporte
+    toast('Actualizando datos\u2026','ok');
+    pullFromCloud().catch(function(){}).finally(function(){ doGenerate(); });
   }
 }
 
