@@ -1240,47 +1240,16 @@ if('serviceWorker' in navigator){
 </div>
 <!-- ──────────────────────────────────────────────────────────────────────────── -->
 
-<!-- MODAL: CONFIRMACIÓN DE ENVÍO ─────────────────────────────────────────── -->
-<div class="sov" id="sov-nom-confirm" onclick="if(event.target.id==='sov-nom-confirm'){document.getElementById('sov-nom-confirm').classList.remove('open');_nomConfirmWid=null;}">
-  <div class="sheet">
-    <div class="shandle"></div>
-    <div class="shdr">
-      <div class="shtitle">Confirmar envío</div>
-      <button class="shclose" onclick="document.getElementById('sov-nom-confirm').classList.remove('open');_nomConfirmWid=null;">&times;</button>
-    </div>
-    <div class="shbody" style="padding:14px 18px 20px">
-
-      <!-- Destinatario -->
-      <div style="background:rgba(37,211,102,0.07);border:1.5px solid rgba(37,211,102,0.2);border-radius:14px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
-        <div style="width:42px;height:42px;border-radius:50%;background:rgba(37,211,102,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" style="width:20px;height:20px"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.22 1.2a2 2 0 012-2.18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 6a16 16 0 006.29 6.29l.38-.38a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-        </div>
-        <div>
-          <div id="nom-confirm-name" style="font-size:16px;font-weight:800;color:var(--txt)">—</div>
-          <div id="nom-confirm-tel" style="font-size:12px;color:var(--green);font-weight:600;margin-top:2px">—</div>
-        </div>
-      </div>
-
-      <!-- Preview del mensaje -->
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--txt3);margin-bottom:8px">Vista previa del mensaje</div>
-      <div style="background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px;max-height:260px;overflow-y:auto">
-        <pre id="nom-confirm-preview" style="font-family:inherit;font-size:12px;color:var(--txt2);white-space:pre-wrap;line-height:1.6;margin:0"></pre>
-      </div>
-
-      <!-- Botones -->
-      <div style="display:flex;gap:8px">
-        <button onclick="document.getElementById('sov-nom-confirm').classList.remove('open');_nomConfirmWid=null;"
-          style="flex:1;padding:14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt2);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">
-          Cancelar
-        </button>
-        <button onclick="nomConfirmSend()"
-          style="flex:2;padding:14px;border-radius:12px;border:none;background:var(--green);color:#000;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.22 1.2a2 2 0 012-2.18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 6a16 16 0 006.29 6.29l.38-.38a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-          Enviar por WhatsApp
-        </button>
-      </div>
-    </div>
+<!-- BARRA FLOTANTE: PROGRESO BATCH ────────────────────────────────────────── -->
+<div id="nom-batch-bar" style="display:none;position:fixed;bottom:calc(70px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:#1a1e28;border:1.5px solid rgba(61,214,140,0.35);border-radius:100px;padding:10px 16px 10px 14px;z-index:500;align-items:center;gap:12px;box-shadow:0 4px 24px rgba(0,0,0,.5);min-width:260px;max-width:380px">
+  <div style="width:32px;height:32px;border-radius:50%;background:rgba(61,214,140,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+    <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" style="width:15px;height:15px"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
   </div>
+  <div style="flex:1;min-width:0">
+    <div id="nom-batch-count" style="font-size:12px;font-weight:800;color:var(--green)">0 de 0</div>
+    <div id="nom-batch-next-name" style="font-size:11px;color:var(--txt3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+  </div>
+  <button onclick="nomBatchNext()" style="background:var(--green);color:#000;border:none;border-radius:20px;padding:8px 14px;font-size:12px;font-weight:800;font-family:inherit;cursor:pointer;white-space:nowrap;flex-shrink:0">Siguiente →</button>
 </div>
 <!-- ──────────────────────────────────────────────────────────────────────────── -->
 
@@ -5097,194 +5066,30 @@ function nomOpenShareModal(){
     if(!chips.length&&s.tieneActividad) chips.push('<span style="color:var(--txt3);font-size:11px">Sin extras ni incidencias</span>');
     if(!s.tieneActividad) chips.push('<span style="color:var(--txt3);font-size:11px">Sin actividad esta semana</span>');
 
-    var waStyle='flex:1;padding:10px 6px;border-radius:10px;border:none;font-size:12px;font-weight:800;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px;';
-    var pdfStyle=waStyle;
-    if(hasTel){
-      waStyle+='background:rgba(37,211,102,0.12);color:var(--green);cursor:pointer;';
-    } else {
-      waStyle+='background:var(--card2);color:var(--txt3);cursor:not-allowed;opacity:0.6;';
-    }
-    pdfStyle+='background:rgba(106,170,255,0.12);color:var(--blue);cursor:pointer;';
+    var btnStyle='width:100%;padding:12px;border-radius:10px;border:none;font-size:13px;font-weight:800;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;background:rgba(37,211,102,0.12);color:var(--green);';
 
     return '<div id="nom-sc-'+s.id+'" style="background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:14px;margin-bottom:8px;transition:border-color .2s,opacity .2s;opacity:'+(dimmed?'0.55':'1')+'">'+
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+
         '<div style="width:40px;height:40px;border-radius:11px;background:'+color+'22;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:'+color+';flex-shrink:0">'+ini_+'</div>'+
         '<div style="flex:1;min-width:0">'+
           '<div style="font-size:14px;font-weight:700;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.nombre+'</div>'+
-          '<div style="font-size:11px;color:var(--txt3);margin-top:1px">'+s.cargo+(hasTel?' · 📞 '+s.tel:' · <span style="color:var(--red)">Sin teléfono</span>')+'</div>'+
+          '<div style="font-size:11px;color:var(--txt3);margin-top:1px">'+s.cargo+(hasTel?' \u00b7 \ud83d\udcde '+s.tel:' \u00b7 <span style="color:var(--red)">Sin tel\u00e9fono</span>')+'</div>'+
         '</div>'+
       '</div>'+
       '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">'+chips.join('')+'</div>'+
-      '<div style="display:flex;gap:7px">'+
-        '<button '+(hasTel?'':'disabled ')+'onclick="nomSendWhatsApp(\''+s.id+'\')" id="nom-wa-btn-'+s.id+'" style="'+waStyle+'">'+
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.22 1.2a2 2 0 012-2.18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 6a16 16 0 006.29 6.29l.38-.38a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>'+
-          'WhatsApp</button>'+
-        '<button onclick="nomOpenWorkerPDF(\''+s.id+'\')" style="'+pdfStyle+'">'+
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>'+
-          'PDF</button>'+
-      '</div>'+
+      '<button onclick="nomShareWorker(\''+s.id+'\')" id="nom-share-btn-'+s.id+'" style="'+btnStyle+'">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>'+
+        'Compartir PDF</button>'+
     '</div>';
   }).join('');
 
   document.getElementById('sov-nom-share').classList.add('open');
 }
 
-// ── Enviar WhatsApp a un trabajador (con confirmación) ──────────────────────
-var _nomConfirmWid=null; // wid pendiente de confirmación
-
-function nomSendWhatsApp(wid){
-  if(!_nomShareData){ toast('Abre el modal primero','err'); return; }
-  var s=_nomShareData.summaries.find(function(x){ return x.id===wid; });
-  if(!s){ toast('Trabajador no encontrado','err'); return; }
-  if(!s.tel){ toast('Este trabajador no tiene teléfono registrado','err'); return; }
-
-  // Generar preview del mensaje
-  var msg=_nomBuildWAMsg(s,_nomShareData.thuStr,_nomShareData.wedStr);
-
-  // Rellenar modal de confirmación
-  var nmEl=document.getElementById('nom-confirm-name');
-  var telEl=document.getElementById('nom-confirm-tel');
-  var preEl=document.getElementById('nom-confirm-preview');
-  if(nmEl) nmEl.textContent=s.nombre;
-  if(telEl) telEl.textContent='📞 '+s.tel;
-  if(preEl) preEl.textContent=msg;
-
-  _nomConfirmWid=wid;
-  document.getElementById('sov-nom-confirm').classList.add('open');
-}
-
-// Llamado por el botón "Confirmar y enviar" del modal
-function nomConfirmSend(){
-  document.getElementById('sov-nom-confirm').classList.remove('open');
-  if(!_nomConfirmWid) return;
-  _nomDoSend(_nomConfirmWid);
-  _nomConfirmWid=null;
-}
-
-// Lógica real de envío (sin confirmación — solo llamar tras confirmar)
-function _nomDoSend(wid){
-  var s=_nomShareData.summaries.find(function(x){ return x.id===wid; });
-  if(!s||!s.tel) return;
-  var msg=_nomBuildWAMsg(s,_nomShareData.thuStr,_nomShareData.wedStr);
-  var tel=s.tel.replace(/\D/g,'');
-  if(tel.length===10) tel='52'+tel;
-  window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(msg),'_blank');
-
-  // Marcar como enviado en la UI
-  var btn=document.getElementById('nom-wa-btn-'+wid);
-  if(btn){
-    btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:13px;height:13px"><polyline points="20 6 9 17 4 12"/></svg> Enviado';
-    btn.style.background='rgba(61,214,140,0.2)';
-    btn.style.color='var(--green)';
-    btn.disabled=true;
-  }
-  var card=document.getElementById('nom-sc-'+wid);
-  if(card) card.style.borderColor='rgba(61,214,140,0.4)';
-}
-
-// ── Enviar a todos: flujo guiado paso a paso ─────────────────────────────────
-function nomSendAll(){
-  if(!_nomShareData) return;
-  var eligible=_nomShareData.summaries.filter(function(s){ return s.tel&&s.tieneActividad; });
-  if(!eligible.length){ toast('Sin trabajadores con teléfono y actividad','err'); return; }
-
-  if(_nomSendQueue.length===0){
-    // Primera vez: armar cola
-    _nomSendQueue=eligible.slice();
-    _nomSendIdx=0;
-  }
-
-  if(_nomSendIdx>=_nomSendQueue.length){
-    // Completado
-    var btn=document.getElementById('nom-send-all-btn');
-    if(btn){ btn.textContent='✅ Completado'; btn.style.background='rgba(61,214,140,0.2)'; btn.style.color='var(--green)'; btn.disabled=true; }
-    var prog=document.getElementById('nom-send-progress');
-    if(prog){ prog.textContent='✅ Todos los resúmenes enviados ('+_nomSendQueue.length+')'; prog.style.display='block'; }
-    toast('✅ Resúmenes enviados a todos','ok');
-    return;
-  }
-
-  var s=_nomSendQueue[_nomSendIdx];
-  _nomSendIdx++;
-
-  // Mostrar confirmación para este trabajador (nomSendWhatsApp la maneja)
-  nomSendWhatsApp(s.id);
-
-  // Scroll a su tarjeta
-  var card=document.getElementById('nom-sc-'+s.id);
-  if(card) setTimeout(function(){ card.scrollIntoView({behavior:'smooth',block:'center'}); },200);
-
-  // Actualizar botón y progreso
-  var remaining=_nomSendQueue.length-_nomSendIdx;
-  var btn=document.getElementById('nom-send-all-btn');
-  var prog=document.getElementById('nom-send-progress');
-  if(remaining>0){
-    if(btn){ btn.textContent='Siguiente → ('+remaining+' restante'+(remaining>1?'s':'')+')'; }
-    if(prog){ prog.textContent=_nomSendIdx+' de '+_nomSendQueue.length+' confirmados'; prog.style.display='block'; }
-  } else {
-    if(btn){ btn.textContent='Finalizar ✓'; }
-    if(prog){ prog.textContent='Último pendiente de confirmar.'; prog.style.display='block'; }
-  }
-}
-
-// ── Construye el mensaje de WhatsApp ─────────────────────────────────────────
-function _nomBuildWAMsg(s, thuStr, wedStr){
+// \u2500\u2500 Extrae el HTML del PDF de un trabajador \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function _nomWorkerPDFHtml(s){
   var appName=localStorage.getItem('cp4_appname')||'IMZA';
-  var L=[];
-  L.push('🏗️ *'+appName+' — Resumen de Nómina*');
-  L.push('📅 Semana: '+fmtDate(thuStr)+' → '+fmtDate(wedStr));
-  L.push('');
-  L.push('Hola *'+s.nombre+'* 👋');
-  L.push('');
-  L.push('📊 *TU RESUMEN SEMANAL*');
-  L.push('―――――――――――――――――――――――');
-  L.push('');
-
-  // Horas extras
-  if(s.totalHE>0){
-    L.push('⏱ *Horas extras: +'+s.totalHE+'h*');
-    s.heData.forEach(function(d){
-      var wknd=isWeekend(d.date)||isFestivo(d.date);
-      L.push('  • '+fmtD(d.date)+' → ['+gcode(d.proyectoId)+'] '+gpn(d.proyectoId)+': *+'+d.hrs+'h*'+(wknd?' 🔴 Descanso':''));
-    });
-  } else {
-    L.push('⏱ Sin horas extras esta semana');
-  }
-  L.push('');
-
-  // Faltas
-  if(s.faltas>0){
-    L.push('❌ *Faltas: '+s.faltas+' día'+(s.faltas>1?'s':'')+'*');
-    s.faltasDates.forEach(function(d){ L.push('  • '+fmtD(d)); });
-  } else {
-    L.push('✅ Sin faltas — asistencia completa');
-  }
-  L.push('');
-
-  // Vacaciones
-  if(s.vacaciones>0){
-    L.push('🏖️ *Vacaciones: '+s.vacaciones+' día'+(s.vacaciones>1?'s':'')+'*');
-    s.vacacionesDates.forEach(function(d){ L.push('  • '+fmtD(d)); });
-  } else {
-    L.push('🏖️ Sin días de vacaciones esta semana');
-  }
-
-  L.push('');
-  L.push('―――――――――――――――――――――――');
-  L.push('_Para dudas, contacta a tu supervisor._');
-  return L.join('\n');
-}
-
-// ── Genera e imprime PDF individual del trabajador ───────────────────────────
-function nomOpenWorkerPDF(wid){
-  if(!_nomShareData){ toast('Abre el modal primero','err'); return; }
-  var s=_nomShareData.summaries.find(function(x){ return x.id===wid; });
-  if(!s){ toast('Trabajador no encontrado','err'); return; }
-
-  var appName=localStorage.getItem('cp4_appname')||'IMZA';
-  var money=function(n){ return '$'+Number(n||0).toLocaleString('es-MX'); };
   function ini_(n){ return n.split(' ').map(function(x){return x[0]||'';}).slice(0,2).join('').toUpperCase(); }
-
   var css=
     '*{margin:0;padding:0;box-sizing:border-box;}'+
     'html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
@@ -5293,102 +5098,156 @@ function nomOpenWorkerPDF(wid){
     '.hdr{background:linear-gradient(135deg,#1E3A8A,#2563EB);border-radius:12px;padding:18px 22px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;}'+
     '.hdr h1{font-size:20px;font-weight:900;color:#fff;letter-spacing:-.03em;}'+
     '.hdr p{font-size:9px;color:#93C5FD;margin-top:3px;text-transform:uppercase;letter-spacing:.1em;}'+
-    '.hdr-r{text-align:right;}.hdr-r .hl{font-size:8px;color:#93C5FD;text-transform:uppercase;letter-spacing:.08em;}.hdr-r .hv{font-size:13px;font-weight:800;color:#fff;margin-top:2px;}'+
+    '.hdr-r{text-align:right;}.hdr-r .hl{font-size:8px;color:#93C5FD;text-transform:uppercase;}.hdr-r .hv{font-size:13px;font-weight:800;color:#fff;margin-top:2px;}'+
     '.wcard{background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:14px;}'+
     '.av{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,#1E3A8A,#7C3AED);color:#fff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}'+
-    '.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;}'+
+    '.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}'+
     '.kpi{border-radius:8px;padding:11px 13px;border-left:3px solid transparent;}'+
-    '.kb{background:#EFF6FF;border-color:#2563EB;}.kg{background:#F0FDF4;border-color:#059669;}.kr{background:#FEF2F2;border-color:#DC2626;}.ka{background:#FFFBEB;border-color:#D97706;}'+
+    '.kb{background:#EFF6FF;border-color:#2563EB;}.kr{background:#FEF2F2;border-color:#DC2626;}.ka{background:#FFFBEB;border-color:#D97706;}'+
     '.kl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748B;}'+
-    '.kv{font-size:22px;font-weight:900;line-height:1;margin:3px 0;}.kb .kv{color:#1D4ED8;}.kg .kv{color:#059669;}.kr .kv{color:#DC2626;}.ka .kv{color:#D97706;}'+
+    '.kv{font-size:22px;font-weight:900;line-height:1;margin:3px 0;}.kb .kv{color:#1D4ED8;}.kr .kv{color:#DC2626;}.ka .kv{color:#D97706;}'+
     '.sec{background:#fff;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:10px;overflow:hidden;}'+
     '.sech{padding:10px 16px;display:flex;justify-content:space-between;align-items:center;}'+
-    '.sech.sb{background:linear-gradient(90deg,#1E3A8A,#2563EB);}.sech.sr{background:linear-gradient(90deg,#991B1B,#DC2626);}.sech.sa{background:linear-gradient(90deg,#92400E,#D97706);}.sech.sg{background:linear-gradient(90deg,#065F46,#059669);}'+
+    '.sech.sb{background:linear-gradient(90deg,#1E3A8A,#2563EB);}.sech.sr{background:linear-gradient(90deg,#991B1B,#DC2626);}.sech.sa{background:linear-gradient(90deg,#92400E,#D97706);}'+
     '.sech span{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#fff;}.sech strong{font-size:13px;font-weight:900;color:#fff;}'+
     '.sbody{padding:10px 16px;}'+
     '.row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F1F5F9;}.row:last-child{border-bottom:none;}'+
     '.tag{display:inline-block;border-radius:5px;padding:2px 8px;font-size:9px;font-weight:700;margin:2px;}'+
-    '.tr{background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;}.ta{background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;}.tg{background:#DCFCE7;border:1px solid #BBF7D0;color:#166534;}'+
+    '.tr{background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;}.ta{background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;}'+
     'footer{text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid #E2E8F0;color:#CBD5E1;font-size:8px;}'+
     '@media print{@page{size:A4;margin:6mm 8mm;}body{background:#fff!important;}.page{padding:0!important;max-width:100%!important;}-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}';
 
-  // ── Sección Horas extras ──
   var heHTML='';
   if(s.totalHE>0){
-    heHTML='<div class="sec"><div class="sech sb"><span>⏱ Horas Extras</span><strong>+'+s.totalHE+'h</strong></div>'+
+    heHTML='<div class="sec"><div class="sech sb"><span>\u23f1 Horas Extras</span><strong>+'+s.totalHE+'h</strong></div>'+
       '<div class="sbody">'+s.heData.map(function(d){
         var wknd=isWeekend(d.date)||isFestivo(d.date);
-        return '<div class="row">'+
-          '<div><div style="font-size:12px;font-weight:600;color:'+(wknd?'#DC2626':'#0F172A')+'">'+fmtD(d.date)+(wknd?' <span style="font-size:10px">🔴</span>':'')+'</div>'+
-          '<div style="font-size:10px;color:#64748B;margin-top:2px">['+gcode(d.proyectoId)+'] '+gpn(d.proyectoId)+(gpl(d.proyectoId)?' · '+gpl(d.proyectoId):'')+'</div></div>'+
+        return '<div class="row"><div><div style="font-size:12px;font-weight:600;color:'+(wknd?'#DC2626':'#0F172A')+'">'+fmtD(d.date)+(wknd?' \ud83d\udd34':'')+'</div>'+
+          '<div style="font-size:10px;color:#64748B;margin-top:2px">['+gcode(d.proyectoId)+'] '+gpn(d.proyectoId)+(gpl(d.proyectoId)?' \u00b7 '+gpl(d.proyectoId):'')+'</div></div>'+
           '<span style="font-size:16px;font-weight:900;color:#1D4ED8">+'+d.hrs+'h</span></div>';
       }).join('')+'</div></div>';
   } else {
-    heHTML='<div class="sec"><div class="sech sb"><span>⏱ Horas Extras</span><strong>0h</strong></div>'+
+    heHTML='<div class="sec"><div class="sech sb"><span>\u23f1 Horas Extras</span><strong>0h</strong></div>'+
       '<div class="sbody"><p style="color:#94A3B8;padding:4px 0">Sin horas extras esta semana</p></div></div>';
   }
 
-  // ── Sección Faltas ──
   var fHTML='';
   if(s.faltas>0){
-    fHTML='<div class="sec"><div class="sech sr"><span>❌ Faltas</span><strong>'+s.faltas+' día'+(s.faltas>1?'s':'')+'</strong></div>'+
-      '<div class="sbody"><div style="padding:4px 0">'+s.faltasDates.map(function(d){ return '<span class="tag tr">'+fmtD(d)+'</span>'; }).join('')+'</div></div></div>';
+    fHTML='<div class="sec"><div class="sech sr"><span>\u274c Faltas</span><strong>'+s.faltas+' d\u00eda'+(s.faltas>1?'s':'')+'</strong></div>'+
+      '<div class="sbody"><div style="padding:4px 0">'+s.faltasDates.map(function(d){return '<span class="tag tr">'+fmtD(d)+'</span>';}).join('')+'</div></div></div>';
   } else {
-    fHTML='<div class="sec"><div class="sech sr"><span>❌ Faltas</span><strong>0</strong></div>'+
-      '<div class="sbody"><p style="color:#94A3B8;padding:4px 0">Sin faltas — asistencia completa ✓</p></div></div>';
+    fHTML='<div class="sec"><div class="sech sr"><span>\u274c Faltas</span><strong>0</strong></div>'+
+      '<div class="sbody"><p style="color:#94A3B8;padding:4px 0">Sin faltas \u2014 asistencia completa \u2713</p></div></div>';
   }
 
-  // ── Sección Vacaciones ──
   var vHTML='';
   if(s.vacaciones>0){
-    vHTML='<div class="sec"><div class="sech sa"><span>🏖️ Vacaciones</span><strong>'+s.vacaciones+' día'+(s.vacaciones>1?'s':'')+'</strong></div>'+
-      '<div class="sbody"><div style="padding:4px 0">'+s.vacacionesDates.map(function(d){ return '<span class="tag ta">'+fmtD(d)+'</span>'; }).join('')+'</div></div></div>';
+    vHTML='<div class="sec"><div class="sech sa"><span>\ud83c\udfd6\ufe0f Vacaciones</span><strong>'+s.vacaciones+' d\u00eda'+(s.vacaciones>1?'s':'')+'</strong></div>'+
+      '<div class="sbody"><div style="padding:4px 0">'+s.vacacionesDates.map(function(d){return '<span class="tag ta">'+fmtD(d)+'</span>';}).join('')+'</div></div></div>';
   } else {
-    vHTML='<div class="sec"><div class="sech sa"><span>🏖️ Vacaciones</span><strong>0</strong></div>'+
-      '<div class="sbody"><p style="color:#94A3B8;padding:4px 0">Sin días de vacaciones esta semana</p></div></div>';
+    vHTML='<div class="sec"><div class="sech sa"><span>\ud83c\udfd6\ufe0f Vacaciones</span><strong>0</strong></div>'+
+      '<div class="sbody"><p style="color:#94A3B8;padding:4px 0">Sin d\u00edas de vacaciones esta semana</p></div></div>';
   }
 
-  // ── Sección Reembolso ──
-  var rHTML='';
-  if(s.gastos.length>0){
-    rHTML='<div class="sec"><div class="sech sg"><span>💰 Reembolso</span><strong>'+money(s.totalReembolso)+'</strong></div>'+
-      '<div class="sbody">'+s.gastos.map(function(r){
-        return '<div class="row">'+
-          '<div><div style="font-size:12px;font-weight:600">'+r.tipo+(r.desc?' — '+r.desc:'')+'</div>'+
-          '<div style="font-size:10px;color:#64748B;margin-top:2px">['+gcode(r.proyectoId)+'] '+gpn(r.proyectoId)+' · '+fmtD(r.date)+'</div></div>'+
-          '<span style="font-size:15px;font-weight:900;color:#059669">'+money(r.monto)+'</span></div>';
-      }).join('')+'</div></div>';
-  }
-
-  var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'+
+  return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'+
     '<title>Nomina_'+s.nombre.replace(/\s+/g,'_')+'</title>'+
     '<style>'+css+'</style></head><body><div class="page">'+
-
-    '<div class="hdr"><div><h1>'+appName+'</h1><p>Resumen de Nómina Individual</p></div>'+
+    '<div class="hdr"><div><h1>'+appName+'</h1><p>Resumen de N\u00f3mina Individual</p></div>'+
     '<div class="hdr-r"><div class="hl">Periodo</div>'+
-    '<div class="hv">'+fmtDate(_nomShareData.thuStr)+' → '+fmtDate(_nomShareData.wedStr)+'</div></div></div>'+
-
+    '<div class="hv">'+fmtDate(_nomShareData.thuStr)+' \u2192 '+fmtDate(_nomShareData.wedStr)+'</div></div></div>'+
     '<div class="wcard"><div class="av">'+ini_(s.nombre)+'</div>'+
     '<div><div style="font-size:18px;font-weight:800;color:#0F172A">'+s.nombre+'</div>'+
-    '<div style="font-size:12px;color:#64748B;margin-top:2px">'+(s.cargo||'Sin cargo')+(s.tel?' · 📞 '+s.tel:'')+'</div></div></div>'+
-
+    '<div style="font-size:12px;color:#64748B;margin-top:2px">'+(s.cargo||'Sin cargo')+(s.tel?' \u00b7 \ud83d\udcde '+s.tel:'')+'</div></div></div>'+
     '<div class="kpis">'+
-      '<div class="kpi kb"><div class="kl">⏱ Horas Extra</div><div class="kv">'+(s.totalHE?'+'+s.totalHE+'h':'0h')+'</div></div>'+
-      '<div class="kpi kr"><div class="kl">❌ Faltas</div><div class="kv">'+s.faltas+'</div></div>'+
-      '<div class="kpi ka"><div class="kl">🏖️ Vacaciones</div><div class="kv">'+s.vacaciones+'</div></div>'+
-      '<div class="kpi kg"><div class="kl">💰 Reembolso</div><div class="kv">'+(s.totalReembolso?money(s.totalReembolso):'—')+'</div></div>'+
+      '<div class="kpi kb"><div class="kl">\u23f1 Horas Extra</div><div class="kv">'+(s.totalHE?'+'+s.totalHE+'h':'0h')+'</div></div>'+
+      '<div class="kpi kr"><div class="kl">\u274c Faltas</div><div class="kv">'+s.faltas+'</div></div>'+
+      '<div class="kpi ka"><div class="kl">\ud83c\udfd6\ufe0f Vacaciones</div><div class="kv">'+s.vacaciones+'</div></div>'+
     '</div>'+
-
-    heHTML+fHTML+vHTML+rHTML+
-
-    '<footer>'+appName+' · Resumen Individual · '+s.nombre+' · Semana '+fmtDate(_nomShareData.thuStr)+' — '+fmtDate(_nomShareData.wedStr)+'</footer>'+
+    heHTML+fHTML+vHTML+
+    '<footer>'+appName+' \u00b7 Resumen Individual \u00b7 '+s.nombre+' \u00b7 Semana '+fmtDate(_nomShareData.thuStr)+' \u2014 '+fmtDate(_nomShareData.wedStr)+'</footer>'+
     '</div></body></html>';
-
-  var fname='Nomina_'+s.nombre.replace(/\s+/g,'_');
-  _printBlob(fname, new Blob([html],{type:'text/html;charset=utf-8'}));
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// \u2500\u2500 Compartir PDF (Web Share API \u2192 fallback print) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function nomShareWorker(wid){
+  if(!_nomShareData){ toast('Abre el modal primero','err'); return; }
+  var s=_nomShareData.summaries.find(function(x){ return x.id===wid; });
+  if(!s){ toast('Trabajador no encontrado','err'); return; }
+
+  var html=_nomWorkerPDFHtml(s);
+  var fname='Nomina_'+s.nombre.replace(/\s+/g,'_')+'.html';
+  var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+
+  if(navigator.share && navigator.canShare){
+    var file=new File([blob], fname, {type:'text/html'});
+    if(navigator.canShare({files:[file]})){
+      navigator.share({files:[file], title:'N\u00f3mina '+s.nombre}).then(function(){
+        _nomMarkSent(wid);
+      }).catch(function(e){
+        if(e && e.name!=='AbortError'){ _printBlob(fname, blob); _nomMarkSent(wid); }
+      });
+      return;
+    }
+  }
+  _printBlob(fname, blob);
+  _nomMarkSent(wid);
+}
+
+function _nomMarkSent(wid){
+  var btn=document.getElementById('nom-share-btn-'+wid);
+  if(btn){
+    btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px"><polyline points="20 6 9 17 4 12"/></svg> Compartido';
+    btn.style.background='rgba(61,214,140,0.18)';
+    btn.disabled=true;
+  }
+  var card=document.getElementById('nom-sc-'+wid);
+  if(card) card.style.borderColor='rgba(61,214,140,0.4)';
+}
+
+// ── Enviar a todos: batch directo sin diálogos ────────────────────────────────
+function nomSendAll(){
+  if(!_nomShareData) return;
+  var eligible=_nomShareData.summaries.filter(function(s){ return s.tieneActividad; });
+  if(!eligible.length){ toast('Sin trabajadores con actividad esta semana','err'); return; }
+  _nomSendQueue=eligible.slice();
+  _nomSendIdx=0;
+  _nomNextBatch();
+}
+
+function _nomNextBatch(){
+  if(_nomSendIdx>=_nomSendQueue.length){
+    var bar=document.getElementById('nom-batch-bar');
+    if(bar) bar.style.display='none';
+    var btn=document.getElementById('nom-send-all-btn');
+    if(btn){ btn.textContent='\u2705 Completado'; btn.style.background='rgba(61,214,140,0.2)'; btn.style.color='var(--green)'; btn.disabled=true; }
+    toast('\u2705 PDFs compartidos para todos','ok');
+    return;
+  }
+  var s=_nomSendQueue[_nomSendIdx];
+  _nomSendIdx++;
+  nomShareWorker(s.id);
+  var card=document.getElementById('nom-sc-'+s.id);
+  if(card) setTimeout(function(){ card.scrollIntoView({behavior:'smooth',block:'center'}); },300);
+
+  // Actualizar barra flotante
+  var bar=document.getElementById('nom-batch-bar');
+  var countEl=document.getElementById('nom-batch-count');
+  var nextEl=document.getElementById('nom-batch-next-name');
+  if(bar) bar.style.display='flex';
+  if(countEl) countEl.textContent=(_nomSendIdx)+' de '+_nomSendQueue.length;
+  if(nextEl && _nomSendIdx<_nomSendQueue.length) nextEl.textContent='Siguiente: '+_nomSendQueue[_nomSendIdx].nombre.split(' ')[0];
+  else if(nextEl) nextEl.textContent='Listo';
+}
+
+function nomBatchNext(){
+  _nomNextBatch();
+}
+
+// Aliases de compatibilidad
+function nomSendWhatsApp(wid){ nomShareWorker(wid); }
+function nomOpenWorkerPDF(wid){ nomShareWorker(wid); }
+
+// \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 // Returns {faltas:[dates], vacaciones:[dates]} for a worker within a date range
 // Uses estadoHistorial as source of truth — only counts explicit 'falta' or 'vacaciones' states
