@@ -7,6 +7,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0c0e12">
+<!-- ── PERF: preconnect al servidor Supabase para reducir latencia DNS+TLS ── -->
+<link rel="preconnect" href="https://vcdwtlwnbztausmwzwla.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://vcdwtlwnbztausmwzwla.supabase.co">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <title>IMZA</title>
 <!-- Font loaded from system -->
 <style>
@@ -1635,6 +1639,7 @@ function forceRelogin(){
 (function startTokenRefreshTimer(){
   setInterval(function(){
     if(!_currentUser) return; // Solo si estamos logueados
+    if(document.hidden) return; // PERF: no renovar si el tab está oculto
     var token=localStorage.getItem('cp4_auth_token');
     var refresh=localStorage.getItem('cp4_refresh_token');
     if(!token||!refresh) return;
@@ -1783,6 +1788,23 @@ function handleOffline(){
 window.addEventListener('online', handleOnline);
 window.addEventListener('offline', handleOffline);
 
+// ── PERF: Sync al volver al tab ──────────────────────────────────────────────
+// Con el poll reducido a 12 s, si el usuario vuelve al tab tras varios minutos
+// los datos pueden estar stale. Este listener hace un pull inmediato al regresar.
+var _lastVisibleAt = Date.now();
+document.addEventListener('visibilitychange', function(){
+  if (!document.hidden) {
+    // Volvió al tab — si estuvo oculto más de 30 s, pull inmediato
+    if (_currentUser && _isOnline && Date.now() - _lastVisibleAt > 30000) {
+      _quickCheck();
+    }
+    _lastVisibleAt = Date.now();
+  } else {
+    _lastVisibleAt = Date.now();
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Verificar estado inicial
 if(!navigator.onLine){ _isOnline=false; }
 
@@ -1907,7 +1929,24 @@ function _applyRemoteData(remote){
     p.estado=todayH[p.id]||'activo';
   });
   if(!S.date) S.date=td();
-  // NO persistLocal — la nube es la única fuente
+
+  // ── PERF: Stale-while-revalidate ─────────────────────────────────────────────
+  // Guardar snapshot de datos en localStorage para arranque instantáneo.
+  // La próxima sesión renderizará con estos datos mientras espera la red.
+  try {
+    var _snap = {
+      proyectos: S.proyectos,
+      personal:  S.personal,
+      actividades: S.actividades,
+      estadoHistorial: S.estadoHistorial,
+      deleted: S.deleted,
+      exPersonal: S.exPersonal,
+      _ts: Date.now()
+    };
+    localStorage.setItem('cp4_data_snap', JSON.stringify(_snap));
+  } catch(e) { /* quota exceeded — no crítico */ }
+  // ─────────────────────────────────────────────────────────────────────────────
+
   if(needsPush) setTimeout(function(){ if(!_isPushing) pushToCloud(); },2000);
 }
 
@@ -2021,6 +2060,8 @@ function save(){
 // ── LIVE SYNC ─────────────────────────────────────────────────────────────────
 function startLiveSync(){
   if(_liveTimer) clearInterval(_liveTimer);
+  // PERF: 12 s — el WebSocket cubre cambios en tiempo real;
+  // el poll es solo fallback para cuando el WS esté caído.
   _liveTimer=setInterval(function(){
     if(!_currentUser||document.hidden) return;
     if(!_isOnline) return;
@@ -2032,7 +2073,7 @@ function startLiveSync(){
     if(_isPushing) return;
     // Poll ligero: solo checa updated_at antes de bajar todo
     _quickCheck();
-  },3000);
+  },12000); // era 3000 — reducido a 12 s (WS cubre el resto)
 }
 
 // Checa solo el updated_at — si cambió, hace pull completo
@@ -2731,6 +2772,8 @@ function rAll(fromSync){
     }catch(e){}
     // Actualizar el resto en el siguiente frame (no bloquea el UI)
     requestAnimationFrame(function(){
+      // PERF: si la pestaña está oculta, no actualizar pantallas no visibles
+      if(document.hidden) return;
       try{ if(curP!=='inicio') rInicio(); }catch(e){}
       try{ if(curP!=='actividad') rAct(); }catch(e){}
       try{ if(curP!=='historial') rHist(); }catch(e){}
@@ -6109,6 +6152,23 @@ function getSbClient(){
 function enterApp(found, sessionData){
   _currentUser=found;
   localStorage.setItem('cp4_session',JSON.stringify(sessionData));
+
+  // ── PERF: Carga snapshot cacheado para renderizar de inmediato ──────────────
+  // Mientras el pull de la nube llega, el usuario ya ve datos (aunque sean de la
+  // sesión anterior). Se reemplaza con los datos frescos cuando termina el pull.
+  try {
+    var _snap = JSON.parse(localStorage.getItem('cp4_data_snap') || 'null');
+    if (_snap && _snap._ts && (Date.now() - _snap._ts < 4 * 60 * 60 * 1000)) {
+      // Snapshot menor a 4 horas → mostrar como precarga
+      if (_snap.proyectos)      S.proyectos      = _snap.proyectos;
+      if (_snap.personal)       S.personal       = _snap.personal;
+      if (_snap.actividades)    S.actividades    = _snap.actividades;
+      if (_snap.estadoHistorial)S.estadoHistorial= _snap.estadoHistorial;
+      if (_snap.deleted)        S.deleted        = _snap.deleted;
+      if (_snap.exPersonal)     S.exPersonal     = _snap.exPersonal;
+    }
+  } catch(e) {}
+  // ───────────────────────────────────────────────────────────────────────────
   // Renovar token proactivamente en cada entrada (silencioso, no bloquea)
   var hasRefresh=!!localStorage.getItem('cp4_refresh_token');
   if(hasRefresh){
@@ -6125,11 +6185,17 @@ function enterApp(found, sessionData){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='';
   applyRoleRestrictions();
+
+  // ── PERF: Renderizar con snapshot de inmediato, actualizar en background ───
+  // Si hay datos cacheados, el usuario ve contenido real al instante.
+  rAll(false); // primera pasada con datos del cache (puede ser vacío en primera visita)
+  // ──────────────────────────────────────────────────────────────────────────
+
   // Siempre bajar datos frescos al entrar — ignorar _remoteUpdatedAt
   _remoteUpdatedAt='';
   pullFromCloud().then(function(updated){
     updateSyncUI(true);
-    rAll(true); // siempre renderizar con lo que vino de la nube
+    if(updated) rAll(true); // segunda pasada con datos frescos de la nube
   }).catch(function(){});
 }
 
