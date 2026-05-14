@@ -7,10 +7,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0c0e12">
-<!-- ── PERF: preconnect al servidor Supabase para reducir latencia DNS+TLS ── -->
-<link rel="preconnect" href="https://vcdwtlwnbztausmwzwla.supabase.co" crossorigin>
-<link rel="dns-prefetch" href="https://vcdwtlwnbztausmwzwla.supabase.co">
-<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <title>IMZA</title>
 <!-- Font loaded from system -->
 <style>
@@ -865,7 +861,13 @@ if('serviceWorker' in navigator){
 
     <!-- NÓMINA -->
     <div id="s-nomina" class="screen">
-      <div class="sec"><div class="sec-lbl">Nómina</div></div>
+      <div class="sec">
+        <div class="sec-lbl">Nómina</div>
+        <button onclick="nomOpenShareModal()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:100px;border:none;background:rgba(37,211,102,0.12);color:var(--green);font-size:12px;font-weight:800;font-family:inherit;cursor:pointer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:13px;height:13px"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.22 1.2a2 2 0 012-2.18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 6a16 16 0 006.29 6.29l.38-.38a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+          Compartir
+        </button>
+      </div>
       <!-- pill tabs -->
       <div style="display:flex;gap:6px;background:var(--card2);border-radius:var(--r2);padding:4px;margin-bottom:12px">
         <button id="nom-tab-personal" onclick="setNomTab('personal')" style="flex:1;padding:8px;border-radius:8px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;background:var(--gold);color:#000;transition:all .15s">Personal</button>
@@ -1204,6 +1206,83 @@ if('serviceWorker' in navigator){
   </div>
 </div>
 
+
+<!-- SHEET: COMPARTIR NÓMINA ──────────────────────────────────────────────── -->
+<div class="sov" id="sov-nom-share" onclick="if(event.target.id==='sov-nom-share'){document.getElementById('sov-nom-share').classList.remove('open');}">
+  <div class="sheet" style="max-height:96dvh">
+    <div class="shandle"></div>
+    <div class="shdr">
+      <div>
+        <div class="shtitle">Compartir Nómina</div>
+        <div id="nom-share-wk-label" style="font-size:12px;color:var(--txt3);margin-top:2px">—</div>
+      </div>
+      <button class="shclose" onclick="document.getElementById('sov-nom-share').classList.remove('open')">&times;</button>
+    </div>
+    <div class="shbody" style="padding:14px 16px 24px">
+
+      <!-- Enviar a todos -->
+      <div style="background:rgba(37,211,102,0.08);border:1.5px solid rgba(37,211,102,0.22);border-radius:14px;padding:14px 16px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px">
+          <div>
+            <div style="font-size:14px;font-weight:800;color:var(--green)">📤 Enviar a todos</div>
+            <div id="nom-share-all-sub" style="font-size:11px;color:var(--txt3);margin-top:2px">—</div>
+          </div>
+          <button id="nom-send-all-btn" onclick="nomSendAll()" style="background:var(--green);color:#000;border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;white-space:nowrap;flex-shrink:0">Iniciar ▶</button>
+        </div>
+        <div id="nom-send-progress" style="display:none;font-size:11px;color:var(--green);font-weight:700"></div>
+      </div>
+
+      <!-- Lista de trabajadores -->
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--txt3);margin-bottom:10px">Trabajadores</div>
+      <div id="nom-share-list"></div>
+    </div>
+  </div>
+</div>
+<!-- ──────────────────────────────────────────────────────────────────────────── -->
+
+<!-- MODAL: CONFIRMACIÓN DE ENVÍO ─────────────────────────────────────────── -->
+<div class="sov" id="sov-nom-confirm" onclick="if(event.target.id==='sov-nom-confirm'){document.getElementById('sov-nom-confirm').classList.remove('open');_nomConfirmWid=null;}">
+  <div class="sheet">
+    <div class="shandle"></div>
+    <div class="shdr">
+      <div class="shtitle">Confirmar envío</div>
+      <button class="shclose" onclick="document.getElementById('sov-nom-confirm').classList.remove('open');_nomConfirmWid=null;">&times;</button>
+    </div>
+    <div class="shbody" style="padding:14px 18px 20px">
+
+      <!-- Destinatario -->
+      <div style="background:rgba(37,211,102,0.07);border:1.5px solid rgba(37,211,102,0.2);border-radius:14px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
+        <div style="width:42px;height:42px;border-radius:50%;background:rgba(37,211,102,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" style="width:20px;height:20px"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.22 1.2a2 2 0 012-2.18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 6a16 16 0 006.29 6.29l.38-.38a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+        </div>
+        <div>
+          <div id="nom-confirm-name" style="font-size:16px;font-weight:800;color:var(--txt)">—</div>
+          <div id="nom-confirm-tel" style="font-size:12px;color:var(--green);font-weight:600;margin-top:2px">—</div>
+        </div>
+      </div>
+
+      <!-- Preview del mensaje -->
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--txt3);margin-bottom:8px">Vista previa del mensaje</div>
+      <div style="background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px;max-height:260px;overflow-y:auto">
+        <pre id="nom-confirm-preview" style="font-family:inherit;font-size:12px;color:var(--txt2);white-space:pre-wrap;line-height:1.6;margin:0"></pre>
+      </div>
+
+      <!-- Botones -->
+      <div style="display:flex;gap:8px">
+        <button onclick="document.getElementById('sov-nom-confirm').classList.remove('open');_nomConfirmWid=null;"
+          style="flex:1;padding:14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt2);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">
+          Cancelar
+        </button>
+        <button onclick="nomConfirmSend()"
+          style="flex:2;padding:14px;border-radius:12px;border:none;background:var(--green);color:#000;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.22 1.2a2 2 0 012-2.18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 6a16 16 0 006.29 6.29l.38-.38a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+          Enviar por WhatsApp
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ──────────────────────────────────────────────────────────────────────────── -->
 
 <!-- SHEET ACTIVIDAD -->
 <div class="sov" id="sov-act">
@@ -1639,7 +1718,6 @@ function forceRelogin(){
 (function startTokenRefreshTimer(){
   setInterval(function(){
     if(!_currentUser) return; // Solo si estamos logueados
-    if(document.hidden) return; // PERF: no renovar si el tab está oculto
     var token=localStorage.getItem('cp4_auth_token');
     var refresh=localStorage.getItem('cp4_refresh_token');
     if(!token||!refresh) return;
@@ -1788,23 +1866,6 @@ function handleOffline(){
 window.addEventListener('online', handleOnline);
 window.addEventListener('offline', handleOffline);
 
-// ── PERF: Sync al volver al tab ──────────────────────────────────────────────
-// Con el poll reducido a 12 s, si el usuario vuelve al tab tras varios minutos
-// los datos pueden estar stale. Este listener hace un pull inmediato al regresar.
-var _lastVisibleAt = Date.now();
-document.addEventListener('visibilitychange', function(){
-  if (!document.hidden) {
-    // Volvió al tab — si estuvo oculto más de 30 s, pull inmediato
-    if (_currentUser && _isOnline && Date.now() - _lastVisibleAt > 30000) {
-      _quickCheck();
-    }
-    _lastVisibleAt = Date.now();
-  } else {
-    _lastVisibleAt = Date.now();
-  }
-});
-// ─────────────────────────────────────────────────────────────────────────────
-
 // Verificar estado inicial
 if(!navigator.onLine){ _isOnline=false; }
 
@@ -1929,24 +1990,7 @@ function _applyRemoteData(remote){
     p.estado=todayH[p.id]||'activo';
   });
   if(!S.date) S.date=td();
-
-  // ── PERF: Stale-while-revalidate ─────────────────────────────────────────────
-  // Guardar snapshot de datos en localStorage para arranque instantáneo.
-  // La próxima sesión renderizará con estos datos mientras espera la red.
-  try {
-    var _snap = {
-      proyectos: S.proyectos,
-      personal:  S.personal,
-      actividades: S.actividades,
-      estadoHistorial: S.estadoHistorial,
-      deleted: S.deleted,
-      exPersonal: S.exPersonal,
-      _ts: Date.now()
-    };
-    localStorage.setItem('cp4_data_snap', JSON.stringify(_snap));
-  } catch(e) { /* quota exceeded — no crítico */ }
-  // ─────────────────────────────────────────────────────────────────────────────
-
+  // NO persistLocal — la nube es la única fuente
   if(needsPush) setTimeout(function(){ if(!_isPushing) pushToCloud(); },2000);
 }
 
@@ -2060,8 +2104,6 @@ function save(){
 // ── LIVE SYNC ─────────────────────────────────────────────────────────────────
 function startLiveSync(){
   if(_liveTimer) clearInterval(_liveTimer);
-  // PERF: 12 s — el WebSocket cubre cambios en tiempo real;
-  // el poll es solo fallback para cuando el WS esté caído.
   _liveTimer=setInterval(function(){
     if(!_currentUser||document.hidden) return;
     if(!_isOnline) return;
@@ -2073,7 +2115,7 @@ function startLiveSync(){
     if(_isPushing) return;
     // Poll ligero: solo checa updated_at antes de bajar todo
     _quickCheck();
-  },12000); // era 3000 — reducido a 12 s (WS cubre el resto)
+  },3000);
 }
 
 // Checa solo el updated_at — si cambió, hace pull completo
@@ -2772,8 +2814,6 @@ function rAll(fromSync){
     }catch(e){}
     // Actualizar el resto en el siguiente frame (no bloquea el UI)
     requestAnimationFrame(function(){
-      // PERF: si la pestaña está oculta, no actualizar pantallas no visibles
-      if(document.hidden) return;
       try{ if(curP!=='inicio') rInicio(); }catch(e){}
       try{ if(curP!=='actividad') rAct(); }catch(e){}
       try{ if(curP!=='historial') rHist(); }catch(e){}
@@ -4917,6 +4957,448 @@ function selectNomWk(wk){
   },50);
 }
 
+function selectNomWk(wk){
+  _nomWk=Number(wk);
+  rNomHoras();
+  // Scroll strip to show selected
+  setTimeout(()=>{
+    const strip=document.getElementById('nom-week-strip');
+    const sel=strip&&strip.querySelector('[style*="var(--gold)"]');
+    if(sel) sel.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'});
+  },50);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── COMPARTIR NÓMINA ── WhatsApp + PDF por trabajador ─────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var _nomShareData = null; // {thuStr, wedStr, summaries:[]}
+var _nomSendQueue = [];
+var _nomSendIdx   = 0;
+
+// ── Obtiene rango de la semana seleccionada en Nómina ──────────────────────
+function _nomGetWeekRange(){
+  if(!_nomWk) _nomWk=weekKey(td());
+  var weeks=getAllWeeks();
+  var sel=weeks.find(function(w){ return w.wk===Number(_nomWk); });
+  if(!sel) return null;
+  var thuStr=sel.thuDate;
+  var wedDt=new Date(thuStr+'T12:00:00'); wedDt.setDate(wedDt.getDate()+6);
+  var wedStr=wedDt.getFullYear()+'-'+String(wedDt.getMonth()+1).padStart(2,'0')+'-'+String(wedDt.getDate()).padStart(2,'0');
+  return {thuStr:thuStr, wedStr:wedStr};
+}
+
+// ── Reúne datos de la semana: HE, asistencias, gastos por trabajador ────────
+function _nomGatherData(thuStr, wedStr){
+  var workerHE={};     // wid → [{date,proyectoId,hrs}]
+  var asistData={};    // wid → {date:true}
+  var gastosData={};   // wid → [{date,proyectoId,tipo,desc,monto}]
+
+  Object.keys(S.actividades).sort().forEach(function(date){
+    if(weekKey(date)!==Number(_nomWk)) return;
+    (S.actividades[date]||[]).forEach(function(a){
+      // Horas extras
+      Object.entries(a.horasExtras||{}).forEach(function(e){
+        var wid=e[0], hrs=e[1];
+        if(!hrs||hrs<=0) return;
+        if(!workerHE[wid]) workerHE[wid]=[];
+        workerHE[wid].push({date:date,proyectoId:a.proyectoId,hrs:hrs});
+      });
+      // Asistencias y gastos
+      (a.trabajadores||[]).forEach(function(wid){
+        if(!asistData[wid]) asistData[wid]={};
+        asistData[wid][date]=true;
+        if((a.gastos||[]).length){
+          if(!gastosData[wid]) gastosData[wid]=[];
+          a.gastos.forEach(function(g){
+            gastosData[wid].push({
+              date:date, proyectoId:a.proyectoId,
+              tipo:g.tipo||'Gasto', desc:g.desc||'', monto:Number(g.monto)||0
+            });
+          });
+        }
+      });
+    });
+  });
+  return {workerHE:workerHE, asistData:asistData, gastosData:gastosData};
+}
+
+// ── Construye resumen por trabajador ────────────────────────────────────────
+function _nomWorkerSummary(p, idx, thuStr, wedStr, gathered){
+  var abs=getWorkerAbsences(p.id, thuStr, wedStr);
+  var heData=(gathered.workerHE[p.id]||[]).slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
+  var totalHE=heData.reduce(function(s,d){ return s+d.hrs; },0);
+  var gastos=gathered.gastosData[p.id]||[];
+  var totalReembolso=gastos.reduce(function(s,r){ return s+(r.monto||0); },0);
+  var tieneActividad=!!(gathered.asistData[p.id]||gathered.workerHE[p.id]||abs.faltas.length||abs.vacaciones.length);
+  return {
+    p:p, idx:idx, id:p.id,
+    nombre:p.nombre, cargo:p.cargo||'', tel:p.tel||'',
+    faltas:abs.faltas.length, faltasDates:abs.faltas,
+    vacaciones:abs.vacaciones.length, vacacionesDates:abs.vacaciones,
+    totalHE:totalHE, heData:heData,
+    gastos:gastos, totalReembolso:totalReembolso,
+    tieneActividad:tieneActividad
+  };
+}
+
+// ── Abre el modal con la lista ───────────────────────────────────────────────
+function nomOpenShareModal(){
+  if(!_nomWk) _nomWk=weekKey(td());
+  var range=_nomGetWeekRange();
+  if(!range){ toast('Selecciona primero una semana en Horas extras','err'); return; }
+
+  // Actualizar label de semana
+  var wlEl=document.getElementById('nom-share-wk-label');
+  if(wlEl) wlEl.textContent='📅 '+fmtDate(range.thuStr)+' → '+fmtDate(range.wedStr);
+
+  var gathered=_nomGatherData(range.thuStr,range.wedStr);
+
+  // Construir summaries para todos los activos
+  var workers=S.personal.filter(function(p){ return p.estado!=='inactivo'; });
+  var summaries=workers.map(function(p,i){ return _nomWorkerSummary(p,i,range.thuStr,range.wedStr,gathered); });
+
+  _nomShareData={thuStr:range.thuStr, wedStr:range.wedStr, summaries:summaries};
+  _nomSendQueue=[];
+  _nomSendIdx=0;
+
+  // Reset botón enviar a todos
+  var sendBtn=document.getElementById('nom-send-all-btn');
+  if(sendBtn){ sendBtn.textContent='Iniciar ▶'; sendBtn.style.background='var(--green)'; sendBtn.disabled=false; }
+  var progEl=document.getElementById('nom-send-progress');
+  if(progEl) progEl.style.display='none';
+
+  // Conteo elegibles (con tel + actividad)
+  var eligible=summaries.filter(function(s){ return s.tel&&s.tieneActividad; });
+  var subEl=document.getElementById('nom-share-all-sub');
+  if(subEl) subEl.textContent=eligible.length+' trabajador'+(eligible.length!==1?'es':'')+' con teléfono y actividad esta semana';
+
+  // Construir tarjetas
+  var listEl=document.getElementById('nom-share-list');
+  if(!listEl) return;
+
+  // Orden: con actividad primero
+  var sorted=summaries.slice().sort(function(a,b){
+    return (b.tieneActividad?1:0)-(a.tieneActividad?1:0);
+  });
+
+  listEl.innerHTML=sorted.map(function(s){
+    var color=WC[s.idx%WC.length];
+    var ini_=inits(s.nombre);
+    var hasTel=!!s.tel;
+    var dimmed=!s.tieneActividad;
+
+    // Mini chips de stats
+    var chips=[];
+    if(s.totalHE>0) chips.push('<span style="background:rgba(240,96,96,.15);color:var(--red);border-radius:8px;padding:3px 10px;font-size:11px;font-weight:800">+'+s.totalHE+'h extras</span>');
+    if(s.faltas>0)  chips.push('<span style="background:rgba(240,96,96,.1);color:#ff8a8a;border-radius:8px;padding:3px 10px;font-size:11px;font-weight:700">❌ '+s.faltas+' falta'+(s.faltas>1?'s':'')+'</span>');
+    if(s.vacaciones>0) chips.push('<span style="background:rgba(245,207,85,.1);color:var(--gold);border-radius:8px;padding:3px 10px;font-size:11px;font-weight:700">🏖 '+s.vacaciones+' vac</span>');
+    if(s.totalReembolso>0) chips.push('<span style="background:rgba(61,214,140,.1);color:var(--green);border-radius:8px;padding:3px 10px;font-size:11px;font-weight:700">💰 $'+s.totalReembolso.toLocaleString('es-MX')+'</span>');
+    if(!chips.length&&s.tieneActividad) chips.push('<span style="color:var(--txt3);font-size:11px">Sin extras ni incidencias</span>');
+    if(!s.tieneActividad) chips.push('<span style="color:var(--txt3);font-size:11px">Sin actividad esta semana</span>');
+
+    var waStyle='flex:1;padding:10px 6px;border-radius:10px;border:none;font-size:12px;font-weight:800;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px;';
+    var pdfStyle=waStyle;
+    if(hasTel){
+      waStyle+='background:rgba(37,211,102,0.12);color:var(--green);cursor:pointer;';
+    } else {
+      waStyle+='background:var(--card2);color:var(--txt3);cursor:not-allowed;opacity:0.6;';
+    }
+    pdfStyle+='background:rgba(106,170,255,0.12);color:var(--blue);cursor:pointer;';
+
+    return '<div id="nom-sc-'+s.id+'" style="background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:14px;margin-bottom:8px;transition:border-color .2s,opacity .2s;opacity:'+(dimmed?'0.55':'1')+'">'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+
+        '<div style="width:40px;height:40px;border-radius:11px;background:'+color+'22;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:'+color+';flex-shrink:0">'+ini_+'</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:14px;font-weight:700;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.nombre+'</div>'+
+          '<div style="font-size:11px;color:var(--txt3);margin-top:1px">'+s.cargo+(hasTel?' · 📞 '+s.tel:' · <span style="color:var(--red)">Sin teléfono</span>')+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">'+chips.join('')+'</div>'+
+      '<div style="display:flex;gap:7px">'+
+        '<button '+(hasTel?'':'disabled ')+'onclick="nomSendWhatsApp(\''+s.id+'\')" id="nom-wa-btn-'+s.id+'" style="'+waStyle+'">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.22 1.2a2 2 0 012-2.18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 6a16 16 0 006.29 6.29l.38-.38a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>'+
+          'WhatsApp</button>'+
+        '<button onclick="nomOpenWorkerPDF(\''+s.id+'\')" style="'+pdfStyle+'">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>'+
+          'PDF</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+
+  document.getElementById('sov-nom-share').classList.add('open');
+}
+
+// ── Enviar WhatsApp a un trabajador (con confirmación) ──────────────────────
+var _nomConfirmWid=null; // wid pendiente de confirmación
+
+function nomSendWhatsApp(wid){
+  if(!_nomShareData){ toast('Abre el modal primero','err'); return; }
+  var s=_nomShareData.summaries.find(function(x){ return x.id===wid; });
+  if(!s){ toast('Trabajador no encontrado','err'); return; }
+  if(!s.tel){ toast('Este trabajador no tiene teléfono registrado','err'); return; }
+
+  // Generar preview del mensaje
+  var msg=_nomBuildWAMsg(s,_nomShareData.thuStr,_nomShareData.wedStr);
+
+  // Rellenar modal de confirmación
+  var nmEl=document.getElementById('nom-confirm-name');
+  var telEl=document.getElementById('nom-confirm-tel');
+  var preEl=document.getElementById('nom-confirm-preview');
+  if(nmEl) nmEl.textContent=s.nombre;
+  if(telEl) telEl.textContent='📞 '+s.tel;
+  if(preEl) preEl.textContent=msg;
+
+  _nomConfirmWid=wid;
+  document.getElementById('sov-nom-confirm').classList.add('open');
+}
+
+// Llamado por el botón "Confirmar y enviar" del modal
+function nomConfirmSend(){
+  document.getElementById('sov-nom-confirm').classList.remove('open');
+  if(!_nomConfirmWid) return;
+  _nomDoSend(_nomConfirmWid);
+  _nomConfirmWid=null;
+}
+
+// Lógica real de envío (sin confirmación — solo llamar tras confirmar)
+function _nomDoSend(wid){
+  var s=_nomShareData.summaries.find(function(x){ return x.id===wid; });
+  if(!s||!s.tel) return;
+  var msg=_nomBuildWAMsg(s,_nomShareData.thuStr,_nomShareData.wedStr);
+  var tel=s.tel.replace(/\D/g,'');
+  if(tel.length===10) tel='52'+tel;
+  window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(msg),'_blank');
+
+  // Marcar como enviado en la UI
+  var btn=document.getElementById('nom-wa-btn-'+wid);
+  if(btn){
+    btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:13px;height:13px"><polyline points="20 6 9 17 4 12"/></svg> Enviado';
+    btn.style.background='rgba(61,214,140,0.2)';
+    btn.style.color='var(--green)';
+    btn.disabled=true;
+  }
+  var card=document.getElementById('nom-sc-'+wid);
+  if(card) card.style.borderColor='rgba(61,214,140,0.4)';
+}
+
+// ── Enviar a todos: flujo guiado paso a paso ─────────────────────────────────
+function nomSendAll(){
+  if(!_nomShareData) return;
+  var eligible=_nomShareData.summaries.filter(function(s){ return s.tel&&s.tieneActividad; });
+  if(!eligible.length){ toast('Sin trabajadores con teléfono y actividad','err'); return; }
+
+  if(_nomSendQueue.length===0){
+    // Primera vez: armar cola
+    _nomSendQueue=eligible.slice();
+    _nomSendIdx=0;
+  }
+
+  if(_nomSendIdx>=_nomSendQueue.length){
+    // Completado
+    var btn=document.getElementById('nom-send-all-btn');
+    if(btn){ btn.textContent='✅ Completado'; btn.style.background='rgba(61,214,140,0.2)'; btn.style.color='var(--green)'; btn.disabled=true; }
+    var prog=document.getElementById('nom-send-progress');
+    if(prog){ prog.textContent='✅ Todos los resúmenes enviados ('+_nomSendQueue.length+')'; prog.style.display='block'; }
+    toast('✅ Resúmenes enviados a todos','ok');
+    return;
+  }
+
+  var s=_nomSendQueue[_nomSendIdx];
+  _nomSendIdx++;
+
+  // Mostrar confirmación para este trabajador (nomSendWhatsApp la maneja)
+  nomSendWhatsApp(s.id);
+
+  // Scroll a su tarjeta
+  var card=document.getElementById('nom-sc-'+s.id);
+  if(card) setTimeout(function(){ card.scrollIntoView({behavior:'smooth',block:'center'}); },200);
+
+  // Actualizar botón y progreso
+  var remaining=_nomSendQueue.length-_nomSendIdx;
+  var btn=document.getElementById('nom-send-all-btn');
+  var prog=document.getElementById('nom-send-progress');
+  if(remaining>0){
+    if(btn){ btn.textContent='Siguiente → ('+remaining+' restante'+(remaining>1?'s':'')+')'; }
+    if(prog){ prog.textContent=_nomSendIdx+' de '+_nomSendQueue.length+' confirmados'; prog.style.display='block'; }
+  } else {
+    if(btn){ btn.textContent='Finalizar ✓'; }
+    if(prog){ prog.textContent='Último pendiente de confirmar.'; prog.style.display='block'; }
+  }
+}
+
+// ── Construye el mensaje de WhatsApp ─────────────────────────────────────────
+function _nomBuildWAMsg(s, thuStr, wedStr){
+  var appName=localStorage.getItem('cp4_appname')||'IMZA';
+  var L=[];
+  L.push('🏗️ *'+appName+' — Resumen de Nómina*');
+  L.push('📅 Semana: '+fmtDate(thuStr)+' → '+fmtDate(wedStr));
+  L.push('');
+  L.push('Hola *'+s.nombre+'* 👋');
+  L.push('');
+  L.push('📊 *TU RESUMEN SEMANAL*');
+  L.push('―――――――――――――――――――――――');
+  L.push('');
+
+  // Horas extras
+  if(s.totalHE>0){
+    L.push('⏱ *Horas extras: +'+s.totalHE+'h*');
+    s.heData.forEach(function(d){
+      var wknd=isWeekend(d.date)||isFestivo(d.date);
+      L.push('  • '+fmtD(d.date)+' → ['+gcode(d.proyectoId)+'] '+gpn(d.proyectoId)+': *+'+d.hrs+'h*'+(wknd?' 🔴 Descanso':''));
+    });
+  } else {
+    L.push('⏱ Sin horas extras esta semana');
+  }
+  L.push('');
+
+  // Faltas
+  if(s.faltas>0){
+    L.push('❌ *Faltas: '+s.faltas+' día'+(s.faltas>1?'s':'')+'*');
+    s.faltasDates.forEach(function(d){ L.push('  • '+fmtD(d)); });
+  } else {
+    L.push('✅ Sin faltas — asistencia completa');
+  }
+  L.push('');
+
+  // Vacaciones
+  if(s.vacaciones>0){
+    L.push('🏖️ *Vacaciones: '+s.vacaciones+' día'+(s.vacaciones>1?'s':'')+'*');
+    s.vacacionesDates.forEach(function(d){ L.push('  • '+fmtD(d)); });
+  } else {
+    L.push('🏖️ Sin días de vacaciones esta semana');
+  }
+
+  // Reembolso
+  if(s.gastos.length>0){
+    L.push('');
+    L.push('💰 *Reembolso: $'+s.totalReembolso.toLocaleString('es-MX')+'*');
+    s.gastos.forEach(function(r){
+      L.push('  • '+r.tipo+(r.desc?' — '+r.desc:'')+': *$'+Number(r.monto).toLocaleString('es-MX')+'*');
+    });
+  }
+
+  L.push('');
+  L.push('―――――――――――――――――――――――');
+  L.push('_Para dudas, contacta a tu supervisor._');
+  return L.join('\n');
+}
+
+// ── Genera e imprime PDF individual del trabajador ───────────────────────────
+function nomOpenWorkerPDF(wid){
+  if(!_nomShareData){ toast('Abre el modal primero','err'); return; }
+  var s=_nomShareData.summaries.find(function(x){ return x.id===wid; });
+  if(!s){ toast('Trabajador no encontrado','err'); return; }
+
+  var appName=localStorage.getItem('cp4_appname')||'IMZA';
+  var money=function(n){ return '$'+Number(n||0).toLocaleString('es-MX'); };
+  function ini_(n){ return n.split(' ').map(function(x){return x[0]||'';}).slice(0,2).join('').toUpperCase(); }
+
+  var css=
+    '*{margin:0;padding:0;box-sizing:border-box;}'+
+    'html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
+    'body{font-family:"Segoe UI",-apple-system,Arial,sans-serif;font-size:11px;background:#F8FAFC;color:#0F172A;line-height:1.4;}'+
+    '.page{max-width:680px;margin:0 auto;padding:22px;}'+
+    '.hdr{background:linear-gradient(135deg,#1E3A8A,#2563EB);border-radius:12px;padding:18px 22px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;}'+
+    '.hdr h1{font-size:20px;font-weight:900;color:#fff;letter-spacing:-.03em;}'+
+    '.hdr p{font-size:9px;color:#93C5FD;margin-top:3px;text-transform:uppercase;letter-spacing:.1em;}'+
+    '.hdr-r{text-align:right;}.hdr-r .hl{font-size:8px;color:#93C5FD;text-transform:uppercase;letter-spacing:.08em;}.hdr-r .hv{font-size:13px;font-weight:800;color:#fff;margin-top:2px;}'+
+    '.wcard{background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:14px;}'+
+    '.av{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,#1E3A8A,#7C3AED);color:#fff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}'+
+    '.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;}'+
+    '.kpi{border-radius:8px;padding:11px 13px;border-left:3px solid transparent;}'+
+    '.kb{background:#EFF6FF;border-color:#2563EB;}.kg{background:#F0FDF4;border-color:#059669;}.kr{background:#FEF2F2;border-color:#DC2626;}.ka{background:#FFFBEB;border-color:#D97706;}'+
+    '.kl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748B;}'+
+    '.kv{font-size:22px;font-weight:900;line-height:1;margin:3px 0;}.kb .kv{color:#1D4ED8;}.kg .kv{color:#059669;}.kr .kv{color:#DC2626;}.ka .kv{color:#D97706;}'+
+    '.sec{background:#fff;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:10px;overflow:hidden;}'+
+    '.sech{padding:10px 16px;display:flex;justify-content:space-between;align-items:center;}'+
+    '.sech.sb{background:linear-gradient(90deg,#1E3A8A,#2563EB);}.sech.sr{background:linear-gradient(90deg,#991B1B,#DC2626);}.sech.sa{background:linear-gradient(90deg,#92400E,#D97706);}.sech.sg{background:linear-gradient(90deg,#065F46,#059669);}'+
+    '.sech span{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#fff;}.sech strong{font-size:13px;font-weight:900;color:#fff;}'+
+    '.sbody{padding:10px 16px;}'+
+    '.row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F1F5F9;}.row:last-child{border-bottom:none;}'+
+    '.tag{display:inline-block;border-radius:5px;padding:2px 8px;font-size:9px;font-weight:700;margin:2px;}'+
+    '.tr{background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;}.ta{background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;}.tg{background:#DCFCE7;border:1px solid #BBF7D0;color:#166534;}'+
+    'footer{text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid #E2E8F0;color:#CBD5E1;font-size:8px;}'+
+    '@media print{@page{size:A4;margin:6mm 8mm;}body{background:#fff!important;}.page{padding:0!important;max-width:100%!important;}-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}';
+
+  // ── Sección Horas extras ──
+  var heHTML='';
+  if(s.totalHE>0){
+    heHTML='<div class="sec"><div class="sech sb"><span>⏱ Horas Extras</span><strong>+'+s.totalHE+'h</strong></div>'+
+      '<div class="sbody">'+s.heData.map(function(d){
+        var wknd=isWeekend(d.date)||isFestivo(d.date);
+        return '<div class="row">'+
+          '<div><div style="font-size:12px;font-weight:600;color:'+(wknd?'#DC2626':'#0F172A')+'">'+fmtD(d.date)+(wknd?' <span style="font-size:10px">🔴</span>':'')+'</div>'+
+          '<div style="font-size:10px;color:#64748B;margin-top:2px">['+gcode(d.proyectoId)+'] '+gpn(d.proyectoId)+(gpl(d.proyectoId)?' · '+gpl(d.proyectoId):'')+'</div></div>'+
+          '<span style="font-size:16px;font-weight:900;color:#1D4ED8">+'+d.hrs+'h</span></div>';
+      }).join('')+'</div></div>';
+  } else {
+    heHTML='<div class="sec"><div class="sech sb"><span>⏱ Horas Extras</span><strong>0h</strong></div>'+
+      '<div class="sbody"><p style="color:#94A3B8;padding:4px 0">Sin horas extras esta semana</p></div></div>';
+  }
+
+  // ── Sección Faltas ──
+  var fHTML='';
+  if(s.faltas>0){
+    fHTML='<div class="sec"><div class="sech sr"><span>❌ Faltas</span><strong>'+s.faltas+' día'+(s.faltas>1?'s':'')+'</strong></div>'+
+      '<div class="sbody"><div style="padding:4px 0">'+s.faltasDates.map(function(d){ return '<span class="tag tr">'+fmtD(d)+'</span>'; }).join('')+'</div></div></div>';
+  } else {
+    fHTML='<div class="sec"><div class="sech sr"><span>❌ Faltas</span><strong>0</strong></div>'+
+      '<div class="sbody"><p style="color:#94A3B8;padding:4px 0">Sin faltas — asistencia completa ✓</p></div></div>';
+  }
+
+  // ── Sección Vacaciones ──
+  var vHTML='';
+  if(s.vacaciones>0){
+    vHTML='<div class="sec"><div class="sech sa"><span>🏖️ Vacaciones</span><strong>'+s.vacaciones+' día'+(s.vacaciones>1?'s':'')+'</strong></div>'+
+      '<div class="sbody"><div style="padding:4px 0">'+s.vacacionesDates.map(function(d){ return '<span class="tag ta">'+fmtD(d)+'</span>'; }).join('')+'</div></div></div>';
+  } else {
+    vHTML='<div class="sec"><div class="sech sa"><span>🏖️ Vacaciones</span><strong>0</strong></div>'+
+      '<div class="sbody"><p style="color:#94A3B8;padding:4px 0">Sin días de vacaciones esta semana</p></div></div>';
+  }
+
+  // ── Sección Reembolso ──
+  var rHTML='';
+  if(s.gastos.length>0){
+    rHTML='<div class="sec"><div class="sech sg"><span>💰 Reembolso</span><strong>'+money(s.totalReembolso)+'</strong></div>'+
+      '<div class="sbody">'+s.gastos.map(function(r){
+        return '<div class="row">'+
+          '<div><div style="font-size:12px;font-weight:600">'+r.tipo+(r.desc?' — '+r.desc:'')+'</div>'+
+          '<div style="font-size:10px;color:#64748B;margin-top:2px">['+gcode(r.proyectoId)+'] '+gpn(r.proyectoId)+' · '+fmtD(r.date)+'</div></div>'+
+          '<span style="font-size:15px;font-weight:900;color:#059669">'+money(r.monto)+'</span></div>';
+      }).join('')+'</div></div>';
+  }
+
+  var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'+
+    '<title>Nomina_'+s.nombre.replace(/\s+/g,'_')+'</title>'+
+    '<style>'+css+'</style></head><body><div class="page">'+
+
+    '<div class="hdr"><div><h1>'+appName+'</h1><p>Resumen de Nómina Individual</p></div>'+
+    '<div class="hdr-r"><div class="hl">Periodo</div>'+
+    '<div class="hv">'+fmtDate(_nomShareData.thuStr)+' → '+fmtDate(_nomShareData.wedStr)+'</div></div></div>'+
+
+    '<div class="wcard"><div class="av">'+ini_(s.nombre)+'</div>'+
+    '<div><div style="font-size:18px;font-weight:800;color:#0F172A">'+s.nombre+'</div>'+
+    '<div style="font-size:12px;color:#64748B;margin-top:2px">'+(s.cargo||'Sin cargo')+(s.tel?' · 📞 '+s.tel:'')+'</div></div></div>'+
+
+    '<div class="kpis">'+
+      '<div class="kpi kb"><div class="kl">⏱ Horas Extra</div><div class="kv">'+(s.totalHE?'+'+s.totalHE+'h':'0h')+'</div></div>'+
+      '<div class="kpi kr"><div class="kl">❌ Faltas</div><div class="kv">'+s.faltas+'</div></div>'+
+      '<div class="kpi ka"><div class="kl">🏖️ Vacaciones</div><div class="kv">'+s.vacaciones+'</div></div>'+
+      '<div class="kpi kg"><div class="kl">💰 Reembolso</div><div class="kv">'+(s.totalReembolso?money(s.totalReembolso):'—')+'</div></div>'+
+    '</div>'+
+
+    heHTML+fHTML+vHTML+rHTML+
+
+    '<footer>'+appName+' · Resumen Individual · '+s.nombre+' · Semana '+fmtDate(_nomShareData.thuStr)+' — '+fmtDate(_nomShareData.wedStr)+'</footer>'+
+    '</div></body></html>';
+
+  var fname='Nomina_'+s.nombre.replace(/\s+/g,'_');
+  _printBlob(fname, new Blob([html],{type:'text/html;charset=utf-8'}));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Returns {faltas:[dates], vacaciones:[dates]} for a worker within a date range
 // Uses estadoHistorial as source of truth — only counts explicit 'falta' or 'vacaciones' states
 function getWorkerAbsences(wid, fromDate, toDate){
@@ -6152,23 +6634,6 @@ function getSbClient(){
 function enterApp(found, sessionData){
   _currentUser=found;
   localStorage.setItem('cp4_session',JSON.stringify(sessionData));
-
-  // ── PERF: Carga snapshot cacheado para renderizar de inmediato ──────────────
-  // Mientras el pull de la nube llega, el usuario ya ve datos (aunque sean de la
-  // sesión anterior). Se reemplaza con los datos frescos cuando termina el pull.
-  try {
-    var _snap = JSON.parse(localStorage.getItem('cp4_data_snap') || 'null');
-    if (_snap && _snap._ts && (Date.now() - _snap._ts < 4 * 60 * 60 * 1000)) {
-      // Snapshot menor a 4 horas → mostrar como precarga
-      if (_snap.proyectos)      S.proyectos      = _snap.proyectos;
-      if (_snap.personal)       S.personal       = _snap.personal;
-      if (_snap.actividades)    S.actividades    = _snap.actividades;
-      if (_snap.estadoHistorial)S.estadoHistorial= _snap.estadoHistorial;
-      if (_snap.deleted)        S.deleted        = _snap.deleted;
-      if (_snap.exPersonal)     S.exPersonal     = _snap.exPersonal;
-    }
-  } catch(e) {}
-  // ───────────────────────────────────────────────────────────────────────────
   // Renovar token proactivamente en cada entrada (silencioso, no bloquea)
   var hasRefresh=!!localStorage.getItem('cp4_refresh_token');
   if(hasRefresh){
@@ -6185,17 +6650,11 @@ function enterApp(found, sessionData){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='';
   applyRoleRestrictions();
-
-  // ── PERF: Renderizar con snapshot de inmediato, actualizar en background ───
-  // Si hay datos cacheados, el usuario ve contenido real al instante.
-  rAll(false); // primera pasada con datos del cache (puede ser vacío en primera visita)
-  // ──────────────────────────────────────────────────────────────────────────
-
   // Siempre bajar datos frescos al entrar — ignorar _remoteUpdatedAt
   _remoteUpdatedAt='';
   pullFromCloud().then(function(updated){
     updateSyncUI(true);
-    if(updated) rAll(true); // segunda pasada con datos frescos de la nube
+    rAll(true); // siempre renderizar con lo que vino de la nube
   }).catch(function(){});
 }
 
