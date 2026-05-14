@@ -5269,15 +5269,6 @@ function _nomBuildWAMsg(s, thuStr, wedStr){
     L.push('🏖️ Sin días de vacaciones esta semana');
   }
 
-  // Reembolso
-  if(s.gastos.length>0){
-    L.push('');
-    L.push('💰 *Reembolso: $'+s.totalReembolso.toLocaleString('es-MX')+'*');
-    s.gastos.forEach(function(r){
-      L.push('  • '+r.tipo+(r.desc?' — '+r.desc:'')+': *$'+Number(r.monto).toLocaleString('es-MX')+'*');
-    });
-  }
-
   L.push('');
   L.push('―――――――――――――――――――――――');
   L.push('_Para dudas, contacta a tu supervisor._');
