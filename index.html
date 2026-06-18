@@ -5177,21 +5177,25 @@ function nomShareWorker(wid){
   var html=_nomWorkerPDFHtml(s);
   var fname='Nomina_'+s.nombre.replace(/\s+/g,'_')+'.html';
   var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+  var file=new File([blob], fname, {type:'text/html'});
 
-  if(navigator.share && navigator.canShare){
-    var file=new File([blob], fname, {type:'text/html'});
-    if(navigator.canShare({files:[file]})){
-      navigator.share({files:[file], title:'N\u00f3mina '+s.nombre}).then(function(){
-        _nomMarkSent(wid);
-      }).catch(function(e){
-        if(e && e.name!=='AbortError'){ _printBlob(fname, blob); _nomMarkSent(wid); }
-      });
-      return;
-    }
+  // Web Share API con archivo — abre selector nativo, el usuario elige WhatsApp
+  if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+    navigator.share({
+      files:[file],
+      title:'Nómina '+s.nombre
+    }).then(function(){
+      _nomMarkSent(wid);
+    }).catch(function(e){
+      if(e && e.name!=='AbortError') toast('No se pudo compartir','err');
+    });
+  } else {
+    // Fallback escritorio: diálogo de impresión
+    _printBlob(fname, blob);
+    _nomMarkSent(wid);
   }
-  _printBlob(fname, blob);
-  _nomMarkSent(wid);
 }
+
 
 function _nomMarkSent(wid){
   var btn=document.getElementById('nom-share-btn-'+wid);
