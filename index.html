@@ -1699,6 +1699,39 @@ function forceRelogin(){
   }, 5*60*1000); // checa cada 5 minutos
 })();
 
+// ── KEEP-ALIVE de sesión remota — actualiza imza_sessions cada 3 días ─────────
+// Esto evita que la sesión se descarte por inactividad
+(function startSessionKeepAlive(){
+  function _touchSession(){
+    if(!_currentUser||!_currentUser.email) return;
+    var token=localStorage.getItem('cp4_auth_token');
+    var refresh=localStorage.getItem('cp4_refresh_token');
+    if(!token||!refresh) return;
+    var ss=localStorage.getItem('cp4_session');
+    var sessionData=ss?JSON.parse(ss):{};
+    var sessionDataWithTokens=Object.assign({},sessionData,{
+      auth_token:token,
+      refresh_token:refresh
+    });
+    fetch(SB_URL+'/rest/v1/imza_sessions',{
+      method:'POST',
+      credentials:'omit',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify({
+        device_id:_currentUser.email.toLowerCase(),
+        session_data:JSON.stringify(sessionDataWithTokens),
+        updated_at:new Date().toISOString()
+      })
+    }).catch(function(){});
+  }
+  // Tocar la sesión cada 3 días mientras la app esté abierta
+  setInterval(function(){
+    if(_currentUser) _touchSession();
+  }, 3*24*60*60*1000);
+  // Exponer para llamarlo también al recuperar visibilidad
+  window._touchSession=_touchSession;
+})();
+
 // ── UI ────────────────────────────────────────────────────────────────────────
 function fmtSyncTime(iso){
   try{
@@ -2232,7 +2265,6 @@ function openS(id){
 function closeS(id){
   document.getElementById(id).classList.remove('open');
   // Push cambios locales primero, luego pull para capturar lo que llegó mientras estaba abierta
-  clearTimeout(_syncTimer);
   pushToCloud().then(function(){
     pullFromCloud().then(function(u){ if(u) rAll(true); });
   }).catch(function(){
@@ -5177,25 +5209,21 @@ function nomShareWorker(wid){
   var html=_nomWorkerPDFHtml(s);
   var fname='Nomina_'+s.nombre.replace(/\s+/g,'_')+'.html';
   var blob=new Blob([html],{type:'text/html;charset=utf-8'});
-  var file=new File([blob], fname, {type:'text/html'});
 
-  // Web Share API con archivo — abre selector nativo, el usuario elige WhatsApp
-  if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
-    navigator.share({
-      files:[file],
-      title:'Nómina '+s.nombre
-    }).then(function(){
-      _nomMarkSent(wid);
-    }).catch(function(e){
-      if(e && e.name!=='AbortError') toast('No se pudo compartir','err');
-    });
-  } else {
-    // Fallback escritorio: diálogo de impresión
-    _printBlob(fname, blob);
-    _nomMarkSent(wid);
+  if(navigator.share && navigator.canShare){
+    var file=new File([blob], fname, {type:'text/html'});
+    if(navigator.canShare({files:[file]})){
+      navigator.share({files:[file], title:'N\u00f3mina '+s.nombre}).then(function(){
+        _nomMarkSent(wid);
+      }).catch(function(e){
+        if(e && e.name!=='AbortError'){ _printBlob(fname, blob); _nomMarkSent(wid); }
+      });
+      return;
+    }
   }
+  _printBlob(fname, blob);
+  _nomMarkSent(wid);
 }
-
 
 function _nomMarkSent(wid){
   var btn=document.getElementById('nom-share-btn-'+wid);
@@ -6612,8 +6640,8 @@ function initAuth(){
         var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
         var hasToken=!!localStorage.getItem('cp4_auth_token');
         var hasRefresh=!!localStorage.getItem('cp4_refresh_token');
-        // needsRefresh: sin token, o token expira en menos de 12 horas
-        var needsRefresh=!hasToken||(tokenExp>0&&Date.now()>tokenExp-12*60*60*1000);
+        // needsRefresh: sin token, o token expira en menos de 3 días
+        var needsRefresh=!hasToken||(tokenExp>0&&Date.now()>tokenExp-3*24*60*60*1000);
 
         function _enterWithSession(){
           // Cargar usuarios frescos en background sin bloquear entrada
@@ -6676,7 +6704,7 @@ function initAuth(){
           if(!sd.email) continue;
           if(_filterEmail&&sd.email.toLowerCase()!==_filterEmail.toLowerCase()) continue;
           var age=Date.now()-new Date(rows[i].updated_at).getTime();
-          if(age>7*24*60*60*1000) continue;
+          if(age>30*24*60*60*1000) continue;
           // Buscar usuario en lista local; si no hay lista aún, usar datos del session_data
           var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
           var matchSession=match
@@ -8681,6 +8709,20 @@ function inicioToggleDone(id){
 document.addEventListener('touchstart',function(){ window._lastInteraction=Date.now(); },true);
 document.addEventListener('mousedown',function(){ window._lastInteraction=Date.now(); },true);
 document.addEventListener('keydown',function(){ window._lastInteraction=Date.now(); },true);
+
+// ── Refrescar token al volver del background ──────────────────────────────────
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='visible'&&_currentUser){
+    var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
+    var refresh=localStorage.getItem('cp4_refresh_token');
+    // Si el token expira en menos de 30 minutos o ya expiró — renovar
+    if(refresh&&(tokenExp===0||Date.now()>tokenExp-30*60*1000)){
+      refreshAuthToken().catch(function(){});
+    }
+    // Tocar la sesión remota para mantenerla viva
+    if(typeof window._touchSession==='function') window._touchSession();
+  }
+});
 
 // Detectar si corre como PWA en iPhone y mostrar hints de login
 (function(){
