@@ -1466,7 +1466,6 @@ function td(){
 // ── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 const SB_URL='https://vcdwtlwnbztausmwzwla.supabase.co';
 const SB_KEY='sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY';
-const SB_WS='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey=sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY&vsn=1.0.0';
 const APP_VERSION='2026.0401.1300';
 
 // ── VERSION CACHE CLEAR ───────────────────────────────────────────────────────
@@ -2260,12 +2259,45 @@ function _doPushToCloud(_pt){
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     updateSyncUI(true);
     _remoteUpdatedAt=now;
+    _syncUsersTableIfChanged();
     return true;
   }).catch(function(){
     clearTimeout(_pt);
     _isPushing=false;
     return false;
   });
+}
+
+// ── Mantiene imza_users (tabla pública solo-lectura para el login) sincronizada
+// con S.users. Solo escribe si la lista realmente cambió desde la última vez,
+// para no hacer una llamada extra en cada guardado normal de la app.
+function _syncUsersTableIfChanged(){
+  try{
+    var current=JSON.stringify((S.users||[]).map(function(u){
+      return {id:u.id,email:u.email,nombre:u.nombre,rol:u.rol};
+    }).sort(function(a,b){ return a.id.localeCompare(b.id); }));
+    var last=localStorage.getItem('cp4_users_table_sync');
+    if(current===last) return; // sin cambios, no hacer nada
+
+    var rows=(S.users||[]).map(function(u){
+      return {id:u.id,email:u.email||'',nombre:u.nombre||'',rol:u.rol||'visor'};
+    });
+    sbFetch('/rest/v1/imza_users',{
+      method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify(rows)
+    }).then(function(){
+      // Borrar de imza_users cualquier usuario que ya no exista en S.users
+      // (nunca si S.users viene vacío — evita vaciar la tabla por un glitch local)
+      var keepIds=(S.users||[]).map(function(u){ return u.id; });
+      if(!keepIds.length) return;
+      return sbFetch('/rest/v1/imza_users?id=not.in.('+keepIds.map(function(id){return '"'+id+'"';}).join(',')+')',{
+        method:'DELETE', headers:{'Prefer':'return=minimal'}
+      });
+    }).then(function(){
+      localStorage.setItem('cp4_users_table_sync',current);
+    }).catch(function(){ /* si falla, se reintenta en el próximo push */ });
+  }catch(e){}
 }
 
 // ── SAVE ─────────────────────────────────────────────────────────────────────
@@ -2320,7 +2352,12 @@ function syncNow(){ pullFromCloud().then(function(u){ if(u) rAll(true); }); }
 function startRealtime(){
   if(_realtimeWs&&(_realtimeWs.readyState===0||_realtimeWs.readyState===1)) return;
   try{
-    _realtimeWs=new WebSocket(SB_WS);
+    // Usar el token del usuario autenticado (no la clave anónima) para que el
+    // WebSocket se conecte como 'authenticated' y RLS le permita ver cambios
+    // en imza_data (ahora protegida sin acceso anónimo).
+    var wsToken=localStorage.getItem('cp4_auth_token')||SB_KEY;
+    var wsUrl='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey='+SB_KEY+'&access_token='+wsToken+'&vsn=1.0.0';
+    _realtimeWs=new WebSocket(wsUrl);
     _realtimeWs.onopen=function(){
       _realtimeWs.send(JSON.stringify({topic:'realtime:public:imza_data',event:'phx_join',payload:{config:{postgres_changes:[{event:'UPDATE',schema:'public',table:'imza_data'}]}},ref:'1'}));
       if(_realtimeHb) clearInterval(_realtimeHb);
@@ -6984,11 +7021,11 @@ function initAuth(){
       var expAt=session.expires_at?session.expires_at*1000:Date.now()+3600*1000;
       localStorage.setItem('cp4_token_exp',String(expAt));
       // Cargar usuarios y entrar
-      fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+      fetch(SB_URL+'/rest/v1/imza_users?select=id,email,nombre,rol',{
         credentials:'omit',
         headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
       }).then(function(r){ return r.ok?r.json():null; }).then(function(rows){
-        var users=(rows&&rows[0]&&rows[0].data&&rows[0].data.users)||[];
+        var users=rows||[];
         if(users.length){ S.users=users; localStorage.setItem('cp4_users_backup',JSON.stringify(users)); }
         else {
           var bk=localStorage.getItem('cp4_users_backup');
@@ -7060,12 +7097,12 @@ function initAuth(){
         function _enterWithSession(){
           // Cargar usuarios frescos en background sin bloquear entrada
           var userToken=localStorage.getItem('cp4_auth_token')||SB_KEY;
-          fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+          fetch(SB_URL+'/rest/v1/imza_users?select=id,email,nombre,rol',{
             credentials:'omit',
             headers:{'apikey':SB_KEY,'Authorization':'Bearer '+userToken,'Content-Type':'application/json'}
           }).then(function(r){ return r.ok?r.json():null; }).then(function(rows){
-            if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
-              S.users=rows[0].data.users;
+            if(rows&&rows.length){
+              S.users=rows;
               localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
               var found=(S.users||[]).find(function(x){ return (x.email||'').toLowerCase()===u.email.toLowerCase(); });
               if(found){
@@ -7148,12 +7185,12 @@ function initAuth(){
 
   // Si no hay usuarios en caché, cargarlos primero
   if(!S.users||!S.users.length){
-    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+    fetch(SB_URL+'/rest/v1/imza_users?select=id,email,nombre,rol',{
       credentials:'omit',
       headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
     }).then(function(r){ return r.ok?r.json():null; }).then(function(rows){
-      if(rows&&rows[0]&&rows[0].data&&rows[0].data.users){
-        S.users=rows[0].data.users;
+      if(rows&&rows.length){
+        S.users=rows;
         localStorage.setItem('cp4_users_backup',JSON.stringify(S.users));
       }
       _checkRemoteSession();
@@ -7270,12 +7307,12 @@ function handleMagicLinkCallback(){
   }
 
   function loadUsersAndFinish(email, attempts){
-    fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+    fetch(SB_URL+'/rest/v1/imza_users?select=id,email,nombre,rol',{
       credentials:'omit',
       headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
     }).then(function(r){ return r.ok?r.json():Promise.reject(r.status); })
     .then(function(rows){
-      var users=(rows&&rows[0]&&rows[0].data&&rows[0].data.users)||[];
+      var users=rows||[];
       if(users.length){
         S.users=users;
         localStorage.setItem('cp4_users_backup',JSON.stringify(users));
@@ -7373,14 +7410,14 @@ function sendMagicLink(){
   errEl.textContent='';
 
   // Cargar lista de usuarios desde Supabase para validar
-  fetch(SB_URL+'/rest/v1/imza_data?id=eq.main&select=data',{
+  fetch(SB_URL+'/rest/v1/imza_users?select=id,email,nombre,rol',{
     credentials:'omit',
     headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
   }).then(function(r){
     if(!r.ok) throw new Error('HTTP '+r.status);
     return r.json();
   }).then(function(rows){
-    var users=(rows&&rows[0]&&rows[0].data&&rows[0].data.users)||[];
+    var users=rows||[];
     if(!users.length){
       // Si Supabase no devuelve usuarios, intentar con backup local
       var bk=localStorage.getItem('cp4_users_backup');
