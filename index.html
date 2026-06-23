@@ -1321,7 +1321,7 @@ if('serviceWorker' in navigator){
         <div id="hrs-banner" style="margin-bottom:12px"></div>
         <div style="font-size:13px;color:var(--txt2);margin-bottom:12px" id="hrs-desc">Ajusta las horas extras por trabajador.</div>
         <div id="hrs-list"></div>
-        <div class="brow"><button class="bfull bghost" onclick="aS(4)">← Atrás</button><button class="bfull bgold" onclick="saveAct()">💾 Guardar actividad</button></div>
+        <div class="brow"><button class="bfull bghost" onclick="aS(4)">← Atrás</button><button class="bfull bgold" id="btn-save-act" onclick="saveAct()">💾 Guardar actividad</button></div>
       </div>
     </div>
   </div>
@@ -1514,8 +1514,8 @@ function loadHistory(){
 // Max 2 days
 
 // Elimina entradas duplicadas: mismo usuario + misma acción registrados
-// a menos de 2 segundos de diferencia (esto pasaba antes por un bug ya corregido,
-// pero limpia también los duplicados que ya quedaron guardados en la nube).
+// a menos de 10 segundos de diferencia (cubre tanto el bug ya corregido en save()
+// como dobles-toques accidentales del usuario en el mismo botón).
 function _dedupChangeLogDay(entries){
   var sorted=entries.slice().sort(function(a,b){ return b.time.localeCompare(a.time); });
   var kept=[];
@@ -1524,7 +1524,7 @@ function _dedupChangeLogDay(entries){
       if(k.user!==e.user||k.action!==e.action) return false;
       var t1=new Date(k.time).getTime();
       var t2=new Date(e.time).getTime();
-      return Math.abs(t1-t2)<2000; // menos de 2s = duplicado
+      return Math.abs(t1-t2)<10000; // menos de 10s = duplicado
     });
     if(!isDup) kept.push(e);
   });
@@ -2609,8 +2609,12 @@ function dM(btn){const l=document.getElementById('ml');if(l.children.length>1)bt
 function aE(){const d=document.createElement('div');d.innerHTML=eRow();document.getElementById('el').appendChild(d.firstElementChild);}
 
 function saveAct(){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permisos para editar','err');return;}
+  // Evitar doble-clic: si ya se está guardando, ignorar el segundo toque
+  var _saveBtn=document.getElementById('btn-save-act');
+  if(_saveBtn&&_saveBtn.disabled) return;
+  if(_saveBtn){ _saveBtn.disabled=true; setTimeout(function(){ if(_saveBtn) _saveBtn.disabled=false; },2500); }
   const pId=document.getElementById('a-p').value;
-  if(!pId){toast('Selecciona un proyecto','err');aS(1);return;}
+  if(!pId){toast('Selecciona un proyecto','err');aS(1); if(_saveBtn){_saveBtn.disabled=false;} return;}
   const maq=[...document.getElementById('ml').querySelectorAll('input[type=text]')].map(i=>i.value.trim()).filter(Boolean);
   const gastos=[];
   document.getElementById('el').querySelectorAll('.ecard').forEach(row=>{
@@ -3166,7 +3170,13 @@ function renderVacList(){
   };
 }
 
+var _togVacBusy={};
 function togVac(id){
+  // Evitar doble-toque: ignorar si este mismo trabajador se tocó hace menos de 2.5s
+  if(_togVacBusy[id]) return;
+  _togVacBusy[id]=true;
+  setTimeout(function(){ delete _togVacBusy[id]; },2500);
+
   const p=S.personal.find(x=>x.id===id);
   if(!p) return;
   var hDate=S.date||td();
@@ -6376,7 +6386,10 @@ function createSnapshot(label){
   .then(function(){
     toast('📸 Copia guardada: '+label,'ok');
     loadSnapshots();
-  }).catch(function(){ toast('Error al guardar copia','err'); });
+  }).catch(function(err){
+    console.error('[Snapshots] Error al crear copia:', err&&err.message);
+    toast('Error al guardar copia: '+((err&&err.message)||'desconocido').slice(0,80),'err');
+  });
 }
 
 function snapFmt(iso){
@@ -6447,8 +6460,9 @@ function loadSnapshots(){
     el.querySelectorAll('.snap-delete').forEach(function(btn){
       btn.addEventListener('click',function(e){ e.stopPropagation(); deleteSnapshot(this.dataset.id); });
     });
-  }).catch(function(){
-    el.innerHTML='<div style="font-size:13px;color:var(--red);text-align:center;padding:8px">Error al cargar copias</div>';
+  }).catch(function(err){
+    console.error('[Snapshots] Error al cargar copias:', err&&err.message);
+    el.innerHTML='<div style="font-size:13px;color:var(--red);text-align:center;padding:8px">Error al cargar copias: '+(((err&&err.message)||'desconocido').slice(0,100))+'</div>';
   });
 }
 
