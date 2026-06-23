@@ -1253,6 +1253,36 @@ if('serviceWorker' in navigator){
 </div>
 <!-- ──────────────────────────────────────────────────────────────────────────── -->
 
+<!-- SHEET: COMPARAR Y RECUPERAR DESDE COPIA ──────────────────────────────── -->
+<div class="sov" id="sov-snap-diff" onclick="if(event.target.id==='sov-snap-diff'){document.getElementById('sov-snap-diff').classList.remove('open');}">
+  <div class="sheet" style="max-height:92dvh">
+    <div class="shandle"></div>
+    <div class="shdr">
+      <div>
+        <div class="shtitle">Recuperar información perdida</div>
+        <div id="snap-diff-label" style="font-size:12px;color:var(--txt3);margin-top:2px">—</div>
+      </div>
+      <button class="shclose" onclick="document.getElementById('sov-snap-diff').classList.remove('open')">&times;</button>
+    </div>
+    <div class="shbody" style="padding:14px 16px 24px">
+      <div id="snap-diff-loading" style="text-align:center;padding:40px 0;color:var(--txt3);font-size:13px">Comparando con los datos actuales…</div>
+      <div id="snap-diff-content" style="display:none">
+        <div style="background:rgba(106,170,255,0.08);border:1.5px solid rgba(106,170,255,0.2);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:var(--txt2);line-height:1.5">
+          ℹ️ Esto <strong>solo agrega</strong> lo que falta — nada de lo que tienes ahora se borra ni se modifica.
+        </div>
+        <div id="snap-diff-summary"></div>
+        <button id="snap-diff-apply-btn" onclick="applySnapDiff()" style="width:100%;margin-top:16px;padding:14px;border-radius:12px;border:none;background:var(--gold);color:#000;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">Recuperar seleccionados</button>
+      </div>
+      <div id="snap-diff-empty" style="display:none;text-align:center;padding:30px 0;color:var(--txt3)">
+        <div style="font-size:32px;margin-bottom:8px">✅</div>
+        <div style="font-size:14px;font-weight:700;color:var(--txt)">No falta nada</div>
+        <div style="font-size:12px;margin-top:4px">Todo lo de esta copia ya está en tus datos actuales.</div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ──────────────────────────────────────────────────────────────────────────── -->
+
 <!-- SHEET ACTIVIDAD -->
 <div class="sov" id="sov-act">
   <div class="sheet">
@@ -1482,16 +1512,33 @@ function loadHistory(){
 // ── CHANGE LOG (admin) ────────────────────────────────────────────────────────
 // Format: {YYYY-MM-DD: [{time, user, action}]}
 // Max 2 days
+
+// Elimina entradas duplicadas: mismo usuario + misma acción registrados
+// a menos de 2 segundos de diferencia (esto pasaba antes por un bug ya corregido,
+// pero limpia también los duplicados que ya quedaron guardados en la nube).
+function _dedupChangeLogDay(entries){
+  var sorted=entries.slice().sort(function(a,b){ return b.time.localeCompare(a.time); });
+  var kept=[];
+  sorted.forEach(function(e){
+    var isDup=kept.some(function(k){
+      if(k.user!==e.user||k.action!==e.action) return false;
+      var t1=new Date(k.time).getTime();
+      var t2=new Date(e.time).getTime();
+      return Math.abs(t1-t2)<2000; // menos de 2s = duplicado
+    });
+    if(!isDup) kept.push(e);
+  });
+  return kept;
+}
+
 function addToChangeLog(time, user, action){
   if(!time||!user) return;
   action=action||'Actualización';
   var log=loadChangeLog();
   var date=time.slice(0,10);
   if(!log[date]) log[date]=[];
-  var exists=log[date].some(function(e){ return e.time===time&&e.user===user&&e.action===action; });
-  if(!exists){
-    log[date].unshift({time:time,user:user,action:action});
-  }
+  log[date].unshift({time:time,user:user,action:action});
+  log[date]=_dedupChangeLogDay(log[date]);
   // Keep only last 2 days
   var days=Object.keys(log).sort().reverse();
   if(days.length>2){
@@ -1517,6 +1564,8 @@ function loadChangeLogFromCloud(remoteData){
       (cloud[date]||[]).forEach(function(e){ map[e.time+'_'+e.user]=e; });
       merged[date]=Object.values(map).sort(function(a,b){ return b.time.localeCompare(a.time); });
     }
+    // Limpiar duplicados por usuario+acción a menos de 2s (cubre datos viejos con el bug)
+    merged[date]=_dedupChangeLogDay(merged[date]);
   });
   // Keep only 2 days
   var days=Object.keys(merged).sort().reverse();
@@ -1697,39 +1746,6 @@ function forceRelogin(){
       refreshAuthToken().catch(function(){});
     }
   }, 5*60*1000); // checa cada 5 minutos
-})();
-
-// ── KEEP-ALIVE de sesión remota — actualiza imza_sessions cada 3 días ─────────
-// Esto evita que la sesión se descarte por inactividad
-(function startSessionKeepAlive(){
-  function _touchSession(){
-    if(!_currentUser||!_currentUser.email) return;
-    var token=localStorage.getItem('cp4_auth_token');
-    var refresh=localStorage.getItem('cp4_refresh_token');
-    if(!token||!refresh) return;
-    var ss=localStorage.getItem('cp4_session');
-    var sessionData=ss?JSON.parse(ss):{};
-    var sessionDataWithTokens=Object.assign({},sessionData,{
-      auth_token:token,
-      refresh_token:refresh
-    });
-    fetch(SB_URL+'/rest/v1/imza_sessions',{
-      method:'POST',
-      credentials:'omit',
-      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},
-      body:JSON.stringify({
-        device_id:_currentUser.email.toLowerCase(),
-        session_data:JSON.stringify(sessionDataWithTokens),
-        updated_at:new Date().toISOString()
-      })
-    }).catch(function(){});
-  }
-  // Tocar la sesión cada 3 días mientras la app esté abierta
-  setInterval(function(){
-    if(_currentUser) _touchSession();
-  }, 3*24*60*60*1000);
-  // Exponer para llamarlo también al recuperar visibilidad
-  window._touchSession=_touchSession;
 })();
 
 // ── UI ────────────────────────────────────────────────────────────────────────
@@ -1945,26 +1961,70 @@ function _mergeActividades(remote, local, del){
   return merged;
 }
 
+// Reconcilia una lista local vs. la que llega de la nube: un elemento solo puede
+// desaparecer si hay un registro EXPLÍCITO de que un usuario lo eliminó (está en
+// `del`). Si falta sin ese registro, es por un error de red/app — se restaura.
+function _reconcileList(localList, remoteList, del, prefix){
+  var remoteIds={};
+  remoteList.forEach(function(item){ remoteIds[item.id]=true; });
+  var result=remoteList.filter(function(item){ return !del[prefix+item.id]; });
+  var resultIds={};
+  result.forEach(function(item){ resultIds[item.id]=true; });
+  var restored=[];
+  (localList||[]).forEach(function(item){
+    if(!remoteIds[item.id]&&!del[prefix+item.id]&&!resultIds[item.id]){
+      result.push(item);
+      restored.push(item);
+    }
+  });
+  return {list:result, restored:restored};
+}
+
 function _applyRemoteData(remote){
-  // La nube es la única fuente de verdad — aplicar directo sin merge con datos locales
+  // La nube es la fuente principal — pero un elemento SOLO se borra localmente
+  // si hay un registro explícito de eliminación (S.deleted). Si desaparece sin
+  // ese registro, es por un fallo de red/app, no porque alguien lo haya borrado
+  // — en ese caso se restaura automáticamente, nunca se pierde.
   var del=Object.assign({},remote.deleted||{});
+  var totalRestored=0;
+
   // Proyectos
-  S.proyectos=(remote.proyectos||[]).filter(function(p){ return !del['proj_'+p.id]; });
+  var rProy=_reconcileList(S.proyectos, remote.proyectos||[], del, 'proj_');
+  S.proyectos=rProy.list;
+  totalRestored+=rProy.restored.length;
+
   // Asignar completadoEn si falta
-  var hoy=td(); var needsPush=false;
+  var hoy=td(); var needsPush=rProy.restored.length>0;
   S.proyectos.forEach(function(p){
     if(p.estado==='completado'&&(!p.completadoEn||p.completadoEn>hoy)){
       p.completadoEn=hoy; needsPush=true;
     }
   });
+
   // Personal
-  S.personal=(remote.personal||[]).filter(function(p){ return !del['pers_'+p.id]; });
-  // Actividades — directamente de la nube
-  S.actividades={};
-  Object.keys(remote.actividades||{}).forEach(function(d){
-    var acts=(remote.actividades[d]||[]).filter(function(a){ return !del['act_'+a.id]; });
-    if(acts.length) S.actividades[d]=acts;
+  var rPers=_reconcileList(S.personal, remote.personal||[], del, 'pers_');
+  S.personal=rPers.list;
+  totalRestored+=rPers.restored.length;
+  if(rPers.restored.length) needsPush=true;
+
+  // Actividades — reconciliar por fecha
+  var newActividades={};
+  var remoteAct=remote.actividades||{};
+  var allDates={};
+  Object.keys(S.actividades||{}).forEach(function(d){ allDates[d]=true; });
+  Object.keys(remoteAct).forEach(function(d){ allDates[d]=true; });
+  Object.keys(allDates).forEach(function(date){
+    var r=_reconcileList(S.actividades[date]||[], remoteAct[date]||[], del, 'act_');
+    if(r.restored.length){ totalRestored+=r.restored.length; needsPush=true; }
+    if(r.list.length) newActividades[date]=r.list;
   });
+  S.actividades=newActividades;
+
+  if(totalRestored>0){
+    console.warn('[Integridad] '+totalRestored+' elemento(s) reaparecieron sin registro de eliminación — restaurados automáticamente (probable fallo de red/app, no acción de un usuario).');
+    toast('🛡️ Se protegieron '+totalRestored+' elemento'+(totalRestored>1?'s':'')+' que iba'+(totalRestored>1?'n':'')+' a perderse por un error de sincronización','ok');
+  }
+
   // Users
   if(remote.users&&remote.users.length){
     S.users=remote.users;
@@ -1992,7 +2052,7 @@ function _applyRemoteData(remote){
     p.estado=todayH[p.id]||'activo';
   });
   if(!S.date) S.date=td();
-  // NO persistLocal — la nube es la única fuente
+  // NO persistLocal — la nube es la fuente, salvo por la reconciliación de arriba
   if(needsPush) setTimeout(function(){ if(!_isPushing) pushToCloud(); },2000);
 }
 
@@ -2022,9 +2082,19 @@ function pullFromCloud(retries){
     updateSyncUI(true);
     refreshSyncTime();
 
-    // Aplicar datos
+    // Aplicar datos — _applyRemoteData ahora reconcilia con base en el registro
+    // de eliminaciones: un elemento solo se borra si hay prueba de que un usuario
+    // lo eliminó explícitamente. Si la nube viene vacía/incompleta por un fallo de
+    // red o de la app, todo lo que no tenga ese registro se restaura solo, así
+    // que ya no es necesario un chequeo de "se ve sospechosamente vacío" aparte.
     _applyingCloudData=true;
-    try{ _applyRemoteData(remote); }
+    try{
+      _applyRemoteData(remote);
+      // Fusionar el registro de cambios de la nube (columna separada) con el local —
+      // así se ven las acciones hechas por otros usuarios/dispositivos, no solo las propias.
+      loadChangeLogFromCloud({changelog: row.changelog});
+      renderChangeLog();
+    }
     finally{ _applyingCloudData=false; _applyingCloudDataSince=0; }
 
     return true;
@@ -2043,10 +2113,119 @@ function pullFromCloud(retries){
 }
 
 // ── PUSH TO CLOUD ─────────────────────────────────────────────────────────────
+// ── FUSIÓN ANTES DE SUBIR ─────────────────────────────────────────────────────
+// Combina un elemento por id: si solo existe en uno de los dos lados, se conserva;
+// si existe en ambos con _upd distinto, gana el más reciente. Así, si dos personas
+// editan/agregan cosas distintas casi al mismo tiempo, NINGUNA de las dos pierde
+// su cambio cuando la otra guarda.
+function _mergeById(localList, remoteList, del, prefix){
+  var localMap={};
+  (localList||[]).forEach(function(item){ localMap[item.id]=item; });
+  var result=(localList||[]).slice();
+  var idxOf={};
+  result.forEach(function(item,i){ idxOf[item.id]=i; });
+
+  (remoteList||[]).forEach(function(rItem){
+    if(del[prefix+rItem.id]) return; // alguien ya lo eliminó a propósito — no revivirlo
+    var lItem=localMap[rItem.id];
+    if(!lItem){
+      result.push(rItem); // nuevo en la nube, no lo teníamos local — agregarlo
+    } else {
+      var lUpd=lItem._upd||0, rUpd=rItem._upd||0;
+      if(rUpd>lUpd) result[idxOf[rItem.id]]=rItem; // el de la nube es más reciente — usar ese
+    }
+  });
+  return result.filter(function(item){ return !del[prefix+item.id]; });
+}
+
+// Trae lo más reciente de la nube y lo fusiona en S ANTES de subir, para que el
+// push de un usuario con copia algo vieja nunca borre lo que otro usuario acaba
+// de agregar o editar mientras tanto.
+function _mergeLatestCloudBeforePush(){
+  return sbFetch('/rest/v1/imza_data?id=eq.main&select=data')
+  .then(function(rows){
+    var remote=(rows&&rows[0]&&rows[0].data&&typeof rows[0].data==='object')?rows[0].data:null;
+    if(!remote) return;
+
+    // Fusionar eliminaciones que otro dispositivo ya conocía y nosotros no
+    S.deleted=Object.assign({}, remote.deleted||{}, S.deleted||{});
+    var del=S.deleted;
+
+    S.proyectos=_mergeById(S.proyectos, remote.proyectos||[], del, 'proj_');
+    S.personal=_mergeById(S.personal, remote.personal||[], del, 'pers_');
+
+    var allDates={};
+    Object.keys(S.actividades||{}).forEach(function(d){ allDates[d]=true; });
+    Object.keys(remote.actividades||{}).forEach(function(d){ allDates[d]=true; });
+    var newAct={};
+    Object.keys(allDates).forEach(function(date){
+      var merged=_mergeById(S.actividades[date]||[], (remote.actividades||{})[date]||[], del, 'act_');
+      if(merged.length) newAct[date]=merged;
+    });
+    S.actividades=newAct;
+
+    // estadoHistorial: unión simple por fecha+trabajador (lo local gana si hay choque,
+    // ya que normalmente solo el propio supervisor marca la asistencia del día)
+    var mergedHist=Object.assign({}, remote.estadoHistorial||{});
+    Object.keys(S.estadoHistorial||{}).forEach(function(date){
+      mergedHist[date]=Object.assign({}, mergedHist[date]||{}, S.estadoHistorial[date]||{});
+    });
+    S.estadoHistorial=mergedHist;
+  }).catch(function(){
+    // Si falla la consulta previa, seguimos con lo que ya teníamos en memoria
+    // (no bloqueamos el guardado por esto — mejor un push con lo que hay que ninguno)
+  });
+}
+
 function pushToCloud(){
   if(_isPushing) return Promise.resolve(false);
   _isPushing=true;
   var _pt=setTimeout(function(){ _isPushing=false; },15000);
+
+  return _mergeLatestCloudBeforePush().then(function(){
+    return _doPushToCloud(_pt);
+  });
+}
+
+function _doPushToCloud(_pt){
+  // ── SALVAGUARDA: un descenso en la cantidad de proyectos/personal/actividades
+  // solo es válido si viene acompañado de nuevos registros en S.deleted (prueba
+  // de que un usuario eliminó algo a propósito). Si los datos disminuyeron MÁS
+  // de lo que las eliminaciones registradas explican, algo se vació por error
+  // (red, bug, sesión rara) — se bloquea el push para no destruir la nube.
+  var curProj=(S.proyectos||[]).length;
+  var curPers=(S.personal||[]).length;
+  var curActDays=Object.keys(S.actividades||{}).length;
+  var delKeys=Object.keys(S.deleted||{});
+  var curDelProj=delKeys.filter(function(k){ return k.indexOf('proj_')===0; }).length;
+  var curDelPers=delKeys.filter(function(k){ return k.indexOf('pers_')===0; }).length;
+
+  var maxSeen={proj:0,pers:0,act:0,delProj:0,delPers:0};
+  try{ maxSeen=Object.assign(maxSeen, JSON.parse(localStorage.getItem('cp4_max_seen')||'null')||{}); }catch(e){}
+
+  var projDrop=Math.max(0, maxSeen.proj-curProj);
+  var projNewDel=Math.max(0, curDelProj-maxSeen.delProj);
+  var persDrop=Math.max(0, maxSeen.pers-curPers);
+  var persNewDel=Math.max(0, curDelPers-maxSeen.delPers);
+
+  var allEmptyNow=(curProj===0&&curPers===0&&curActDays===0);
+  var hadRealDataBefore=(maxSeen.proj>=3||maxSeen.pers>=3||maxSeen.act>=3);
+  var dropUnexplained=(projDrop>projNewDel+1)||(persDrop>persNewDel+1);
+
+  if((allEmptyNow&&hadRealDataBefore)||dropUnexplained){
+    console.error('[Sync] Push bloqueado — los datos disminuyeron sin suficientes registros de eliminación que lo justifiquen.',
+      {curProj:curProj,curPers:curPers,maxSeen:maxSeen,projDrop:projDrop,projNewDel:projNewDel,persDrop:persDrop,persNewDel:persNewDel});
+    toast('⚠️ Tus datos locales perdieron elementos sin un registro de eliminación — no se subió nada. Recarga la app.','err');
+    clearTimeout(_pt); _isPushing=false;
+    return false;
+  }
+  // Actualizar el máximo visto junto con el conteo de eliminaciones de ese momento
+  if(curProj>maxSeen.proj||curPers>maxSeen.pers||curActDays>maxSeen.act||curDelProj>maxSeen.delProj||curDelPers>maxSeen.delPers){
+    localStorage.setItem('cp4_max_seen',JSON.stringify({
+      proj:Math.max(curProj,maxSeen.proj), pers:Math.max(curPers,maxSeen.pers), act:Math.max(curActDays,maxSeen.act),
+      delProj:Math.max(curDelProj,maxSeen.delProj), delPers:Math.max(curDelPers,maxSeen.delPers)
+    }));
+  }
 
   var device=detectDevice();
   var now=new Date().toISOString();
@@ -2076,6 +2255,7 @@ function pushToCloud(){
     _lastSyncInfo={time:now,device:device,user:userName,action:action};
     addToHistory(now,userName,action);
     renderHistory();
+    renderChangeLog();
     addToSyncHistory(_lastSyncInfo);
     localStorage.setItem('cp4_lastsync',JSON.stringify(_lastSyncInfo));
     updateSyncUI(true);
@@ -2094,10 +2274,8 @@ function save(){
     toast('Sin conexión — cambios no guardados','err');
     return;
   }
-  if(_currentUser){
-    addToChangeLog(new Date().toISOString(),_currentUser.nombre,_lastAction||'Cambio');
-    renderChangeLog();
-  }
+  // No registramos aquí — pushToCloud() ya agrega la entrada al changelog
+  // después de confirmar el guardado exitoso (evita duplicados).
   pushToCloud().then(function(ok){
     if(!ok) toast('Error al guardar — verifica tu conexión','err');
   }).catch(function(){ toast('Error al guardar — verifica tu conexión','err'); });
@@ -2265,6 +2443,7 @@ function openS(id){
 function closeS(id){
   document.getElementById(id).classList.remove('open');
   // Push cambios locales primero, luego pull para capturar lo que llegó mientras estaba abierta
+  clearTimeout(_syncTimer);
   pushToCloud().then(function(){
     pullFromCloud().then(function(u){ if(u) rAll(true); });
   }).catch(function(){
@@ -4958,17 +5137,6 @@ function selectNomWk(wk){
   },50);
 }
 
-function selectNomWk(wk){
-  _nomWk=Number(wk);
-  rNomHoras();
-  // Scroll strip to show selected
-  setTimeout(()=>{
-    const strip=document.getElementById('nom-week-strip');
-    const sel=strip&&strip.querySelector('[style*="var(--gold)"]');
-    if(sel) sel.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'});
-  },50);
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // ── COMPARTIR NÓMINA ── WhatsApp + PDF por trabajador ─────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4976,17 +5144,57 @@ function selectNomWk(wk){
 var _nomShareData = null; // {thuStr, wedStr, summaries:[]}
 var _nomSendQueue = [];
 var _nomSendIdx   = 0;
+var _nomShareWk   = null; // semana seleccionada DENTRO del modal de compartir — independiente de _nomWk (pestaña Horas extras)
 
-// ── Obtiene rango de la semana seleccionada en Nómina ──────────────────────
-function _nomGetWeekRange(){
-  if(!_nomWk) _nomWk=weekKey(td());
+// ── Encuentra la semana más reciente que tiene actividad registrada ─────────
+function _nomFindLatestDataWeek(){
+  var weeksWithData=[];
+  Object.keys(S.actividades).forEach(function(date){
+    if((S.actividades[date]||[]).length) weeksWithData.push(weekKey(date));
+  });
+  if(!weeksWithData.length) return weekKey(td());
+  return Math.max.apply(null, weeksWithData);
+}
+
+// ── Obtiene rango de la semana seleccionada para Compartir Nómina ───────────
+function _nomShareGetWeekRange(){
+  if(_nomShareWk===null) _nomShareWk=_nomFindLatestDataWeek();
   var weeks=getAllWeeks();
-  var sel=weeks.find(function(w){ return w.wk===Number(_nomWk); });
+  var sel=weeks.find(function(w){ return w.wk===Number(_nomShareWk); });
   if(!sel) return null;
   var thuStr=sel.thuDate;
   var wedDt=new Date(thuStr+'T12:00:00'); wedDt.setDate(wedDt.getDate()+6);
   var wedStr=wedDt.getFullYear()+'-'+String(wedDt.getMonth()+1).padStart(2,'0')+'-'+String(wedDt.getDate()).padStart(2,'0');
   return {thuStr:thuStr, wedStr:wedStr};
+}
+
+// ── Pinta el label de semana con flechas de navegación dentro del modal ──────
+function _nomRenderWeekLabel(range){
+  var wlEl=document.getElementById('nom-share-wk-label');
+  if(!wlEl) return;
+  var hasData=Object.keys(S.actividades).some(function(date){
+    return weekKey(date)===Number(_nomShareWk) && (S.actividades[date]||[]).length;
+  });
+  wlEl.innerHTML=
+    '<button onclick="nomShareWeekNav(\'prev\')" style="background:none;border:none;color:var(--txt3);cursor:pointer;padding:4px;display:flex;align-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px"><polyline points="15 18 9 12 15 6"/></svg></button>'+
+    '<span style="flex:1;text-align:center">📅 '+fmtDate(range.thuStr)+' → '+fmtDate(range.wedStr)+(hasData?'':' <span style="color:var(--txt3);font-size:10px">(sin datos)</span>')+'</span>'+
+    '<button onclick="nomShareWeekNav(\'next\')" style="background:none;border:none;color:var(--txt3);cursor:pointer;padding:4px;display:flex;align-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px"><polyline points="9 18 15 12 9 6"/></svg></button>';
+  wlEl.style.display='flex';
+  wlEl.style.alignItems='center';
+  wlEl.style.gap='6px';
+}
+
+// ── Navegación de semana dentro del modal de compartir ───────────────────────
+function nomShareWeekNav(direction){
+  var weeks=getAllWeeks();
+  var idx=weeks.findIndex(function(w){ return w.wk===Number(_nomShareWk); });
+  if(idx===-1){ _nomShareWk=weekKey(td()); }
+  else{
+    var next=(direction==='prev')?idx-1:idx+1;
+    if(next<0||next>=weeks.length) return;
+    _nomShareWk=weeks[next].wk;
+  }
+  nomOpenShareModal(true); // true = ya tenemos semana elegida, no re-detectar
 }
 
 // ── Reúne datos de la semana: HE, asistencias, gastos por trabajador ────────
@@ -4996,7 +5204,7 @@ function _nomGatherData(thuStr, wedStr){
   var gastosData={};   // wid → [{date,proyectoId,tipo,desc,monto}]
 
   Object.keys(S.actividades).sort().forEach(function(date){
-    if(weekKey(date)!==Number(_nomWk)) return;
+    if(weekKey(date)!==Number(_nomShareWk)) return;
     (S.actividades[date]||[]).forEach(function(a){
       // Horas extras
       Object.entries(a.horasExtras||{}).forEach(function(e){
@@ -5044,14 +5252,18 @@ function _nomWorkerSummary(p, idx, thuStr, wedStr, gathered){
 }
 
 // ── Abre el modal con la lista ───────────────────────────────────────────────
-function nomOpenShareModal(){
-  if(!_nomWk) _nomWk=weekKey(td());
-  var range=_nomGetWeekRange();
-  if(!range){ toast('Selecciona primero una semana en Horas extras','err'); return; }
+function nomOpenShareModal(keepWeek){
+  // Solo la PRIMERA vez (sin semana elegida aún) buscamos automáticamente
+  // la semana más reciente con datos. Si el usuario ya navegó manualmente
+  // (flechas ‹ ›), respetamos su elección aunque esa semana esté vacía.
+  if(_nomShareWk===null && !keepWeek){
+    _nomShareWk=_nomFindLatestDataWeek();
+  }
+  var range=_nomShareGetWeekRange();
+  if(!range){ toast('No hay datos registrados todavía','err'); return; }
 
-  // Actualizar label de semana
-  var wlEl=document.getElementById('nom-share-wk-label');
-  if(wlEl) wlEl.textContent='📅 '+fmtDate(range.thuStr)+' → '+fmtDate(range.wedStr);
+  // Actualizar label de semana + flechas de navegación
+  _nomRenderWeekLabel(range);
 
   var gathered=_nomGatherData(range.thuStr,range.wedStr);
 
@@ -5209,21 +5421,25 @@ function nomShareWorker(wid){
   var html=_nomWorkerPDFHtml(s);
   var fname='Nomina_'+s.nombre.replace(/\s+/g,'_')+'.html';
   var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+  var file=new File([blob], fname, {type:'text/html'});
 
-  if(navigator.share && navigator.canShare){
-    var file=new File([blob], fname, {type:'text/html'});
-    if(navigator.canShare({files:[file]})){
-      navigator.share({files:[file], title:'N\u00f3mina '+s.nombre}).then(function(){
-        _nomMarkSent(wid);
-      }).catch(function(e){
-        if(e && e.name!=='AbortError'){ _printBlob(fname, blob); _nomMarkSent(wid); }
-      });
-      return;
-    }
+  // Web Share API con archivo — abre selector nativo, el usuario elige WhatsApp
+  if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+    navigator.share({
+      files:[file],
+      title:'Nómina '+s.nombre
+    }).then(function(){
+      _nomMarkSent(wid);
+    }).catch(function(e){
+      if(e && e.name!=='AbortError') toast('No se pudo compartir','err');
+    });
+  } else {
+    // Fallback escritorio: diálogo de impresión
+    _printBlob(fname, blob);
+    _nomMarkSent(wid);
   }
-  _printBlob(fname, blob);
-  _nomMarkSent(wid);
 }
+
 
 function _nomMarkSent(wid){
   var btn=document.getElementById('nom-share-btn-'+wid);
@@ -5283,6 +5499,16 @@ function nomOpenWorkerPDF(wid){ nomShareWorker(wid); }
 
 // Returns {faltas:[dates], vacaciones:[dates]} for a worker within a date range
 // Uses estadoHistorial as source of truth — only counts explicit 'falta' or 'vacaciones' states
+// Revisa si el trabajador tiene una actividad/proyecto registrado ese día
+// (es decir, si realmente trabajó, sin importar lo que diga el historial o las vacaciones programadas)
+function _workerWorkedOn(wid, ds){
+  var acts=S.actividades[ds]||[];
+  for(var i=0;i<acts.length;i++){
+    if((acts[i].trabajadores||[]).indexOf(wid)!==-1) return true;
+  }
+  return false;
+}
+
 function getWorkerAbsences(wid, fromDate, toDate){
   const faltas=[];
   const vacaciones=[];
@@ -5292,6 +5518,9 @@ function getWorkerAbsences(wid, fromDate, toDate){
     const ds=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
     // Solo días hábiles (no fines de semana ni festivos)
     if(isWeekend(ds)||isFestivo(ds)) continue;
+    // Si hay una actividad real registrada ese día para este trabajador, trabajó —
+    // nunca debe contar como falta ni vacaciones, sin importar el historial o vacIni/vacFin.
+    if(_workerWorkedOn(wid, ds)) continue;
     // Usar el historial de estado explícito registrado por el usuario
     const hist=(S.estadoHistorial&&S.estadoHistorial[ds])||{};
     const est=hist[wid];
@@ -6083,6 +6312,33 @@ function editAppName(){
 }
 
 // ── SNAPSHOTS ────────────────────────────────────────────────────────────────
+// ── AUTO-BACKUP DIARIO ───────────────────────────────────────────────────────
+// Revisa una vez por día (al entrar a la app) si ya existe una copia de hoy.
+// Si no existe, crea una automáticamente. createSnapshot() ya se encarga de
+// mantener solo las últimas 20 copias, borrando la más antigua al llegar al límite.
+function maybeAutoSnapshot(){
+  if(!_currentUser||_currentUser.rol!=='admin') return;
+  var today=td();
+  var lastTry=localStorage.getItem('cp4_last_auto_snap_date');
+  if(lastTry===today) return; // ya se revisó hoy desde este dispositivo
+
+  sbFetch('/rest/v1/imza_snapshots?select=created_at&order=created_at.desc&limit=1')
+  .then(function(rows){
+    localStorage.setItem('cp4_last_auto_snap_date', today);
+    if(rows&&rows.length){
+      var lastDate=(rows[0].created_at||'').slice(0,10);
+      if(lastDate===today) return; // ya hay copia de hoy (de este u otro dispositivo)
+    }
+    var now=new Date();
+    var mo=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][now.getMonth()];
+    var label='🔄 Auto · '+String(now.getDate()).padStart(2,'0')+' '+mo+' '+now.getFullYear();
+    createSnapshot(label);
+  }).catch(function(){
+    // Si falla la verificación, no marcar como intentado — reintentar en el próximo login
+    localStorage.removeItem('cp4_last_auto_snap_date');
+  });
+}
+
 function createSnapshot(label){
   if(!label){
     var now=new Date();
@@ -6164,8 +6420,9 @@ function loadSnapshots(){
       body.style.cssText='display:none;padding:0 14px 14px;border-top:1px solid var(--line)';
       body.innerHTML=
         '<div style="font-size:12px;color:var(--txt3);margin:10px 0 10px">'+dateStr+'</div>'+
+        '<button class="snap-compare" data-id="'+row.id+'" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--gold);background:rgba(245,207,85,0.1);color:var(--gold);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;margin-bottom:8px">🔍 Comparar y recuperar lo perdido</button>'+
         '<div style="display:flex;gap:8px">'+
-          '<button class="snap-restore" data-id="'+row.id+'" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--blue);background:rgba(106,170,255,0.1);color:#6aaaff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">↩ Restaurar</button>'+
+          '<button class="snap-restore" data-id="'+row.id+'" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--blue);background:rgba(106,170,255,0.1);color:#6aaaff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">↩ Restaurar todo</button>'+
           '<button class="snap-delete" data-id="'+row.id+'" style="width:44px;height:44px;border-radius:10px;border:1.5px solid var(--red);background:rgba(240,96,96,0.1);color:var(--red);font-size:16px;font-family:inherit;cursor:pointer;flex-shrink:0">🗑</button>'+
         '</div>';
       card.appendChild(hdr);
@@ -6181,6 +6438,9 @@ function loadSnapshots(){
       el.appendChild(card);
     });
     // Attach events
+    el.querySelectorAll('.snap-compare').forEach(function(btn){
+      btn.addEventListener('click',function(e){ e.stopPropagation(); compareSnapshot(this.dataset.id); });
+    });
     el.querySelectorAll('.snap-restore').forEach(function(btn){
       btn.addEventListener('click',function(e){ e.stopPropagation(); restoreSnapshot(this.dataset.id); });
     });
@@ -6190,6 +6450,145 @@ function loadSnapshots(){
   }).catch(function(){
     el.innerHTML='<div style="font-size:13px;color:var(--red);text-align:center;padding:8px">Error al cargar copias</div>';
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── COMPARAR Y RECUPERAR DESDE COPIA ── Solo agrega lo que falta, nunca borra ──
+// ═══════════════════════════════════════════════════════════════════════════════
+var _snapDiff=null; // {proyectos:[], personal:[], actDates:{date:[acts]}, label}
+
+function compareSnapshot(id){
+  var lblEl=document.getElementById('snap-diff-label');
+  var loadEl=document.getElementById('snap-diff-loading');
+  var contEl=document.getElementById('snap-diff-content');
+  var emptyEl=document.getElementById('snap-diff-empty');
+  if(lblEl) lblEl.textContent='Cargando copia…';
+  if(loadEl) loadEl.style.display='block';
+  if(contEl) contEl.style.display='none';
+  if(emptyEl) emptyEl.style.display='none';
+  document.getElementById('sov-snap-diff').classList.add('open');
+
+  sbFetch('/rest/v1/imza_snapshots?id=eq.'+id+'&select=data,label,created_at')
+  .then(function(rows){
+    if(!rows||!rows.length){ toast('Copia no encontrada','err'); document.getElementById('sov-snap-diff').classList.remove('open'); return; }
+    var snap=rows[0].data||{};
+    var dateStr=snapFmt(rows[0].created_at);
+    if(lblEl) lblEl.textContent='📅 Comparando con copia del '+dateStr;
+
+    var diff=_snapBuildDiff(snap);
+    _snapDiff=diff;
+
+    if(loadEl) loadEl.style.display='none';
+    var totalMissing=diff.proyectos.length+diff.personal.length+diff.actCount;
+    if(!totalMissing){
+      if(emptyEl) emptyEl.style.display='block';
+      return;
+    }
+    if(contEl) contEl.style.display='block';
+    _snapRenderDiffUI(diff);
+  }).catch(function(){
+    toast('Error al comparar','err');
+    document.getElementById('sov-snap-diff').classList.remove('open');
+  });
+}
+
+// Compara snap (datos viejos) vs S (datos actuales) y devuelve solo lo que falta
+function _snapBuildDiff(snap){
+  var curProjIds={};   S.proyectos.forEach(function(p){ curProjIds[p.id]=true; });
+  var curPersIds={};   S.personal.forEach(function(p){ curPersIds[p.id]=true; });
+
+  var missingProyectos=(snap.proyectos||[]).filter(function(p){ return !curProjIds[p.id]; });
+  var missingPersonal=(snap.personal||[]).filter(function(p){ return !curPersIds[p.id]; });
+
+  // Actividades: por fecha, comparar por id de actividad
+  var actDates={}; var actCount=0;
+  Object.keys(snap.actividades||{}).forEach(function(date){
+    var curIds={};
+    (S.actividades[date]||[]).forEach(function(a){ curIds[a.id]=true; });
+    var missing=(snap.actividades[date]||[]).filter(function(a){ return !curIds[a.id]; });
+    if(missing.length){ actDates[date]=missing; actCount+=missing.length; }
+  });
+
+  return {
+    proyectos:missingProyectos,
+    personal:missingPersonal,
+    actDates:actDates,
+    actCount:actCount
+  };
+}
+
+// Pinta el resumen con checkboxes para elegir qué recuperar
+function _snapRenderDiffUI(diff){
+  var el=document.getElementById('snap-diff-summary');
+  if(!el) return;
+  var html='';
+
+  if(diff.proyectos.length){
+    html+='<label style="display:flex;align-items:center;gap:10px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer">'+
+      '<input type="checkbox" id="snap-chk-proyectos" checked style="width:18px;height:18px;accent-color:var(--gold);flex-shrink:0">'+
+      '<div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--txt)">📁 '+diff.proyectos.length+' proyecto'+(diff.proyectos.length>1?'s':'')+' perdido'+(diff.proyectos.length>1?'s':'')+'</div>'+
+      '<div style="font-size:11px;color:var(--txt3);margin-top:2px">'+diff.proyectos.map(function(p){return p.nombre;}).slice(0,3).join(', ')+(diff.proyectos.length>3?' y '+(diff.proyectos.length-3)+' más':'')+'</div></div>'+
+    '</label>';
+  }
+  if(diff.personal.length){
+    html+='<label style="display:flex;align-items:center;gap:10px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer">'+
+      '<input type="checkbox" id="snap-chk-personal" checked style="width:18px;height:18px;accent-color:var(--gold);flex-shrink:0">'+
+      '<div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--txt)">👷 '+diff.personal.length+' trabajador'+(diff.personal.length>1?'es':'')+' perdido'+(diff.personal.length>1?'s':'')+'</div>'+
+      '<div style="font-size:11px;color:var(--txt3);margin-top:2px">'+diff.personal.map(function(p){return p.nombre;}).slice(0,3).join(', ')+(diff.personal.length>3?' y '+(diff.personal.length-3)+' más':'')+'</div></div>'+
+    '</label>';
+  }
+  if(diff.actCount){
+    var nDates=Object.keys(diff.actDates).length;
+    html+='<label style="display:flex;align-items:center;gap:10px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer">'+
+      '<input type="checkbox" id="snap-chk-actividades" checked style="width:18px;height:18px;accent-color:var(--gold);flex-shrink:0">'+
+      '<div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--txt)">📋 '+diff.actCount+' actividad'+(diff.actCount>1?'es':'')+' perdida'+(diff.actCount>1?'s':'')+'</div>'+
+      '<div style="font-size:11px;color:var(--txt3);margin-top:2px">en '+nDates+' día'+(nDates>1?'s':'')+' distinto'+(nDates>1?'s':'')+'</div></div>'+
+    '</label>';
+  }
+  el.innerHTML=html;
+}
+
+// Aplica la recuperación: solo agrega lo seleccionado, nunca borra ni reemplaza
+function applySnapDiff(){
+  if(!_snapDiff) return;
+  var chkP=document.getElementById('snap-chk-proyectos');
+  var chkW=document.getElementById('snap-chk-personal');
+  var chkA=document.getElementById('snap-chk-actividades');
+  var nAdded=0;
+
+  if(chkP&&chkP.checked&&_snapDiff.proyectos.length){
+    _snapDiff.proyectos.forEach(function(p){
+      S.proyectos.push(p);
+      delete S.deleted['proj_'+p.id]; // si estaba marcado como eliminado, des-eliminar
+      nAdded++;
+    });
+  }
+  if(chkW&&chkW.checked&&_snapDiff.personal.length){
+    _snapDiff.personal.forEach(function(p){
+      S.personal.push(p);
+      delete S.deleted['pers_'+p.id];
+      nAdded++;
+    });
+  }
+  if(chkA&&chkA.checked&&_snapDiff.actCount){
+    Object.keys(_snapDiff.actDates).forEach(function(date){
+      if(!S.actividades[date]) S.actividades[date]=[];
+      _snapDiff.actDates[date].forEach(function(a){
+        S.actividades[date].push(a);
+        delete S.deleted['act_'+a.id];
+        nAdded++;
+      });
+    });
+  }
+
+  if(!nAdded){ toast('Selecciona al menos una categoría','err'); return; }
+
+  document.getElementById('sov-snap-diff').classList.remove('open');
+  setAction('Recuperó '+nAdded+' elemento'+(nAdded>1?'s':'')+' desde copia de seguridad');
+  save();
+  rAll();
+  toast('✓ '+nAdded+' elemento'+(nAdded>1?'s':'')+' recuperado'+(nAdded>1?'s':''),'ok');
+  _snapDiff=null;
 }
 
 function restoreSnapshot(id){
@@ -6537,6 +6936,7 @@ function enterApp(found, sessionData){
   pullFromCloud().then(function(updated){
     updateSyncUI(true);
     rAll(true); // siempre renderizar con lo que vino de la nube
+    setTimeout(maybeAutoSnapshot, 3000); // backup diario automático, sin bloquear el arranque
   }).catch(function(){});
 }
 
@@ -6640,8 +7040,8 @@ function initAuth(){
         var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
         var hasToken=!!localStorage.getItem('cp4_auth_token');
         var hasRefresh=!!localStorage.getItem('cp4_refresh_token');
-        // needsRefresh: sin token, o token expira en menos de 3 días
-        var needsRefresh=!hasToken||(tokenExp>0&&Date.now()>tokenExp-3*24*60*60*1000);
+        // needsRefresh: sin token, o token expira en menos de 12 horas
+        var needsRefresh=!hasToken||(tokenExp>0&&Date.now()>tokenExp-12*60*60*1000);
 
         function _enterWithSession(){
           // Cargar usuarios frescos en background sin bloquear entrada
@@ -6704,7 +7104,7 @@ function initAuth(){
           if(!sd.email) continue;
           if(_filterEmail&&sd.email.toLowerCase()!==_filterEmail.toLowerCase()) continue;
           var age=Date.now()-new Date(rows[i].updated_at).getTime();
-          if(age>30*24*60*60*1000) continue;
+          if(age>7*24*60*60*1000) continue;
           // Buscar usuario en lista local; si no hay lista aún, usar datos del session_data
           var match=users.find(function(x){ return (x.email||'').toLowerCase()===sd.email.toLowerCase(); });
           var matchSession=match
@@ -8709,20 +9109,6 @@ function inicioToggleDone(id){
 document.addEventListener('touchstart',function(){ window._lastInteraction=Date.now(); },true);
 document.addEventListener('mousedown',function(){ window._lastInteraction=Date.now(); },true);
 document.addEventListener('keydown',function(){ window._lastInteraction=Date.now(); },true);
-
-// ── Refrescar token al volver del background ──────────────────────────────────
-document.addEventListener('visibilitychange',function(){
-  if(document.visibilityState==='visible'&&_currentUser){
-    var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
-    var refresh=localStorage.getItem('cp4_refresh_token');
-    // Si el token expira en menos de 30 minutos o ya expiró — renovar
-    if(refresh&&(tokenExp===0||Date.now()>tokenExp-30*60*1000)){
-      refreshAuthToken().catch(function(){});
-    }
-    // Tocar la sesión remota para mantenerla viva
-    if(typeof window._touchSession==='function') window._touchSession();
-  }
-});
 
 // Detectar si corre como PWA en iPhone y mostrar hints de login
 (function(){
