@@ -837,7 +837,7 @@ if('serviceWorker' in navigator){
       <div id="hist-search-wrap" style="position:relative;margin-bottom:8px">
         <div style="position:relative;display:flex;align-items:center">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--txt3);position:absolute;left:12px;pointer-events:none"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
-          <input id="hist-search-input" type="text" autocomplete="off" placeholder="Buscar personal, proyecto o actividad..." oninput="histOnSearchInput(this.value)" onfocus="histOnSearchFocus()" style="width:100%;box-sizing:border-box;padding:11px 34px 11px 34px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt);font-size:13px;font-family:inherit;outline:none">
+          <input id="hist-search-input" type="text" autocomplete="off" placeholder="Buscar personal, proyecto, líder o actividad..." oninput="histOnSearchInput(this.value)" onfocus="histOnSearchFocus()" style="width:100%;box-sizing:border-box;padding:11px 34px 11px 34px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt);font-size:13px;font-family:inherit;outline:none">
           <button id="hist-search-clear" onclick="histClearSearch()" style="display:none;position:absolute;right:8px;width:22px;height:22px;border-radius:50%;border:none;background:var(--line2);color:var(--txt2);font-size:13px;align-items:center;justify-content:center;cursor:pointer;line-height:1">✕</button>
         </div>
         <div id="hist-search-suggestions" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:40;background:var(--card2);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.35);max-height:280px;overflow-y:auto"></div>
@@ -3419,7 +3419,11 @@ function histEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/
 function histBuildIndex(){
   const idx=[];
   (S.proyectos||[]).forEach(p=>{
-    idx.push({type:'proyecto', id:p.id, label:p.nombre, sub:(p.folio?('Folio '+p.folio):'Proyecto')+(p.estado?(' · '+p.estado):'')});
+    const lider=(p.lider||'').trim();
+    idx.push({type:'proyecto', id:p.id, label:p.nombre, sub:(p.folio?('Folio '+p.folio):'Proyecto')+(p.estado?(' · '+p.estado):'')+(lider?(' · Líder: '+lider):'')});
+    if(lider){
+      idx.push({type:'lider', id:p.id, label:lider, sub:'Líder de proyecto · '+p.nombre});
+    }
   });
   (S.personal||[]).forEach(p=>{
     idx.push({type:'personal', id:p.id, label:p.nombre, sub:p.cargo?('Personal · '+p.cargo):'Personal'});
@@ -3437,14 +3441,14 @@ function histBuildIndex(){
 // ¿Coincide una actividad con la búsqueda activa? (texto libre o selección precisa de una sugerencia)
 function histEntryMatches(a){
   if(histSearchSelected){
-    if(histSearchSelected.type==='proyecto') return a.proyectoId===histSearchSelected.id;
+    if(histSearchSelected.type==='proyecto'||histSearchSelected.type==='lider') return a.proyectoId===histSearchSelected.id;
     if(histSearchSelected.type==='personal') return (a.trabajadores||[]).includes(histSearchSelected.id);
     if(histSearchSelected.type==='actividad') return a.id===histSearchSelected.id;
     return true;
   }
   const q=(histSearchTerm||'').trim();
   if(!q) return true;
-  const parts=[gpn(a.proyectoId), gcode(a.proyectoId), a.notas||''];
+  const parts=[gpn(a.proyectoId), gcode(a.proyectoId), gpl(a.proyectoId), a.notas||''];
   (a.trabajadores||[]).forEach(id=>parts.push(gwn(id)));
   (a.maquinaria||[]).forEach(m=>parts.push(m));
   return fuzzyMatchText(q, parts.join(' '));
@@ -3481,7 +3485,7 @@ function histRenderSuggestions(val){
     box.style.display='block';
     return;
   }
-  const icons={proyecto:'🏗️',personal:'👷',actividad:'📝'};
+  const icons={proyecto:'🏗️',personal:'👷',actividad:'📝',lider:'⭐'};
   box.innerHTML=top.map(function(s,i){
     const it=s.item;
     return '<div onclick="histPickSuggestion('+i+')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--line)">'
@@ -3497,13 +3501,22 @@ function histRenderSuggestions(val){
 function histPickSuggestion(i){
   const it=(window._histSugList||[])[i];
   if(!it) return;
-  histSearchSelected={type:it.type,id:it.id,date:it.date};
-  histSearchTerm=it.label;
-  const input=document.getElementById('hist-search-input');
-  if(input) input.value=it.label;
+  const wantProj=(it.type==='proyecto'||it.type==='lider');
+  if(it.type==='lider'){
+    // Selección por líder → se resuelve al proyecto que dirige, mostrando nombre del proyecto y su líder
+    const proj=S.proyectos.find(p=>p.id===it.id);
+    histSearchSelected={type:'proyecto', id:it.id};
+    histSearchTerm=(proj?proj.nombre:it.label);
+    const input=document.getElementById('hist-search-input');
+    if(input) input.value=(proj?(proj.nombre+' · Líder: '+it.label):it.label);
+  }else{
+    histSearchSelected={type:it.type,id:it.id,date:it.date};
+    histSearchTerm=it.label;
+    const input=document.getElementById('hist-search-input');
+    if(input) input.value=it.label;
+  }
   const box=document.getElementById('hist-search-suggestions');
   if(box){ box.style.display='none'; box.innerHTML=''; }
-  const wantProj=(it.type==='proyecto');
   if(wantProj && hview!=='proj'){ setHView('proj'); }
   else if(!wantProj && hview!=='dia'){ setHView('dia'); }
   else{ rHist(); }
@@ -3702,7 +3715,7 @@ function rHistProj(){
       visibleProjects=S.proyectos.filter(p=>{
         if((projMap[p.id]||[]).length) return true;
         // También mostrar el proyecto si su nombre/folio coincide, aunque no tenga actividades filtradas
-        return fuzzyMatchText(histSearchTerm, (p.nombre||'')+' '+(p.folio||''));
+        return fuzzyMatchText(histSearchTerm, (p.nombre||'')+' '+(p.folio||'')+' '+(p.lider||''));
       });
     }
     if(!visibleProjects.length){
