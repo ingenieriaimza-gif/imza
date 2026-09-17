@@ -2895,7 +2895,7 @@ function genMaterialesPDF(){
   if(!p){toast('Proyecto no encontrado','err');return;}
   var md=p.materiales||{items:[]};
   var items=md.items||[];
-  var EXTRA_BLANK=Math.max(26-items.length,6);
+  var EXTRA_BLANK=Math.max(45-items.length,16);
   var totalRows=items.length+EXTRA_BLANK;
   var rowsHtml='';
   for(var i=0;i<totalRows;i++){
@@ -2914,31 +2914,32 @@ function genMaterialesPDF(){
   var pdfName=('LISTA_DE_MATERIALES_'+(p.folio||'')+'_'+(p.nombre||'')).replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_\-]/g,'');
   var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+pdfName+'</title><style>'+
     '*{margin:0;padding:0;box-sizing:border-box;}'+
-    'html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:Arial,Helvetica,sans-serif;color:#000;}'+
-    '.page{max-width:960px;margin:0 auto;padding:16px;}'+
+    'html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:Arial,Helvetica,sans-serif;color:#000;height:100%;}'+
+    '.page{max-width:960px;margin:0 auto;padding:14px;display:flex;flex-direction:column;min-height:100%;}'+
     'table{width:100%;border-collapse:collapse;table-layout:fixed;}'+
     '.top{border:1px solid #000;}'+
-    '.top td{border-left:1px solid #000;vertical-align:middle;padding:6px 10px;}'+
+    '.top td{border-left:1px solid #000;vertical-align:middle;padding:12px;line-height:1.45;}'+
     '.top td:first-child{border-left:none;}'+
-    '.logo-cell{width:9.6%;text-align:center;padding:8px 4px;}'+
-    '.info-cell{width:75.1%;font-size:13px;color:#111}'+
-    '.fecha-lbl{width:15.3%;background:#d9d9d9;font-weight:700;font-size:11px;text-align:center;padding:6px;border-bottom:1px solid #000}'+
+    '.logo-cell{width:9.6%;text-align:center;padding:10px 4px;}'+
+    '.info-cell{width:75.1%;font-size:13px;color:#111;padding-top:16px;padding-bottom:16px;}'+
+    '.fecha-lbl{width:15.3%;background:#d9d9d9;font-weight:700;font-size:11px;text-align:center;padding:8px;border-bottom:1px solid #000;line-height:1.5;}'+
     '.fecha-val{height:80px;text-align:center;font-size:15px;font-weight:700;vertical-align:middle}'+
-    '.titlebar{background:#d9d9d9;font-weight:700;font-size:14px;text-align:center;padding:9px;letter-spacing:.03em;margin:12px 5.5%;}'+
+    '.titlebar{background:#d9d9d9;font-weight:700;font-size:14px;text-align:center;padding:9px;letter-spacing:.03em;margin:14px 5.5%;}'+
     '.meta{border:1px solid #000;}'+
-    '.meta td{border-left:1px solid #000;padding:8px 10px;font-size:13px}'+
+    '.meta td{border-left:1px solid #000;padding:9px 10px;font-size:13px;line-height:1.4;}'+
     '.meta td:first-child{border-left:none;}'+
-    '.matable{border:1px solid #000;border-top:none;}'+
+    '.matable-wrap{flex:1;display:flex;flex-direction:column;}'+
+    '.matable{border:1px solid #000;border-top:none;flex:1;}'+
     '.matable th{background:#d9d9d9;border:1px solid #000;padding:8px 4px;font-size:11px;text-transform:uppercase}'+
-    '.matable td{border:1px solid #000;padding:10px 4px;font-size:12px;text-align:center;height:22px}'+
+    '.matable td{border:1px solid #000;padding:11px 4px;font-size:12px;text-align:center;}'+
     '.colN{width:19%}.colM{width:38%}.colU{width:7%}.colC{width:9%}.colF{width:12%}.colS{width:15%}'+
-    '@media print{@page{size:A4 portrait;margin:10mm}.titlebar{margin:10px 5.5%}}'+
+    '@media print{html,body{height:auto;}@page{size:A4 portrait;margin:10mm}.page{min-height:calc(297mm - 20mm);}.titlebar{margin:12px 5.5%}.matable tr{page-break-inside:avoid;}}'+
     '</style></head><body><div class="page">'+
     '<table class="top">'+
       '<tr>'+
         '<td class="logo-cell" rowspan="2">'+logoImg+'</td>'+
         '<td class="info-cell"><b>'+(p.folio?'['+p.folio+'] ':'')+(p.nombre||'')+'</b></td>'+
-        '<td class="fecha-lbl">FECHA DE INICIO</td>'+
+        '<td class="fecha-lbl">FECHA DE<br>INICIO</td>'+
       '</tr>'+
       '<tr>'+
         '<td class="info-cell">&nbsp;</td>'+
@@ -2949,10 +2950,10 @@ function genMaterialesPDF(){
     '<table class="meta">'+
       '<tr><td style="width:57%">LIDER DE PROYECTO: <b>'+(p.lider||'')+'</b></td><td style="width:43%">SUPERVISOR IMZA: <b>'+(md.supervisor||'')+'</b></td></tr>'+
     '</table>'+
-    '<table class="matable">'+
+    '<div class="matable-wrap"><table class="matable">'+
       '<tr><th class="colN">NOMBRE</th><th class="colM">MATERIAL</th><th class="colU">UNIDAD</th><th class="colC">CANTIDAD</th><th class="colF">FECHA</th><th class="colS">FIRMA</th></tr>'+
       rowsHtml+
-    '</table>'+
+    '</table></div>'+
   '</div></body></html>';
   _printBlob(pdfName, new Blob([html],{type:'text/html;charset=utf-8'}));
 }
