@@ -2910,7 +2910,7 @@ function genMaterialesPDF(){
     '</tr>';
   }
   var fechaInicio=p.inicio?fmtDate(p.inicio):'';
-  var logoImg=IMZA_MAT_LOGO_B64?'<img src="'+IMZA_MAT_LOGO_B64+'" style="max-width:120px;display:block;margin:0 auto">':'<div style="font-weight:900;font-size:20px;letter-spacing:.06em">IMZA</div>';
+  var logoImg=IMZA_MAT_LOGO_B64?'<img src="'+IMZA_MAT_LOGO_B64+'" style="display:block;margin:0 auto;width:100%;max-width:100px;height:auto;">':'<div style="font-weight:900;font-size:16px;letter-spacing:.06em">IMZA</div>';
   var pdfName=('LISTA_DE_MATERIALES_'+(p.folio||'')+'_'+(p.nombre||'')).replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_\-]/g,'');
   var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+pdfName+'</title><style>'+
     '*{margin:0;padding:0;box-sizing:border-box;}'+
@@ -2920,7 +2920,7 @@ function genMaterialesPDF(){
     'table{width:100%;border-collapse:collapse;table-layout:fixed;}'+
     '.top{border:1px solid #000;}'+
     '.top td{vertical-align:middle;}'+
-    '.logo-cell{width:9.6%;text-align:center;padding:14px 4px;}'+
+    '.logo-cell{width:9.6%;text-align:center;padding:10px 4px;overflow:hidden;}'+
     '.info-cell{width:75.1%;font-size:16px;color:#111;padding:14px 16px;border-left:1px solid #000;line-height:1.5;}'+
     '.fecha-cell{width:15.3%;padding:0;vertical-align:top;border-left:1px solid #000;}'+
     '.fecha-lbl-inner{background:#d9d9d9;font-weight:700;font-size:13px;text-align:center;padding:10px 6px;border-bottom:1px solid #000;line-height:1.4;}'+
