@@ -638,7 +638,6 @@ if('serviceWorker' in navigator){
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
 </head>
 <body>
 <div class="app" id="app" style="display:none">
@@ -2901,171 +2900,71 @@ function quickGenMaterialesPDF(id){
   if(!p){toast('Proyecto no encontrado','err');return;}
   _buildAndPrintMaterialesPdf(p);
 }
-function _ensureJsPDF(cb){
-  if(window.jspdf&&window.jspdf.jsPDF){ cb(); return; }
-  var tries=0;
-  var iv=setInterval(function(){
-    tries++;
-    if(window.jspdf&&window.jspdf.jsPDF){ clearInterval(iv); cb(); }
-    else if(tries>80){ clearInterval(iv); toast('No se pudo cargar el generador de PDF (revisa tu conexión)','err'); }
-  },100);
-}
-function _fitText(doc,text,maxW){
-  text=String(text==null?'':text);
-  if(!text) return '';
-  if(doc.getTextWidth(text)<=maxW) return text;
-  var t=text;
-  while(t.length>1&&doc.getTextWidth(t+'…')>maxW){ t=t.slice(0,-1); }
-  return t+'…';
-}
 function _buildAndPrintMaterialesPdf(p){
-  _ensureJsPDF(function(){
-    try{ _drawMaterialesPdf(p); }
-    catch(e){ toast('No se pudo generar el PDF','err'); }
-  });
-}
-function _drawMaterialesPdf(p){
   var md=p.materiales||{items:[]};
   var items=md.items||[];
-  var jsPDFCtor=window.jspdf.jsPDF;
-  var doc=new jsPDFCtor({unit:'mm',format:'a4',orientation:'portrait'});
-  doc.setFont('helvetica','normal');
-
-  var pageW=210,pageH=297;
-  var mX=10,mY=10;
-  var contentW=pageW-2*mX;
-
-  // ----- Header table (logo | nombre proyecto | fecha de inicio) -----
-  var headerY=mY, headerH=32;
-  var logoW=18, fechaW=29, infoW=contentW-logoW-fechaW;
-  doc.setDrawColor(0);
-  doc.setLineWidth(0.25);
-  doc.rect(mX, headerY, contentW, headerH);
-  doc.line(mX+logoW, headerY, mX+logoW, headerY+headerH);
-  doc.line(mX+logoW+infoW, headerY, mX+logoW+infoW, headerY+headerH);
-  var fechaLblH=10;
-
-  if(IMZA_MAT_LOGO_B64){
-    try{
-      var maxImgW=logoW-4, maxImgH=headerH-4;
-      var ar=174/243;
-      var imgW=maxImgW, imgH=imgW/ar;
-      if(imgH>maxImgH){ imgH=maxImgH; imgW=imgH*ar; }
-      var imgX=mX+(logoW-imgW)/2, imgY=headerY+(headerH-imgH)/2;
-      doc.addImage(IMZA_MAT_LOGO_B64,'PNG',imgX,imgY,imgW,imgH);
-    }catch(e){}
+  var EXTRA_BLANK=Math.max(43-items.length,14);
+  var totalRows=items.length+EXTRA_BLANK;
+  var rowsHtml='';
+  for(var i=0;i<totalRows;i++){
+    var it=items[i]||{};
+    rowsHtml+='<tr>'+
+      '<td>'+(it.nombre||'')+'</td>'+
+      '<td style="text-align:left;padding-left:8px">'+(it.material||'')+'</td>'+
+      '<td>'+(it.unidad||'')+'</td>'+
+      '<td>'+(it.cantidad!=null&&it.cantidad!==''?it.cantidad:'')+'</td>'+
+      '<td></td>'+
+      '<td></td>'+
+    '</tr>';
   }
-
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(13);
-  var nameText=(p.folio?'['+p.folio+'] ':'')+(p.nombre||'');
-  var nameLines=doc.splitTextToSize(nameText, infoW-10);
-  if(nameLines.length>4) nameLines=nameLines.slice(0,4);
-  var lineH=5.6;
-  var blockH=nameLines.length*lineH;
-  var textY=headerY+headerH/2-blockH/2+lineH*0.78;
-  nameLines.forEach(function(line,i){
-    doc.text(line, mX+logoW+infoW/2, textY+i*lineH, {align:'center'});
-  });
-
-  doc.setFillColor(217,217,217);
-  doc.rect(mX+logoW+infoW, headerY, fechaW, fechaLblH, 'F');
-  doc.setDrawColor(0);
-  doc.rect(mX+logoW+infoW, headerY, fechaW, fechaLblH);
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(8);
-  doc.text('FECHA DE', mX+logoW+infoW+fechaW/2, headerY+4.2, {align:'center'});
-  doc.text('INICIO', mX+logoW+infoW+fechaW/2, headerY+7.8, {align:'center'});
-
   var fechaInicio=p.inicio?fmtDate(p.inicio):'';
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(11.5);
-  doc.text(fechaInicio, mX+logoW+infoW+fechaW/2, headerY+fechaLblH+(headerH-fechaLblH)/2+1.5, {align:'center'});
-
-  // ----- Title bar -----
-  var barY=headerY+headerH+5, barH=8;
-  var barInset=contentW*0.055;
-  var barX=mX+barInset, barW=contentW-2*barInset;
-  doc.setFillColor(217,217,217);
-  doc.rect(barX,barY,barW,barH,'F');
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(11.5);
-  doc.text('FORMATO PARA ENTREGA DE MATERIAL', mX+contentW/2, barY+barH/2+1.4, {align:'center'});
-
-  // ----- Meta row (líder de proyecto / supervisor imza) -----
-  var metaY=barY+barH+4, metaH=9;
-  var col1W=contentW*0.57;
-  doc.setDrawColor(0);
-  doc.rect(mX, metaY, contentW, metaH);
-  doc.line(mX+col1W, metaY, mX+col1W, metaY+metaH);
-  doc.setFont('helvetica','normal');
-  doc.setFontSize(10);
-  var metaTextY=metaY+metaH/2+1.2;
-  doc.text('LIDER DE PROYECTO: ', mX+3, metaTextY);
-  var liderLblW=doc.getTextWidth('LIDER DE PROYECTO: ');
-  doc.setFont('helvetica','bold');
-  doc.text(_fitText(doc,p.lider||'',col1W-6-liderLblW), mX+3+liderLblW, metaTextY);
-
-  doc.setFont('helvetica','normal');
-  doc.text('SUPERVISOR IMZA: ', mX+col1W+3, metaTextY);
-  var supLblW=doc.getTextWidth('SUPERVISOR IMZA: ');
-  doc.setFont('helvetica','bold');
-  doc.text(_fitText(doc,md.supervisor||'',contentW-col1W-6-supLblW), mX+col1W+3+supLblW, metaTextY);
-
-  // ----- Tabla de materiales -----
-  var tableY=metaY+metaH;
-  var headRowH=8;
-  var colPct={N:0.17,M:0.42,U:0.08,C:0.10,F:0.11,S:0.12};
-  var order=['N','M','U','C','F','S'];
-  var colW={}, colX={}, x=mX;
-  order.forEach(function(k){ colW[k]=contentW*colPct[k]; });
-  order.forEach(function(k){ colX[k]=x; x+=colW[k]; });
-
-  doc.setFillColor(217,217,217);
-  doc.rect(mX, tableY, contentW, headRowH, 'F');
-  doc.setDrawColor(0);
-  doc.rect(mX, tableY, contentW, headRowH);
-  order.forEach(function(k){ if(k!=='N') doc.line(colX[k], tableY, colX[k], tableY+headRowH); });
-  var labels={N:'NOMBRE',M:'MATERIAL',U:'UNIDAD',C:'CANTIDAD',F:'FECHA',S:'FIRMA'};
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(8);
-  order.forEach(function(k){
-    doc.text(labels[k], colX[k]+colW[k]/2, tableY+headRowH/2+1.2, {align:'center'});
-  });
-
-  var bottomLimit=pageH-mY;
-  var availH=bottomLimit-(tableY+headRowH);
-  var idealRows=30;
-  var rowH=availH/idealRows;
-  var minRowH=6.2;
-  if(rowH<minRowH) rowH=minRowH;
-  var maxRowsFit=Math.floor(availH/rowH);
-  var numRows=Math.max(maxRowsFit, items.length||0);
-  if(items.length>maxRowsFit){
-    numRows=items.length;
-    rowH=availH/numRows;
-  }
-
-  doc.setFont('helvetica','normal');
-  doc.setFontSize(9);
-  var rowY=tableY+headRowH;
-  for(var i=0;i<numRows;i++){
-    doc.rect(mX, rowY, contentW, rowH);
-    order.forEach(function(k){ if(k!=='N') doc.line(colX[k], rowY, colX[k], rowY+rowH); });
-    var it=items[i];
-    if(it){
-      var midY=rowY+rowH/2+1.1;
-      if(it.nombre) doc.text(_fitText(doc,it.nombre,colW.N-3), colX.N+colW.N/2, midY, {align:'center'});
-      if(it.material) doc.text(_fitText(doc,it.material,colW.M-4), colX.M+2, midY);
-      if(it.unidad) doc.text(_fitText(doc,it.unidad,colW.U-3), colX.U+colW.U/2, midY, {align:'center'});
-      if(it.cantidad!=null&&it.cantidad!=='') doc.text(_fitText(doc,it.cantidad,colW.C-3), colX.C+colW.C/2, midY, {align:'center'});
-    }
-    rowY+=rowH;
-  }
-
+  var logoImg=IMZA_MAT_LOGO_B64?'<div style="width:66px;height:92px;overflow:hidden;margin:0 auto;display:flex;align-items:center;justify-content:center;"><img src="'+IMZA_MAT_LOGO_B64+'" style="max-width:100%;max-height:100%;width:auto;height:auto;display:block;"></div>':'<div style="font-weight:900;font-size:16px;letter-spacing:.06em">IMZA</div>';
   var pdfName=('LISTA_DE_MATERIALES_'+(p.folio||'')+'_'+(p.nombre||'')).replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_\-]/g,'');
-  doc.save(pdfName+'.pdf');
+  var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+pdfName+'</title><style>'+
+    '*{margin:0;padding:0;box-sizing:border-box;}'+
+    'html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:Arial,Helvetica,sans-serif;color:#000;}'+
+    '.pageguard{width:100%;max-width:1000px;margin:0 auto;height:277mm;max-height:277mm;overflow:hidden;}'+
+    '.page{padding:14px;}'+
+    'table{width:100%;border-collapse:collapse;table-layout:fixed;}'+
+    '.top{border:1px solid #000;}'+
+    '.top td{vertical-align:middle;}'+
+    '.logo-cell{width:9.6%;text-align:center;padding:10px 4px;overflow:hidden;}'+
+    '.info-cell{width:75.1%;font-size:17px;color:#111;padding:18px 26px;border-left:1px solid #000;line-height:1.5;text-align:center;vertical-align:middle;}'+
+    '.fecha-cell{width:15.3%;padding:0;vertical-align:top;border-left:1px solid #000;}'+
+    '.fecha-lbl-inner{background:#d9d9d9;font-weight:700;font-size:13px;text-align:center;padding:10px 6px;border-bottom:1px solid #000;line-height:1.4;}'+
+    '.fecha-val-inner{text-align:center;font-size:17px;font-weight:700;padding:22px 6px;min-height:56px;}'+
+    '.titlebar{background:#d9d9d9;font-weight:700;font-size:16px;text-align:center;padding:11px;letter-spacing:.03em;margin:16px 5.5%;}'+
+    '.meta{border:1px solid #000;}'+
+    '.meta td{border-left:1px solid #000;padding:11px 12px;font-size:15px;line-height:1.4;}'+
+    '.meta td:first-child{border-left:none;}'+
+    '.matable{border:1px solid #000;border-top:none;}'+
+    '.matable th{background:#d9d9d9;border:1px solid #000;padding:7px 2px;font-size:9.5px;text-transform:uppercase;text-align:center;vertical-align:middle;line-height:1.15;word-break:break-word;overflow-wrap:break-word;overflow:hidden;hyphens:auto;}'+
+    '.matable td{border:1px solid #000;padding:11px 3px;font-size:12px;text-align:center;word-break:break-word;overflow-wrap:break-word;overflow:hidden;}'+
+    '.colN{width:17%}.colM{width:42%}.colU{width:8%}.colC{width:10%}.colF{width:11%}.colS{width:12%}'+
+    '@media print{@page{size:A4 portrait;margin:10mm}.matable tr{page-break-inside:avoid;}}'+
+    '</style></head><body><div class="pageguard"><div class="page">'+
+    '<table class="top">'+
+      '<tr>'+
+        '<td class="logo-cell">'+logoImg+'</td>'+
+        '<td class="info-cell"><b>'+(p.folio?'['+p.folio+'] ':'')+(p.nombre||'')+'</b></td>'+
+        '<td class="fecha-cell">'+
+          '<div class="fecha-lbl-inner">FECHA DE INICIO</div>'+
+          '<div class="fecha-val-inner">'+fechaInicio+'</div>'+
+        '</td>'+
+      '</tr>'+
+    '</table>'+
+    '<div class="titlebar">FORMATO PARA ENTREGA DE MATERIAL</div>'+
+    '<table class="meta">'+
+      '<tr><td style="width:57%">LIDER DE PROYECTO: <b>'+(p.lider||'')+'</b></td><td style="width:43%">SUPERVISOR IMZA: <b>'+(md.supervisor||'')+'</b></td></tr>'+
+    '</table>'+
+    '<table class="matable">'+
+      '<tr><th class="colN">NOMBRE</th><th class="colM">MATERIAL</th><th class="colU">UNIDAD</th><th class="colC">CANTIDAD</th><th class="colF">FECHA</th><th class="colS">FIRMA</th></tr>'+
+      rowsHtml+
+    '</table>'+
+  '</div></div></body></html>';
+  _printBlob(pdfName, new Blob([html],{type:'text/html;charset=utf-8'}));
 }
+
 
 // Botón de materiales: click corto = generar PDF directo; mantener presionado = editar lista
 var _matPressTimer=null, _matLongPress=false;
