@@ -604,7 +604,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v5';
+    const CACHE='imza-shell-v6';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1383,6 +1383,7 @@ if('serviceWorker' in navigator){
         <div style="font-size:11px;color:var(--txt3);margin-top:3px">Se toma automáticamente del proyecto. Para cambiarlo, edita el proyecto.</div>
       </div>
       <div class="fg"><label class="fl">Supervisor IMZA</label><input type="text" class="fi" id="mat-sup" placeholder="Nombre del supervisor"></div>
+      <div class="fg"><label class="fl">Renglones en blanco al imprimir</label><input type="number" class="fi" id="mat-blankrows" placeholder="18" min="4" max="40"><div style="font-size:11px;color:var(--txt3);margin-top:5px;line-height:1.5">Si el PDF te genera 2 hojas en tu celular, baja este número (por ejemplo a 12) y vuelve a generarlo. Se guarda para la próxima vez.</div></div>
       <div class="sec" style="margin:6px 0 8px"><div class="sec-lbl">Materiales</div></div>
       <div id="mat-list"></div>
       <button class="bfull bghost" onclick="addMatRow()" style="margin-bottom:16px">+ Añadir material</button>
@@ -1495,7 +1496,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-09-17-2300-css-var-scale-fix';
+var IMZA_BUILD='B-2026-09-17-2310-renglones-ajustables';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -2861,6 +2862,7 @@ function openMatM(id){
   document.getElementById('mat-lider-view').textContent=p.lider||'— (sin líder asignado) —';
   var md=p.materiales||{};
   document.getElementById('mat-sup').value=md.supervisor||'';
+  document.getElementById('mat-blankrows').value=md.blankRows||18;
   var items=(md.items&&md.items.length)?md.items:[{}];
   document.getElementById('mat-list').innerHTML=items.map(matRow).join('');
   openS('sov-materiales');
@@ -2887,6 +2889,7 @@ function saveMateriales(silent){
   }
   p.materiales={
     supervisor:(document.getElementById('mat-sup').value||'').trim(),
+    blankRows:Math.max(4,Math.min(40,parseInt(document.getElementById('mat-blankrows').value,10)||18)),
     items:collectMatItems()
   };
   p._upd=Date.now();
@@ -2909,7 +2912,8 @@ function quickGenMaterialesPDF(id){
 function _buildAndPrintMaterialesPdf(p){
   var md=p.materiales||{items:[]};
   var items=md.items||[];
-  var NUM_ROWS=Math.max(items.length,26);
+  var blankRows=md.blankRows||18;
+  var NUM_ROWS=Math.max(items.length,blankRows);
   var rowsHtml='';
   for(var i=0;i<NUM_ROWS;i++){
     var it=items[i]||{};
