@@ -2975,17 +2975,25 @@ function _buildAndPrintMaterialesPdf(p){
         'document.body.removeChild(probe);'+
         'var root=document.getElementById("pdfRoot");'+
         'var outer=document.getElementById("pdfOuter");'+
-        'var rect=root.getBoundingClientRect();'+
-        'var contentH=rect.height, contentW=rect.width;'+
-        'var outerW=outer.getBoundingClientRect().width;'+
+        'var contentH=root.getBoundingClientRect().height;'+
+        'var supportsZoom=("zoom" in document.documentElement.style);'+
         'if(contentH>pageH&&contentH>0&&pageH>0){'+
           'var scale=pageH/contentH;'+
-          'root.style.transformOrigin="top left";'+
-          'root.style.transform="scale("+scale+")";'+
-          'var scaledW=contentW*scale, scaledH=contentH*scale;'+
-          'outer.style.height=scaledH+"px";'+
-          'var leftGap=Math.max(0,(outerW-scaledW)/2);'+
-          'root.style.marginLeft=leftGap+"px";'+
+          'if(supportsZoom){'+
+            // "zoom" reduce el tamaño REAL de la caja (no solo la vista, como
+            // "transform"), así Safari/Chrome sí lo toman en cuenta al decidir
+            // cuántas hojas necesita para imprimir.
+            'root.style.zoom=String(scale);'+
+            'outer.style.height=root.getBoundingClientRect().height+"px";'+
+          '}else{'+
+            'var outerW=outer.getBoundingClientRect().width;'+
+            'var contentW=root.getBoundingClientRect().width;'+
+            'root.style.transformOrigin="top left";'+
+            'root.style.transform="scale("+scale+")";'+
+            'var scaledW=contentW*scale, scaledH=contentH*scale;'+
+            'outer.style.height=scaledH+"px";'+
+            'root.style.marginLeft=Math.max(0,(outerW-scaledW)/2)+"px";'+
+          '}'+
         '}else{'+
           'outer.style.height=contentH+"px";'+
         '}'+
