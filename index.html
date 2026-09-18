@@ -2910,7 +2910,7 @@ function genMaterialesPDF(){
     '</tr>';
   }
   var fechaInicio=p.inicio?fmtDate(p.inicio):'';
-  var logoImg=IMZA_MAT_LOGO_B64?'<img src="'+IMZA_MAT_LOGO_B64+'" style="display:block;margin:0 auto;width:100%;max-width:100px;height:auto;">':'<div style="font-weight:900;font-size:16px;letter-spacing:.06em">IMZA</div>';
+  var logoImg=IMZA_MAT_LOGO_B64?'<div style="width:66px;height:92px;overflow:hidden;margin:0 auto;display:flex;align-items:center;justify-content:center;"><img src="'+IMZA_MAT_LOGO_B64+'" style="max-width:100%;max-height:100%;width:auto;height:auto;display:block;"></div>':'<div style="font-weight:900;font-size:16px;letter-spacing:.06em">IMZA</div>';
   var pdfName=('LISTA_DE_MATERIALES_'+(p.folio||'')+'_'+(p.nombre||'')).replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_\-]/g,'');
   var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+pdfName+'</title><style>'+
     '*{margin:0;padding:0;box-sizing:border-box;}'+
