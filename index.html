@@ -604,7 +604,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v3';
+    const CACHE='imza-shell-v4';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1030,6 +1030,11 @@ if('serviceWorker' in navigator){
           </div>
         </div>
         <div id="diag-output" style="font-size:11px;color:var(--txt2);font-family:monospace;line-height:1.8;white-space:pre-wrap;background:var(--card2);border-radius:8px;padding:10px;min-height:40px"></div>
+      </div>
+
+      <!-- VERSIÓN DE LA APP (visible siempre, para comparar entre dispositivos) -->
+      <div style="text-align:center;padding:16px 0 8px;font-size:12px;color:var(--txt3)">
+        Versión de la app: <b style="color:var(--txt2);font-family:monospace" id="app-build-label"></b>
       </div>
 
     </div>
@@ -1490,6 +1495,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
+var IMZA_BUILD='B-2026-09-17-2245-materiales-zoom-fix';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -2965,6 +2971,7 @@ function _buildAndPrintMaterialesPdf(p){
       '<tr><th class="colN">NOMBRE</th><th class="colM">MATERIAL</th><th class="colU">UNIDAD</th><th class="colC">CANTIDAD</th><th class="colF">FECHA</th><th class="colS">FIRMA</th></tr>'+
       rowsHtml+
     '</table>'+
+    '<div style="text-align:right;font-size:7px;color:#999;margin-top:2mm;">'+(typeof IMZA_BUILD!=='undefined'?IMZA_BUILD:'')+'</div>'+
     '</div></div>'+
     '<'+'script>(function(){'+
       'try{'+
@@ -4108,7 +4115,12 @@ function _printBlob(pdfName, blob){
         var orig=document.title;
         document.title=pdfName;
         fr.contentWindow.focus();
-        fr.contentWindow.print();
+        // pequeña espera: le da tiempo al navegador (Safari en particular) de
+        // aplicar por completo cualquier ajuste de tamaño hecho por scripts
+        // dentro del documento antes de que decida cuántas hojas necesita.
+        setTimeout(function(){
+          try{ fr.contentWindow.print(); }catch(e2){}
+        }, 150);
         var restore=function(){ document.title=orig; };
         window.addEventListener('focus', restore, {once:true});
         setTimeout(restore, 15000);
@@ -9556,6 +9568,9 @@ function inicioToggleDone(id){
   // Aplicar nombre también al splash
   var splash=document.getElementById('splash-appname');
   if(splash) splash.textContent=n;
+  // Mostrar versión de la app (para comparar entre dispositivos)
+  var bl=document.getElementById('app-build-label');
+  if(bl) bl.textContent=IMZA_BUILD;
 })();
 </script>
 
