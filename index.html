@@ -604,7 +604,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v6';
+    const CACHE='imza-shell-v7';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1383,7 +1383,8 @@ if('serviceWorker' in navigator){
         <div style="font-size:11px;color:var(--txt3);margin-top:3px">Se toma automáticamente del proyecto. Para cambiarlo, edita el proyecto.</div>
       </div>
       <div class="fg"><label class="fl">Supervisor IMZA</label><input type="text" class="fi" id="mat-sup" placeholder="Nombre del supervisor"></div>
-      <div class="fg"><label class="fl">Renglones en blanco al imprimir</label><input type="number" class="fi" id="mat-blankrows" placeholder="18" min="4" max="40"><div style="font-size:11px;color:var(--txt3);margin-top:5px;line-height:1.5">Si el PDF te genera 2 hojas en tu celular, baja este número (por ejemplo a 12) y vuelve a generarlo. Se guarda para la próxima vez.</div></div>
+      <div class="fg"><label class="fl">Renglones en blanco al imprimir</label><input type="number" class="fi" id="mat-blankrows" placeholder="14" min="4" max="40"><div style="font-size:11px;color:var(--txt3);margin-top:5px;line-height:1.5">Si el PDF te genera 2 hojas en tu celular, baja este número (por ejemplo a 12) y vuelve a generarlo. Se guarda para la próxima vez.</div></div>
+      <div class="fg"><label class="fl">Tamaño de renglón</label><input type="number" class="fi" id="mat-rowscale" placeholder="1.0" min="0.7" max="2.5" step="0.05"><div style="font-size:11px;color:var(--txt3);margin-top:5px;line-height:1.5">Si la tabla te queda con mucho espacio en blanco al final, sube este número poco a poco (ej. 1.2, luego 1.4) y vuelve a generar. Si con eso se pasa de una hoja, bájalo de nuevo. Se guarda para la próxima vez.</div></div>
       <div class="sec" style="margin:6px 0 8px"><div class="sec-lbl">Materiales</div></div>
       <div id="mat-list"></div>
       <button class="bfull bghost" onclick="addMatRow()" style="margin-bottom:16px">+ Añadir material</button>
@@ -1496,7 +1497,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-09-17-2310-renglones-ajustables';
+var IMZA_BUILD='B-2026-09-17-2315-tamano-renglon-ajustable';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -2862,7 +2863,8 @@ function openMatM(id){
   document.getElementById('mat-lider-view').textContent=p.lider||'— (sin líder asignado) —';
   var md=p.materiales||{};
   document.getElementById('mat-sup').value=md.supervisor||'';
-  document.getElementById('mat-blankrows').value=md.blankRows||18;
+  document.getElementById('mat-blankrows').value=md.blankRows||14;
+  document.getElementById('mat-rowscale').value=md.rowScale||1.0;
   var items=(md.items&&md.items.length)?md.items:[{}];
   document.getElementById('mat-list').innerHTML=items.map(matRow).join('');
   openS('sov-materiales');
@@ -2889,7 +2891,8 @@ function saveMateriales(silent){
   }
   p.materiales={
     supervisor:(document.getElementById('mat-sup').value||'').trim(),
-    blankRows:Math.max(4,Math.min(40,parseInt(document.getElementById('mat-blankrows').value,10)||18)),
+    blankRows:Math.max(4,Math.min(40,parseInt(document.getElementById('mat-blankrows').value,10)||14)),
+    rowScale:Math.max(0.7,Math.min(2.5,parseFloat(document.getElementById('mat-rowscale').value)||1.0)),
     items:collectMatItems()
   };
   p._upd=Date.now();
@@ -2912,7 +2915,8 @@ function quickGenMaterialesPDF(id){
 function _buildAndPrintMaterialesPdf(p){
   var md=p.materiales||{items:[]};
   var items=md.items||[];
-  var blankRows=md.blankRows||18;
+  var blankRows=md.blankRows||14;
+  var rowScale=md.rowScale||1.0;
   var NUM_ROWS=Math.max(items.length,blankRows);
   var rowsHtml='';
   for(var i=0;i<NUM_ROWS;i++){
@@ -2936,9 +2940,15 @@ function _buildAndPrintMaterialesPdf(p){
   // variable — lo que sí cambia el tamaño REAL de caja en cualquier
   // navegador, porque font-size/padding son propiedades básicas que ningún
   // motor puede "fingir" soportar.
+  // TODO el documento están ligados a una variable CSS (--s). Su valor base
+  // viene directo de lo que el usuario ajustó y probó en su propio celular
+  // ("Tamaño de renglón") — no depende de que el navegador ejecute
+  // JavaScript para funcionar (algunos, como el de "Compartir > PDF" en
+  // iPhone, no lo hacen). El script de abajo intenta afinarlo más si SÍ
+  // puede ejecutar JS, pero el tamaño ya es correcto sin él.
   var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'+pdfName+'</title><style>'+
     '*{margin:0;padding:0;box-sizing:border-box;}'+
-    'html{--s:1;}'+
+    'html{--s:'+rowScale+';}'+
     'html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:Arial,Helvetica,sans-serif;color:#000;}'+
     '#pdfOuter{overflow:hidden;}'+
     '#pdfRoot{width:100%;padding:calc(var(--s) * 3mm) calc(var(--s) * 4mm);}'+
@@ -3000,7 +3010,8 @@ function _buildAndPrintMaterialesPdf(p){
           // Reduce la variable --s en pasos hasta que quepa (calc() con
           // font-size/padding SÍ cambia el tamaño real de caja en cualquier
           // motor, a diferencia de zoom/transform).
-          'var s=1, tries=0;'+
+          'var startS=parseFloat(getComputedStyle(html).getPropertyValue("--s"))||1;'+
+          'var s=startS, tries=0;'+
           'while(contentH>pageH&&tries<12){'+
             's=s*(pageH/contentH)*0.985;'+ // 0.985: margen extra por si acaso
             'if(s<0.25){ s=0.25; }'+
