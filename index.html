@@ -604,7 +604,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v8';
+    const CACHE='imza-shell-v9';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1497,7 +1497,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-09-17-2320-default-36-renglones';
+var IMZA_BUILD='B-2026-09-17-2330-logo-centrado';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -2931,7 +2931,7 @@ function _buildAndPrintMaterialesPdf(p){
     '</tr>';
   }
   var fechaInicio=p.inicio?fmtDate(p.inicio):'';
-  var logoImg=IMZA_MAT_LOGO_B64?'<div style="width:66px;height:92px;overflow:hidden;margin:0 auto;display:flex;align-items:center;justify-content:center;"><img src="'+IMZA_MAT_LOGO_B64+'" style="max-width:100%;max-height:100%;width:auto;height:auto;display:block;"></div>':'<div style="font-weight:900;font-size:16px;letter-spacing:.06em">IMZA</div>';
+  var logoImg=IMZA_MAT_LOGO_B64?'<div style="width:66px;height:92px;overflow:hidden;margin:0 auto;display:inline-flex;align-items:center;justify-content:center;"><img src="'+IMZA_MAT_LOGO_B64+'" style="max-width:100%;max-height:100%;width:auto;height:auto;display:block;margin:0 auto;"></div>':'<div style="font-weight:900;font-size:16px;letter-spacing:.06em">IMZA</div>';
   var pdfName=('LISTA_DE_MATERIALES_'+(p.folio||'')+'_'+(p.nombre||'')).replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_\-]/g,'');
   // ── En vez de "zoom" o "transform" (que Safari en iPhone dice soportar pero
   // en la práctica ignora al paginar), el tamaño de fuente y los espacios de
