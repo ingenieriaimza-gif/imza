@@ -606,7 +606,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v21';
+    const CACHE='imza-shell-v22';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1509,7 +1509,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-09-22-1420-dropdown-stats-como-historial';
+var IMZA_BUILD='B-2026-09-22-1710-dropdown-proyecto-orden-reciente';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -2551,21 +2551,30 @@ function openActM(eid=null,edate=null){
   sel.innerHTML='<option value="">— Selecciona proyecto —</option>';
   const listBox=document.getElementById('a-p-list');
   let listHtml='';
-  S.proyectos.forEach((p,i)=>{
-    // Al editar, mostrar siempre el proyecto actual aunque esté completado
-    // Al crear, excluir proyectos completados
+  // Elegibles primero (mismo filtro de siempre), luego ordenados del más
+  // reciente al más antiguo según su última actividad — igual que Historial.
+  const eligibles=S.proyectos.filter(p=>{
     if(p.estado==='completado' && eid){
       const existingAct=(S.actividades[edate||S.date]||[]).find(a=>a.id===eid);
-      if(!existingAct||existingAct.proyectoId!==p.id) return;
+      return existingAct && existingAct.proyectoId===p.id;
     } else if(p.estado==='completado') {
-      return;
+      return false;
     }
+    return true;
+  });
+  const sortedProjs=[...eligibles].sort((a,b)=>{
+    const ua=projQuickStats(a.id).ultimo||'';
+    const ub=projQuickStats(b.id).ultimo||'';
+    return ub.localeCompare(ua);
+  });
+  sortedProjs.forEach(p=>{
+    const i=S.proyectos.indexOf(p); // índice original: mantiene el código A# estable
     const pausadoTag=p.estado==='pausado'?' <span style="color:#f0b43c;font-weight:700">(Pausado)</span>':'';
     sel.innerHTML+=`<option value="${p.id}">A${i+1} — ${p.nombre}${p.lider?' — Líder: '+p.lider:''}${p.estado==='pausado'?' (Pausado)':''}</option>`;
     // Fila del desplegable personalizado: mismo look que en Historial — código
     // con su color de proyecto, nombre en ese mismo color, y líder en su
     // propia línea con ícono y en negritas, para que se distinga bien.
-    const projColor=PC[S.proyectos.indexOf(p)%PC.length];
+    const projColor=PC[i%PC.length];
     listHtml+=`<div onclick="pickProjOpt('${p.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--line);border-left:3px solid ${projColor}">
       <div style="width:30px;height:30px;border-radius:8px;background:${projColor}22;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:${projColor};flex-shrink:0">A${i+1}</div>
       <div style="min-width:0;flex:1">
