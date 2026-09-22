@@ -293,6 +293,8 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 .sov { position:fixed; inset:0; background:rgba(0,0,0,0.65); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); z-index:100; display:none; align-items:flex-end; }
 .sov.open { display:flex; }
 .sheet { background:var(--card); border-radius:24px 24px 0 0; width:100%; max-width:430px; margin:0 auto; max-height:93dvh; display:flex; flex-direction:column; padding-bottom:var(--safe-b); animation:sup 0.3s cubic-bezier(0.32,0.72,0,1); }
+/* Variante que siempre llega arriba (no se achica al tamaño del contenido) */
+.sheet-tall { height:93dvh; }
 @keyframes sup { from{transform:translateY(100%)} to{transform:translateY(0)} }
 .shandle { width:36px; height:4px; border-radius:2px; background:var(--line2); margin:10px auto 0; flex-shrink:0; }
 .shdr { display:flex; align-items:center; justify-content:space-between; padding:16px 20px 0; flex-shrink:0; }
@@ -604,7 +606,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v17';
+    const CACHE='imza-shell-v18';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1300,7 +1302,7 @@ if('serviceWorker' in navigator){
 
 <!-- SHEET ACTIVIDAD -->
 <div class="sov" id="sov-act">
-  <div class="sheet">
+  <div class="sheet sheet-tall">
     <div class="shandle"></div>
     <div class="shdr">
       <div class="shtitle" id="sact-title">Nueva actividad</div>
@@ -1507,7 +1509,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-09-22-1300-dropdown-proyecto-lider';
+var IMZA_BUILD='B-2026-09-22-1355-sheet-nueva-actividad-alta';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
