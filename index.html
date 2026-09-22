@@ -604,7 +604,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v14';
+    const CACHE='imza-shell-v15';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1497,7 +1497,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-09-22-1230-lider-mas-visible';
+var IMZA_BUILD='B-2026-09-22-1245-busqueda-lider-completa';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -3737,9 +3737,20 @@ function histBuildIndex(){
   (S.proyectos||[]).forEach(p=>{
     const lider=(p.lider||'').trim();
     idx.push({type:'proyecto', id:p.id, label:p.nombre, sub:(p.folio?('Folio '+p.folio):'Proyecto')+(p.estado?(' · '+p.estado):'')+(lider?(' · Líder: '+lider):'')});
-    if(lider){
-      idx.push({type:'lider', id:p.id, label:lider, sub:'Líder de proyecto · '+p.nombre});
-    }
+  });
+  // Líderes: una sola sugerencia por líder (agrupando por nombre normalizado),
+  // no una por cada proyecto — así seleccionarla trae TODOS sus proyectos.
+  const liderMap={};
+  (S.proyectos||[]).forEach(p=>{
+    const lider=(p.lider||'').trim();
+    if(!lider) return;
+    const key=histNorm(lider);
+    if(!liderMap[key]) liderMap[key]={label:lider, count:0};
+    liderMap[key].count++;
+  });
+  Object.keys(liderMap).forEach(key=>{
+    const it=liderMap[key];
+    idx.push({type:'lider', id:key, label:it.label, sub:'Líder de proyecto · '+it.count+(it.count===1?' proyecto':' proyectos')});
   });
   (S.personal||[]).forEach(p=>{
     idx.push({type:'personal', id:p.id, label:p.nombre, sub:p.cargo?('Personal · '+p.cargo):'Personal'});
@@ -3757,7 +3768,8 @@ function histBuildIndex(){
 // ¿Coincide una actividad con la búsqueda activa? (texto libre o selección precisa de una sugerencia)
 function histEntryMatches(a){
   if(histSearchSelected){
-    if(histSearchSelected.type==='proyecto'||histSearchSelected.type==='lider') return a.proyectoId===histSearchSelected.id;
+    if(histSearchSelected.type==='proyecto') return a.proyectoId===histSearchSelected.id;
+    if(histSearchSelected.type==='lider') return histNorm(gpl(a.proyectoId))===histSearchSelected.id;
     if(histSearchSelected.type==='personal') return (a.trabajadores||[]).includes(histSearchSelected.id);
     if(histSearchSelected.type==='actividad') return a.id===histSearchSelected.id;
     return true;
@@ -3819,12 +3831,11 @@ function histPickSuggestion(i){
   if(!it) return;
   const wantProj=(it.type==='proyecto'||it.type==='lider');
   if(it.type==='lider'){
-    // Selección por líder → se resuelve al proyecto que dirige, mostrando nombre del proyecto y su líder
-    const proj=S.proyectos.find(p=>p.id===it.id);
-    histSearchSelected={type:'proyecto', id:it.id};
-    histSearchTerm=(proj?proj.nombre:it.label);
+    // Selección por líder → TODOS los proyectos que dirige (activos, pausados o completados)
+    histSearchSelected={type:'lider', id:it.id};
+    histSearchTerm=it.label;
     const input=document.getElementById('hist-search-input');
-    if(input) input.value=(proj?(proj.nombre+' · Líder: '+it.label):it.label);
+    if(input) input.value=it.label;
   }else{
     histSearchSelected={type:it.type,id:it.id,date:it.date};
     histSearchTerm=it.label;
@@ -4025,6 +4036,9 @@ function rHistProj(){
   if(searchActive){
     if(histSearchSelected && histSearchSelected.type==='proyecto'){
       visibleProjects=S.proyectos.filter(p=>p.id===histSearchSelected.id);
+    }else if(histSearchSelected && histSearchSelected.type==='lider'){
+      // Todos los proyectos de ese líder, sin importar si tienen actividades registradas
+      visibleProjects=S.proyectos.filter(p=>histNorm(p.lider||'')===histSearchSelected.id);
     }else if(histSearchSelected){
       visibleProjects=S.proyectos.filter(p=>(projMap[p.id]||[]).length);
     }else{
@@ -4061,13 +4075,18 @@ function rHistProj(){
     const totalGastos=entries.reduce((s,e)=>s+sumG(e.a.gastos),0);
     const allWorkers=new Set(entries.flatMap(e=>e.a.trabajadores||[]));
     const esCompletado=proj.estado==='completado';
+    const esPausado=proj.estado==='pausado';
     const terminadoHoy=esCompletado&&proj.completadoEn===todayStr;
     const cardBorder=terminadoHoy?'border:2px solid var(--gold);box-shadow:0 0 0 3px rgba(245,207,85,0.12)':'';
+    // Insignia de estado: siempre visible en la tarjeta para diferenciar de un
+    // vistazo activo/pausado/completado (antes solo se distinguían agrupados).
     const badgeHtml=terminadoHoy
       ?`<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,207,85,0.18);color:var(--gold);border:1px solid rgba(245,207,85,0.4);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:800;white-space:nowrap;animation:pulse 2s ease infinite">✅ Terminado hoy</span>`
       :esCompletado
         ?`<span style="background:rgba(91,156,246,0.12);color:var(--blue);border:1px solid rgba(91,156,246,0.25);border-radius:100px;padding:3px 10px;font-size:10px;font-weight:700;white-space:nowrap">${proj.completadoEn?'✓ '+fmtDate(proj.completadoEn):'✓ Completado'}</span>`
-        :'';
+        :esPausado
+          ?`<span style="background:rgba(240,180,60,0.14);color:#f0b43c;border:1px solid rgba(240,180,60,0.35);border-radius:100px;padding:3px 10px;font-size:10px;font-weight:700;white-space:nowrap">⏸ Pausado</span>`
+          :`<span style="background:rgba(66,224,144,0.12);color:var(--green);border:1px solid rgba(66,224,144,0.3);border-radius:100px;padding:3px 10px;font-size:10px;font-weight:700;white-space:nowrap">● Activo</span>`;
 
     if(!entries.length){
       return`<div class="hday" style="opacity:${terminadoHoy?1:0.55};margin-bottom:6px;${cardBorder}${terminadoHoy?'background:rgba(245,207,85,0.03)':''}">
@@ -4149,7 +4168,28 @@ function rHistProj(){
   const apSubtitle = actPaus.filter(p=>p.estado==='activo').length+' activos · '+actPaus.filter(p=>p.estado==='pausado').length+' pausados';
   const compSubtitle = completados.length+' proyecto'+(completados.length!==1?'s':'')+' terminados'+(terminadosHoy?' · '+terminadosHoy+' hoy 🟡':'');
 
+  // Resumen del total encontrado cuando hay una búsqueda activa (por líder,
+  // nombre, folio, etc.) — junta activos+pausados+completados en un solo
+  // número para no tener que sumar los encabezados de los grupos a mano.
+  let searchSummaryHtml='';
+  if(searchActive){
+    const nActivos=actPaus.filter(p=>p.estado==='activo').length;
+    const nPausados=actPaus.filter(p=>p.estado==='pausado').length;
+    const nCompletados=completados.length;
+    const total=visibleProjects.length;
+    const isLider=histSearchSelected&&histSearchSelected.type==='lider';
+    searchSummaryHtml=`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--card2);border:1px solid var(--line);border-radius:var(--r2);padding:10px 14px;margin-bottom:10px">
+      <div style="font-size:13px;font-weight:700;color:var(--txt)">${isLider?'⭐ Líder: ':'🔎 '}${histEsc(histSearchTerm)} — ${total} proyecto${total!==1?'s':''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:10.5px;font-weight:700">
+        <span style="background:rgba(66,224,144,0.12);color:var(--green);border:1px solid rgba(66,224,144,0.3);border-radius:100px;padding:3px 10px">● ${nActivos} activo${nActivos!==1?'s':''}</span>
+        <span style="background:rgba(240,180,60,0.14);color:#f0b43c;border:1px solid rgba(240,180,60,0.35);border-radius:100px;padding:3px 10px">⏸ ${nPausados} pausado${nPausados!==1?'s':''}</span>
+        <span style="background:rgba(91,156,246,0.12);color:var(--blue);border:1px solid rgba(91,156,246,0.25);border-radius:100px;padding:3px 10px">✓ ${nCompletados} completado${nCompletados!==1?'s':''}</span>
+      </div>
+    </div>`;
+  }
+
   c.innerHTML =
+    searchSummaryHtml +
     buildGroup('🏗️','Activos y Pausados','var(--green)','bgr', actPaus, apSubtitle,'activos') +
     buildGroup('✅','Completados','var(--blue)','bb', completados, compSubtitle,'completados');
 
