@@ -606,7 +606,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v18';
+    const CACHE='imza-shell-v19';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1509,7 +1509,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-09-22-1355-sheet-nueva-actividad-alta';
+var IMZA_BUILD='B-2026-09-22-1400-dropdown-proyecto-full-height';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -2600,7 +2600,21 @@ function openActM(eid=null,edate=null){
 function toggleProjDrop(){
   const list=document.getElementById('a-p-list');
   if(!list) return;
-  list.style.display = list.style.display==='none' ? 'block' : 'none';
+  const opening=list.style.display==='none';
+  if(opening){
+    // Que aproveche todo el espacio disponible hasta el fondo de la hoja
+    // (no un tope fijo pequeño): calculado en el momento, según cuánto
+    // queda de pantalla debajo del botón.
+    const trigger=document.getElementById('a-p-trigger');
+    const sheet=document.querySelector('#sov-act .sheet');
+    if(trigger && sheet){
+      const trigBottom=trigger.getBoundingClientRect().bottom;
+      const sheetBottom=sheet.getBoundingClientRect().bottom;
+      const avail=Math.max(160, sheetBottom-trigBottom-16);
+      list.style.maxHeight=avail+'px';
+    }
+  }
+  list.style.display = opening ? 'block' : 'none';
 }
 function closeProjDrop(){
   const list=document.getElementById('a-p-list');
