@@ -606,7 +606,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v20';
+    const CACHE='imza-shell-v21';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1509,7 +1509,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-09-22-1410-dropdown-proyecto-colorido';
+var IMZA_BUILD='B-2026-09-22-1420-dropdown-stats-como-historial';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -2571,6 +2571,7 @@ function openActM(eid=null,edate=null){
       <div style="min-width:0;flex:1">
         <div style="font-weight:700;font-size:14px;color:${projColor}">${histEsc(p.nombre)}${pausadoTag}</div>
         ${p.lider?`<div style="font-size:12px;color:var(--txt2);margin-top:2px">👤 <b style="color:var(--txt)">${histEsc(p.lider)}</b></div>`:''}
+        ${projStatsLineHtml(p.id)}
       </div>
     </div>`;
   });
@@ -2602,6 +2603,28 @@ function openActM(eid=null,edate=null){
 // Desplegable personalizado de proyecto: mantiene el <select id="a-p"> oculto
 // como fuente de verdad (para no romper el resto del código que lee .value),
 // y encima muestra una lista con el líder bien visible, igual que en Historial.
+// Mismas estadísticas que se ven en la tarjeta de Historial (días
+// trabajados, personal, gasto y última fecha), para mostrarlas también en
+// el desplegable de proyecto al crear/editar una actividad.
+function projQuickStats(pid){
+  const dates=new Set(); const workers=new Set(); let gastos=0; let ultimo=null;
+  Object.keys(S.actividades||{}).forEach(date=>{
+    (S.actividades[date]||[]).forEach(a=>{
+      if(a.proyectoId!==pid) return;
+      dates.add(date);
+      (a.trabajadores||[]).forEach(w=>workers.add(w));
+      gastos+=sumG(a.gastos);
+      if(!ultimo||date>ultimo) ultimo=date;
+    });
+  });
+  return {dias:dates.size, pers:workers.size, gastos, ultimo};
+}
+function projStatsLineHtml(pid){
+  const st=projQuickStats(pid);
+  const base='font-size:11px;color:var(--txt3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+  if(!st.dias && !st.pers && !st.ultimo) return '<div style="'+base+'">Sin actividades registradas</div>';
+  return '<div style="'+base+'">'+st.dias+'d trabajados · '+st.pers+' pers.'+(st.gastos?' · $'+st.gastos.toLocaleString():'')+(st.ultimo?' · último: '+fmtDate(st.ultimo):'')+'</div>';
+}
 function toggleProjDrop(){
   const list=document.getElementById('a-p-list');
   if(!list) return;
@@ -2648,6 +2671,7 @@ function updateProjTriggerLabel(){
     '<span style="min-width:0;flex:1">'+
     '<div style="font-weight:700;font-size:14px;color:'+projColor+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+histEsc(p.nombre)+pausadoTag+'</div>'+
     (p.lider?'<div style="font-size:12px;color:var(--txt2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">👤 <b style="color:var(--txt)">'+histEsc(p.lider)+'</b></div>':'')+
+    projStatsLineHtml(p.id)+
     '</span></div>';
 }
 document.addEventListener('click',function(e){
