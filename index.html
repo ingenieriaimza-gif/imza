@@ -604,7 +604,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v15';
+    const CACHE='imza-shell-v17';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1310,7 +1310,17 @@ if('serviceWorker' in navigator){
       <div class="sdots"><div class="sd active" id="sd1"></div><div class="sd" id="sd2"></div><div class="sd" id="sd3"></div><div class="sd" id="sd4"></div><div class="sd" id="sd5"></div></div>
       <div class="slabel" id="slbl">Paso 1 de 5 — Proyecto</div>
       <div id="as1">
-        <div class="fg"><label class="fl">Proyecto *</label><select class="fsel" id="a-p"></select></div>
+        <div class="fg">
+          <label class="fl">Proyecto *</label>
+          <div id="a-p-wrap" style="position:relative">
+            <button type="button" class="fsel" id="a-p-trigger" onclick="toggleProjDrop()" style="display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;cursor:pointer">
+              <span id="a-p-trigger-txt" style="min-width:0;flex:1"><span style="color:var(--txt3)">— Selecciona proyecto —</span></span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0;color:var(--txt3)"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="a-p-list" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:40;background:var(--card2);border:1px solid var(--line);border-radius:12px;overflow-y:auto;max-height:320px;box-shadow:0 8px 24px rgba(0,0,0,0.35)"></div>
+          </div>
+          <select id="a-p" style="display:none"></select>
+        </div>
         <div class="fg"><label class="fl">Notas del día</label><textarea class="fta" id="a-n" placeholder="Observaciones del día..."></textarea></div>
         <button class="bfull bgold" onclick="aS(2)">Continuar →</button>
       </div>
@@ -1497,7 +1507,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-09-22-1245-busqueda-lider-completa';
+var IMZA_BUILD='B-2026-09-22-1300-dropdown-proyecto-lider';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -2537,6 +2547,8 @@ function openActM(eid=null,edate=null){
   document.getElementById('sact-title').textContent=eid?'Editar actividad':'Nueva actividad';
   const sel=document.getElementById('a-p');
   sel.innerHTML='<option value="">— Selecciona proyecto —</option>';
+  const listBox=document.getElementById('a-p-list');
+  let listHtml='';
   S.proyectos.forEach((p,i)=>{
     // Al editar, mostrar siempre el proyecto actual aunque esté completado
     // Al crear, excluir proyectos completados
@@ -2546,12 +2558,21 @@ function openActM(eid=null,edate=null){
     } else if(p.estado==='completado') {
       return;
     }
-    sel.innerHTML+=`<option value="${p.id}">A${i+1} — ${p.nombre}${p.estado==='pausado'?' (Pausado)':''}</option>`;
+    const pausadoTag=p.estado==='pausado'?' <span style="color:#f0b43c;font-weight:700">(Pausado)</span>':'';
+    sel.innerHTML+=`<option value="${p.id}">A${i+1} — ${p.nombre}${p.lider?' — Líder: '+p.lider:''}${p.estado==='pausado'?' (Pausado)':''}</option>`;
+    // Fila del desplegable personalizado: mismo look que en Historial — líder
+    // en su propia línea, con ícono y en negritas, para que se distinga bien.
+    listHtml+=`<div onclick="pickProjOpt('${p.id}')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--line)">
+      <div style="font-weight:700;font-size:14px;color:var(--txt)">A${i+1} — ${histEsc(p.nombre)}${pausadoTag}</div>
+      ${p.lider?`<div style="font-size:12px;color:var(--txt2);margin-top:2px">👤 <b style="color:var(--txt)">${histEsc(p.lider)}</b></div>`:''}
+    </div>`;
   });
+  if(listBox) listBox.innerHTML=listHtml;
   // Actualizar título del sheet al instante cuando cambia el proyecto
   sel.onchange=function(){
     const nombre=this.value?gpn(this.value):'';
     document.getElementById('sact-title').textContent=nombre||(eid?'Editar actividad':'Nueva actividad');
+    updateProjTriggerLabel();
   };
   document.getElementById('a-n').value='';
   document.getElementById('ml').innerHTML=mRow();
@@ -2567,8 +2588,46 @@ function openActM(eid=null,edate=null){
       if(act.gastos?.length) document.getElementById('el').innerHTML=act.gastos.map(g=>eRow(g)).join('');
     }
   }
+  updateProjTriggerLabel();
   shStep(1); openS('sov-act');
 }
+
+// Desplegable personalizado de proyecto: mantiene el <select id="a-p"> oculto
+// como fuente de verdad (para no romper el resto del código que lee .value),
+// y encima muestra una lista con el líder bien visible, igual que en Historial.
+function toggleProjDrop(){
+  const list=document.getElementById('a-p-list');
+  if(!list) return;
+  list.style.display = list.style.display==='none' ? 'block' : 'none';
+}
+function closeProjDrop(){
+  const list=document.getElementById('a-p-list');
+  if(list) list.style.display='none';
+}
+function pickProjOpt(id){
+  const sel=document.getElementById('a-p');
+  if(!sel) return;
+  sel.value=id;
+  if(typeof sel.onchange==='function') sel.onchange.call(sel);
+  updateProjTriggerLabel();
+  closeProjDrop();
+}
+function updateProjTriggerLabel(){
+  const sel=document.getElementById('a-p');
+  const box=document.getElementById('a-p-trigger-txt');
+  if(!sel||!box) return;
+  const id=sel.value;
+  const p=id?S.proyectos.find(x=>x.id===id):null;
+  if(!p){ box.innerHTML='<span style="color:var(--txt3)">— Selecciona proyecto —</span>'; return; }
+  const i=S.proyectos.indexOf(p);
+  const pausadoTag=p.estado==='pausado'?' <span style="color:#f0b43c;font-weight:700">(Pausado)</span>':'';
+  box.innerHTML='<div style="font-weight:700;font-size:14px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">A'+(i+1)+' — '+histEsc(p.nombre)+pausadoTag+'</div>'+
+    (p.lider?'<div style="font-size:12px;color:var(--txt2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">👤 <b style="color:var(--txt)">'+histEsc(p.lider)+'</b></div>':'');
+}
+document.addEventListener('click',function(e){
+  const wrap=document.getElementById('a-p-wrap');
+  if(wrap && !wrap.contains(e.target)) closeProjDrop();
+});
 
 function mRow(){return`<div class="mrow"><input type="text" class="fi" placeholder="Ej: Excavadora CAT 320"><button class="ibtn ibd" onclick="dM(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`;}
 function eRow(g={}){return`<div class="ecard"><div class="frow" style="margin-bottom:8px"><div class="fg" style="margin:0"><label class="fl" style="margin-bottom:5px">Descripción</label><input type="text" class="fi" placeholder="Ej: Almuerzo" value="${g.desc||''}"></div><div class="fg" style="margin:0"><label class="fl" style="margin-bottom:5px">Tipo</label><select class="fsel">${['Comida','Transporte','Herramienta','Otro'].map(t=>`<option ${g.tipo===t?'selected':''}>${t}</option>`).join('')}</select></div></div><div class="fg" style="margin-bottom:8px"><label class="fl" style="margin-bottom:5px">Monto $</label><input type="number" class="fi" placeholder="0" min="0" value="${g.monto||''}"></div><button class="edel" onclick="this.closest('.ecard').remove()">Eliminar gasto</button></div>`;}
