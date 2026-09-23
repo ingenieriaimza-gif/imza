@@ -321,8 +321,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 .frow { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 
 /* WORKER GRID */
-.wgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; max-height:250px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
-.wgrid::-webkit-scrollbar { display:none; }
+.wgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .wc { background:var(--card2); border:1.5px solid var(--line); border-radius:var(--r2); padding:12px; cursor:pointer; user-select:none; position:relative; transition:all 0.15s; }
 .wc:active { opacity:0.8; }
 .wc.sel { border-color:var(--gold); background:rgba(240,201,74,0.08); }
@@ -606,7 +605,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v22';
+    const CACHE='imza-shell-v24';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1509,7 +1508,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-09-22-1710-dropdown-proyecto-orden-reciente';
+var IMZA_BUILD='B-2026-09-23-0000-fix-grid-personal-media-pantalla';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -1733,10 +1732,20 @@ function sbFetch(path, opts){
 }
 
 // Renovar token usando el refresh_token guardado
+// IMPORTANTE: Supabase invalida (rota) el refresh_token en cuanto se usa una
+// vez. Si dos peticiones expiran casi al mismo tiempo (típico al reabrir la
+// app tras un rato: se disparan varias llamadas en paralelo) y cada una
+// intenta renovar por su cuenta, la segunda usa un refresh_token que la
+// primera ya consumió — Supabase lo trata como reuso y CIERRA toda la
+// sesión, forzando volver a iniciar sesión. Por eso todas las renovaciones
+// concurrentes comparten una sola promesa (_refreshInFlight) en vez de
+// disparar una petición de renovación cada una.
+var _refreshInFlight=null;
 function refreshAuthToken(){
+  if(_refreshInFlight) return _refreshInFlight;
   var refreshToken=localStorage.getItem('cp4_refresh_token');
   if(!refreshToken) return Promise.resolve(null);
-  return fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/token?grant_type=refresh_token',{
+  _refreshInFlight=fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/token?grant_type=refresh_token',{
     method:'POST',
     credentials:'omit',
     headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
@@ -1770,7 +1779,11 @@ function refreshAuthToken(){
       return data.access_token;
     }
     return null;
-  }).catch(function(){ return null; });
+  }).catch(function(){ return null; }).then(function(result){
+    _refreshInFlight=null;
+    return result;
+  });
+  return _refreshInFlight;
 }
 
 // Forzar re-login cuando el token no se puede renovar
@@ -9031,10 +9044,19 @@ document.addEventListener('visibilitychange',function(){
     if(!_isOnline) return;
     _remoteUpdatedAt='';
     setTimeout(function(){
-      pullFromCloud().then(function(updated){
-        updateSyncUI(true);
-        if(updated) rAll(true);
-      }).catch(function(){});
+      // Si el token ya venció (típico tras tener la app en segundo plano un
+      // rato), renovarlo ANTES de disparar el pull — así esta llamada y las
+      // demás que se disparan al volver (recordatorios, etc.) comparten el
+      // token nuevo en vez de que cada una tope con un 401 y renueve por su
+      // cuenta (ver nota en refreshAuthToken sobre la rotación de tokens).
+      var tokenExp=Number(localStorage.getItem('cp4_token_exp')||0);
+      var pre=(tokenExp && Date.now()>=tokenExp) ? refreshAuthToken() : Promise.resolve();
+      pre.then(function(){
+        pullFromCloud().then(function(updated){
+          updateSyncUI(true);
+          if(updated) rAll(true);
+        }).catch(function(){});
+      });
     }, 300);
   }
 });
