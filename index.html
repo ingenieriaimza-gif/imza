@@ -303,6 +303,14 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 .shclose:active { background:var(--line2); }
 .shbody { flex:1; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; padding:16px 20px 20px; }
 .shbody::-webkit-scrollbar { display:none; }
+/* Pasos de "Nueva actividad" (#sov-act): el paso activo llena el alto disponible y ancla
+   los botones Atrás/Continuar hasta abajo, sin importar cuánto contenido tenga la lista. */
+#sov-act .shbody { display:flex; flex-direction:column; overflow-y:hidden; }
+#sov-act .sdots, #sov-act .slabel { flex-shrink:0; }
+#sov-act #as2, #sov-act #as3, #sov-act #as4, #sov-act #as5 { flex-direction:column; flex:1; min-height:0; }
+#sov-act #wg, #sov-act #ml, #sov-act #el, #sov-act #hrs-list { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; min-height:0; }
+#sov-act #wg::-webkit-scrollbar, #sov-act #ml::-webkit-scrollbar, #sov-act #el::-webkit-scrollbar, #sov-act #hrs-list::-webkit-scrollbar { display:none; }
+#sov-act .brow { flex-shrink:0; }
 
 /* STEPS */
 .sdots { display:flex; gap:5px; margin-bottom:16px; }
@@ -321,8 +329,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 .frow { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 
 /* WORKER GRID */
-.wgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
-.wgrid::-webkit-scrollbar { display:none; }
+.wgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .wc { background:var(--card2); border:1.5px solid var(--line); border-radius:var(--r2); padding:12px; cursor:pointer; user-select:none; position:relative; transition:all 0.15s; }
 .wc:active { opacity:0.8; }
 .wc.sel { border-color:var(--gold); background:rgba(240,201,74,0.08); }
@@ -606,7 +613,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v25';
+    const CACHE='imza-shell-v28';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -637,6 +644,27 @@ if('serviceWorker' in navigator){
   const blob=new Blob([swCode],{type:'application/javascript'});
   const swUrl=URL.createObjectURL(blob);
   navigator.serviceWorker.register(swUrl,{scope:'./'}).catch(()=>{});
+  // Si el service worker cambia (nueva versión ya instalada y tomando control),
+  // recargar automáticamente una vez para que la app siempre corra el JS más reciente
+  // y no se quede "atorada" mostrando una versión vieja desde memoria.
+  var _swAutoReloaded=false;
+  navigator.serviceWorker.addEventListener('controllerchange',function(){
+    if(_swAutoReloaded) return;
+    // No recargar de golpe si hay una ventana/formulario abierto: esperar a que se cierre
+    // para no perder datos que el usuario esté capturando.
+    if(document.querySelector('.sov.open')){
+      var chk=setInterval(function(){
+        if(!document.querySelector('.sov.open')){
+          clearInterval(chk);
+          _swAutoReloaded=true;
+          location.reload();
+        }
+      },1500);
+      return;
+    }
+    _swAutoReloaded=true;
+    location.reload();
+  });
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1509,7 +1537,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-09-23-1145-fix-grid-personal-botones-fijos';
+var IMZA_BUILD='B-2026-09-23-1250-botones-fijos-abajo-flex-css';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -2710,7 +2738,7 @@ function shStep(s){
   aCurStep=s;
   for(let i=1;i<=5;i++){
     const el=document.getElementById('as'+i);
-    if(el) el.style.display=i===s?'block':'none';
+    if(el) el.style.display=i===s?(i===1?'block':'flex'):'none';
     const d=document.getElementById('sd'+i);
     if(d) d.className='sd'+(i<s?' done':i===s?' active':'');
   }
@@ -2735,23 +2763,7 @@ function aS(s){
   if(s===2){if(!document.getElementById('a-p').value){toast('Selecciona un proyecto','err');return;}bldWG();}
   if(s===5) bldHrsStep();
   shStep(s);
-  if(s===2) sizeWG();
 }
-function sizeWG(){
-  const g=document.getElementById('wg');
-  const sheet=document.querySelector('#sov-act .sheet');
-  if(!g||!sheet) return;
-  const brow=document.querySelector('#as2 .brow');
-  const gTop=g.getBoundingClientRect().top;
-  const sheetBottom=sheet.getBoundingClientRect().bottom;
-  const browH=brow?brow.getBoundingClientRect().height:56;
-  const avail=Math.max(160, sheetBottom-gTop-browH-16);
-  g.style.maxHeight=avail+'px';
-}
-window.addEventListener('resize',function(){
-  const as2=document.getElementById('as2');
-  if(as2 && as2.style.display!=='none') sizeWG();
-});
 
 function bldHrsStep(){
   const date=S.eADate||S.date;
