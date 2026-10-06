@@ -26,6 +26,7 @@
   --red: #ff6b6b;
   --blue: #6aaaff;
   --purp: #b59dff;
+  --orange: #ff9f43;
   --r: 16px;
   --r2: 12px;
   --r3: 10px;
@@ -248,6 +249,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 .br { background:rgba(240,96,96,0.15); color:var(--red); }
 .bb { background:rgba(91,156,246,0.15); color:var(--blue); }
 .bp { background:rgba(167,139,250,0.15); color:var(--purp); }
+.bo { background:rgba(255,159,67,0.15); color:var(--orange); }
 
 /* ACT CARD */
 .acard { background:var(--card); border:1px solid var(--line); border-radius:var(--r); margin-bottom:10px; overflow:hidden; }
@@ -789,8 +791,8 @@ if('serviceWorker' in navigator){
               <svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" style="width:15px;height:15px"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-            <div style="background:var(--card2);border-radius:10px;padding:10px">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">
+            <div onclick="event.stopPropagation();openVacM('descanso')" style="background:var(--card2);border-radius:10px;padding:10px;cursor:pointer">
               <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--txt3);margin-bottom:4px">Descanso</div>
               <div style="display:flex;align-items:baseline;gap:4px">
                 <div style="font-size:22px;font-weight:900;letter-spacing:-1px;color:var(--purp)" id="st-d">0</div>
@@ -798,7 +800,7 @@ if('serviceWorker' in navigator){
               </div>
               <div id="st-desc-names" style="font-size:10.5px;color:var(--txt2);margin-top:5px;line-height:1.8"></div>
             </div>
-            <div style="background:var(--card2);border-radius:10px;padding:10px">
+            <div onclick="event.stopPropagation();openVacM('vacaciones')" style="background:var(--card2);border-radius:10px;padding:10px;cursor:pointer">
               <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--txt3);margin-bottom:4px">Vacaciones</div>
               <div style="display:flex;align-items:baseline;gap:4px">
                 <div style="font-size:22px;font-weight:900;letter-spacing:-1px;color:var(--gold)" id="st-v">0</div>
@@ -806,13 +808,21 @@ if('serviceWorker' in navigator){
               </div>
               <div id="st-vac-names" style="font-size:10.5px;color:var(--txt2);margin-top:5px;line-height:1.8"></div>
             </div>
-            <div style="background:var(--card2);border-radius:10px;padding:10px">
+            <div onclick="event.stopPropagation();openVacM('falta')" style="background:var(--card2);border-radius:10px;padding:10px;cursor:pointer">
               <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--txt3);margin-bottom:4px">Faltas</div>
               <div style="display:flex;align-items:baseline;gap:4px">
                 <div style="font-size:22px;font-weight:900;letter-spacing:-1px;color:var(--red)" id="st-f">0</div>
                 <div style="font-size:10px;color:var(--txt3)">pers.</div>
               </div>
               <div id="st-falt-names" style="font-size:10.5px;color:var(--txt2);margin-top:5px;line-height:1.8"></div>
+            </div>
+            <div onclick="event.stopPropagation();openVacM('sancion')" style="background:var(--card2);border-radius:10px;padding:10px;cursor:pointer">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--txt3);margin-bottom:4px">Sanción</div>
+              <div style="display:flex;align-items:baseline;gap:4px">
+                <div style="font-size:22px;font-weight:900;letter-spacing:-1px;color:var(--orange)" id="st-s">0</div>
+                <div style="font-size:10px;color:var(--txt3)">pers.</div>
+              </div>
+              <div id="st-sanc-names" style="font-size:10.5px;color:var(--txt2);margin-top:5px;line-height:1.8"></div>
             </div>
           </div>
         </div>
@@ -1463,7 +1473,7 @@ if('serviceWorker' in navigator){
     <div class="shbody">
       <div class="fg"><label class="fl">Nombre completo *</label><input type="text" class="fi" id="wn" placeholder="Nombre completo"></div>
       <div class="frow"><div class="fg"><label class="fl">Cargo</label><input type="text" class="fi" id="wc" placeholder="Ej: Albañil"></div><div class="fg"><label class="fl">Teléfono</label><input type="tel" class="fi" id="wt" placeholder="555-0000"></div></div>
-      <div class="fg"><label class="fl">Estado</label><select class="fsel" id="we"><option value="activo">Activo</option><option value="inactivo">Inactivo</option><option value="vacaciones">Vacaciones</option><option value="falta">Falta</option></select></div>
+      <div class="fg"><label class="fl">Estado</label><select class="fsel" id="we"><option value="activo">Activo</option><option value="inactivo">Inactivo</option><option value="vacaciones">Vacaciones</option><option value="falta">Falta</option><option value="sancion">Sanción</option></select></div>
       <div style="background:var(--card2);border:1px solid var(--line);border-radius:var(--r2);padding:14px;margin-bottom:14px">
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--txt3);margin-bottom:12px">🏖️ Programar Vacaciones</div>
         <div class="frow">
@@ -1502,11 +1512,11 @@ if('serviceWorker' in navigator){
   <div class="sheet">
     <div class="shandle"></div>
     <div class="shdr">
-      <div class="shtitle">Ausencias</div>
+      <div class="shtitle" id="vac-title">Ausencias</div>
       <button class="shclose" onclick="closeS('sov-vac')">&times;</button>
     </div>
     <div class="shbody">
-      <div style="font-size:13px;color:var(--txt2);margin-bottom:16px" id="vac-cycle-hint">Toca para ciclar: <b style="color:var(--green)">Activo</b> → <b style="color:var(--purp)">Descanso</b> → <b style="color:var(--gold)">Vacaciones</b> → <b style="color:var(--red)">Falta</b></div>
+      <div style="font-size:13px;color:var(--txt2);margin-bottom:16px" id="vac-cycle-hint">Toca para ciclar: <b style="color:var(--green)">Activo</b> → <b style="color:var(--purp)">Descanso</b> → <b style="color:var(--gold)">Vacaciones</b> → <b style="color:var(--red)">Falta</b> → <b style="color:var(--orange)">Sanción</b></div>
       <div id="vac-list"></div>
     </div>
   </div>
@@ -1554,7 +1564,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-09-23-1710-estado-descanso-personal';
+var IMZA_BUILD='B-2026-10-06-1040-ausencias-modo-directo';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -2996,6 +3006,7 @@ function confirmShow(title,msg,cb,okLabel,okColor,cancelLabel){
   const okBtn=document.getElementById('confirm-ok-btn');
   okBtn.textContent=okLabel||'Eliminar';
   okBtn.style.background=okColor||'var(--red)';
+  okBtn.style.color='#fff';
   const cancelBtn=document.getElementById('confirm-cancel-btn');
   if(cancelBtn) cancelBtn.textContent=cancelLabel||'Cancelar';
   document.getElementById('confirm-overlay').style.display='flex';
@@ -3579,7 +3590,7 @@ function rInicio(){
   // Personal: use estadoHistorial for selected date
   var historial=(S.estadoHistorial&&S.estadoHistorial[selDate])||{};
   var isFuture=selDate>today;
-  var activos=[], descs=[], vacs=[], falts=[];
+  var activos=[], descs=[], vacs=[], falts=[], sancs=[];
   S.personal.forEach(function(p){
     var est;
     if(isToday){
@@ -3597,6 +3608,7 @@ function rInicio(){
     else if(est==='descanso') descs.push(p);
     else if(est==='vacaciones') vacs.push(p);
     else if(est==='falta') falts.push(p);
+    else if(est==='sancion') sancs.push(p);
   });
   document.getElementById('st-w').textContent=activos.length;
   var activosEl=document.getElementById('st-activos-names');
@@ -3607,6 +3619,8 @@ function rInicio(){
   document.getElementById('st-desc-names').innerHTML=descs.length?descs.map(function(p){ return '<div>'+p.nombre+'</div>'; }).join(''):'<span style="opacity:0.5">—</span>';
   document.getElementById('st-vac-names').innerHTML=vacs.length?vacs.map(function(p){ return '<div>'+p.nombre+'</div>'; }).join(''):'<span style="opacity:0.5">—</span>';
   document.getElementById('st-falt-names').innerHTML=falts.length?falts.map(function(p){ return '<div>'+p.nombre+'</div>'; }).join(''):'<span style="opacity:0.5">—</span>';
+  var stS=document.getElementById('st-s'); if(stS) stS.textContent=sancs.length;
+  var stSN=document.getElementById('st-sanc-names'); if(stSN) stSN.innerHTML=sancs.length?sancs.map(function(p){ return '<div>'+p.nombre+'</div>'; }).join(''):'<span style="opacity:0.5">—</span>';
 
   // Activities: show selected date first, then recent dates
   const rc=document.getElementById('rc-list');
@@ -3646,16 +3660,24 @@ const VAC_CFG={
   descanso:   {label:'Descanso',    emoji:'😴', cls:'bp',  bg:'rgba(167,139,250,0.06)', border:'rgba(167,139,250,0.25)'},
   vacaciones: {label:'Vacaciones',  emoji:'🏖️', cls:'bg',  bg:'rgba(240,201,74,0.06)', border:'rgba(240,201,74,0.25)'},
   falta:      {label:'Falta',       emoji:'❌', cls:'br',  bg:'rgba(240,96,96,0.06)',   border:'rgba(240,96,96,0.25)'},
+  sancion:    {label:'Sanción',     emoji:'⚠️', cls:'bo',  bg:'rgba(255,159,67,0.06)',  border:'rgba(255,159,67,0.3)'},
 };
-const VAC_CYCLE={activo:'descanso', descanso:'vacaciones', vacaciones:'falta', falta:'activo'};
+const VAC_CYCLE={activo:'descanso', descanso:'vacaciones', vacaciones:'falta', falta:'sancion', sancion:'activo'};
 
 function renderVacList(){
   const c=document.getElementById('vac-list');
   if(!c) return;
   const isFuture=S.date>td();
   const hint=document.getElementById('vac-cycle-hint');
-  if(hint){
-    hint.innerHTML='Toca para ciclar: <b style="color:var(--green)">Activo</b> → <b style="color:var(--purp)">Descanso</b> → <b style="color:var(--gold)">Vacaciones</b> → <b style="color:var(--red)">Falta</b>';
+  const vt=document.getElementById('vac-title');
+  if(_vacMode&&VAC_CFG[_vacMode]){
+    const mc=VAC_CFG[_vacMode];
+    const colorMap={descanso:'var(--purp)',vacaciones:'var(--gold)',falta:'var(--red)',sancion:'var(--orange)'};
+    if(vt) vt.textContent=mc.emoji+' '+mc.label;
+    if(hint) hint.innerHTML='1er toque: <b style="color:'+colorMap[_vacMode]+'">'+mc.label+'</b> · 2º toque: <b style="color:var(--green)">Activo</b>. Si el trabajador ya tiene otro estado, se pide confirmación.';
+  } else {
+    if(vt) vt.textContent='Ausencias';
+    if(hint) hint.innerHTML='Toca para ciclar: <b style="color:var(--green)">Activo</b> → <b style="color:var(--purp)">Descanso</b> → <b style="color:var(--gold)">Vacaciones</b> → <b style="color:var(--red)">Falta</b> → <b style="color:var(--orange)">Sanción</b>';
   }
   if(!S.personal.length){
     c.innerHTML='<div class="empty"><p>Sin personal registrado</p></div>';
@@ -3714,11 +3736,12 @@ function renderVacList(){
 }
 
 var _togVacBusy={};
+var _vacMode=null; // null = ciclo completo; 'descanso'|'vacaciones'|'falta'|'sancion' = modo directo
 function togVac(id){
-  // Evitar doble-toque: ignorar si este mismo trabajador se tocó hace menos de 2.5s
+  // Evitar doble-toque accidental (mismo trabajador en menos de 0.7s)
   if(_togVacBusy[id]) return;
   _togVacBusy[id]=true;
-  setTimeout(function(){ delete _togVacBusy[id]; },2500);
+  setTimeout(function(){ delete _togVacBusy[id]; },700);
 
   const p=S.personal.find(x=>x.id===id);
   if(!p) return;
@@ -3736,8 +3759,32 @@ function togVac(id){
   } else {
     currentEstado='activo';
   }
-  var next=VAC_CYCLE[currentEstado]||'activo';
+  var next;
+  if(_vacMode){
+    if(currentEstado===_vacMode){
+      next='activo';
+    } else if(currentEstado==='activo'||!VAC_CFG[currentEstado]){
+      next=_vacMode;
+    } else {
+      // Ya tiene otro estado (ej. vacaciones) — confirmar antes de cambiar
+      var cur=VAC_CFG[currentEstado], nw=VAC_CFG[_vacMode], target=_vacMode;
+      confirmShow(
+        '¿Cambiar estado?',
+        p.nombre+' está en '+cur.emoji+' '+cur.label+'. ¿Cambiar a '+nw.emoji+' '+nw.label+'?',
+        function(){ _applyVacEstado(p,hDate,target); },
+        'Cambiar a '+nw.label,'var(--gold)','Cancelar'
+      );
+      var okb=document.getElementById('confirm-ok-btn'); if(okb) okb.style.color='#000';
+      return;
+    }
+  } else {
+    next=VAC_CYCLE[currentEstado]||'activo';
+  }
+  _applyVacEstado(p,hDate,next);
+}
 
+function _applyVacEstado(p,hDate,next){
+  var id=p.id, today=td();
   // Save to historial for selected date
   if(!S.estadoHistorial) S.estadoHistorial={};
   if(!S.estadoHistorial[hDate]) S.estadoHistorial[hDate]={};
@@ -3751,7 +3798,7 @@ function togVac(id){
     markChanged('personal');
   }
   markChanged('estadoHistorial');
-  var estadoLabels={activo:'✅ Activo',descanso:'😴 Descanso',vacaciones:'🏖️ Vacaciones',falta:'❌ Falta',inactivo:'⏸️ Inactivo'};
+  var estadoLabels={activo:'✅ Activo',descanso:'😴 Descanso',vacaciones:'🏖️ Vacaciones',falta:'❌ Falta',sancion:'⚠️ Sanción',inactivo:'⏸️ Inactivo'};
   var _cargoLbl=p.cargo?' · '+p.cargo:'';
   setAction('Estado · '+(p.nombre||'Trabajador')+_cargoLbl+' → '+(estadoLabels[next]||next)+' · '+fmtDate(hDate));
   save();
@@ -3847,7 +3894,8 @@ function clearVacDates(){
   updVacDaysLbl();
 }
 
-function openVacM(){
+function openVacM(mode){
+  _vacMode=(typeof mode==='string'&&VAC_CFG[mode])?mode:null;
   renderVacList();
   openS('sov-vac');
 }
@@ -5666,7 +5714,7 @@ function rProj(){
 
 function persCard(p,i,estOverride){
   const est=estOverride||p.estado||'activo';
-  const bm={activo:'bgr',inactivo:'bb',descanso:'bp',vacaciones:'bg',falta:'br'};
+  const bm={activo:'bgr',inactivo:'bb',descanso:'bp',vacaciones:'bg',falta:'br',sancion:'bo'};
   const isVisor=_currentUser&&_currentUser.rol==='visor';
   return`<div class="li pers-sortable" data-pid="${p.id}" style="user-select:none">
     ${!isVisor?`<div class="pers-drag-handle" style="width:28px;height:36px;display:flex;align-items:center;justify-content:center;cursor:grab;flex-shrink:0;opacity:0.3;touch-action:none">
@@ -5828,12 +5876,13 @@ function rPers(){
     }
     estMap[p.id]=est;
   });
-  var activos=[], vacaciones=[], faltas=[], inactivos=[];
+  var activos=[], vacaciones=[], faltas=[], sanciones=[], inactivos=[];
   S.personal.forEach(function(p){
     var est=estMap[p.id];
     if(est==='activo') activos.push(p);
     else if(est==='vacaciones') vacaciones.push(p);
     else if(est==='falta') faltas.push(p);
+    else if(est==='sancion') sanciones.push(p);
     else if(est==='inactivo') inactivos.push(p);
     else activos.push(p);
   });
@@ -5841,6 +5890,7 @@ function rPers(){
   html += persGroup('Activos',    '✅', 'var(--green)', 'bgr', activos,    true,  estMap);
   html += persGroup('Vacaciones', '🏖️', 'var(--gold)',  'bg',  vacaciones, true,  estMap);
   html += persGroup('Falta',      '❌', 'var(--red)',   'br',  faltas,     true,  estMap);
+  html += persGroup('Sanción',    '⚠️', 'var(--orange)','bo',  sanciones,  true,  estMap);
   html += persGroup('Inactivos',  '⏸️', 'var(--txt2)',  'bb',  inactivos,  true,  estMap);
   c.innerHTML=html||'<div class="empty"><p>Sin trabajadores</p></div>';
   // Activar drag & drop para reordenar
@@ -5867,7 +5917,7 @@ function rNomPersonal(){
   const todos=S.personal.filter(p=>p.estado!=='inactivo');
   const c=document.getElementById('nom-list');
   if(!todos.length){c.innerHTML='<div class="empty"><p>Sin personal registrado</p></div>';return;}
-  const bm={activo:'bgr',descanso:'bp',vacaciones:'bg',falta:'br'};
+  const bm={activo:'bgr',descanso:'bp',vacaciones:'bg',falta:'br',sancion:'bo'};
   c.innerHTML=todos.map((p,i)=>`<div class="pcard">
     <div class="pinit" style="background:${WC[i%WC.length]}22;color:${WC[i%WC.length]}">${inits(p.nombre)}</div>
     <div style="flex:1">
@@ -6474,6 +6524,7 @@ function _workerWorkedOn(wid, ds){
 function getWorkerAbsences(wid, fromDate, toDate){
   const faltas=[];
   const vacaciones=[];
+  const sanciones=[];
   const start=new Date(fromDate+'T12:00:00');
   const end=new Date(toDate+'T12:00:00');
   for(let dt=new Date(start);dt<=end;dt.setDate(dt.getDate()+1)){
@@ -6488,6 +6539,8 @@ function getWorkerAbsences(wid, fromDate, toDate){
     const est=hist[wid];
     if(est==='falta'){
       faltas.push(ds);
+    } else if(est==='sancion'){
+      sanciones.push(ds);
     } else if(est==='vacaciones'){
       // Verificar también rango de vacaciones programadas
       const p=S.personal.find(x=>x.id===wid);
@@ -6503,7 +6556,7 @@ function getWorkerAbsences(wid, fromDate, toDate){
       // Si no hay registro y no tiene vacaciones, NO se cuenta como falta
     }
   }
-  return {faltas, vacaciones};
+  return {faltas, vacaciones, sanciones};
 }
 
 function copyWeekHE(){
@@ -6595,6 +6648,7 @@ function _copyWeekHE_build(){
       var tieneAsistencia=!!asistenciaData[p.id];
       var estSemana=p.estado||'activo';
       if(abs.faltas.length>0) estSemana='falta';
+      else if(abs.sanciones.length>0) estSemana='sancion';
       else if(abs.vacaciones.length>0) estSemana='vacaciones';
       var asistenciasDates=asistenciaData[p.id]
         ? Object.keys(asistenciaData[p.id]).sort().map(function(ds){ return fmtD(ds); })
@@ -6613,7 +6667,7 @@ function _copyWeekHE_build(){
       };
     })
     .filter(function(p){
-      return p.tieneAsistencia || p.tieneHE || p.faltas>0 || p.vacaciones>0;
+      return p.tieneAsistencia || p.tieneHE || p.faltas>0 || p.vacaciones>0 || p.estado==='sancion';
     });
 
   // Totales derivados de resumenPersonal — siempre consistentes con la tabla
@@ -6781,9 +6835,9 @@ function _abrirReporteHTML(d){
   'font-size:7.5px;font-weight:700;text-transform:uppercase;white-space:nowrap;}'+
   '.bb{background:#DBEAFE;color:#1E40AF;}.bg{background:#D1FAE5;color:#065F46;}'+
   '.br{background:#FEE2E2;color:#991B1B;}.ba{background:#FEF3C7;color:#92400E;}'+
-  '.bgr{background:#F1F5F9;color:#475569;}.bp{background:#EDE9FE;color:#5B21B6;}'+
+  '.bgr{background:#F1F5F9;color:#475569;}.bp{background:#EDE9FE;color:#5B21B6;}.bs{background:#FFEDD5;color:#9A3412;}'+
   '.dot{width:5px;height:5px;border-radius:50%;display:inline-block;margin-right:3px;}'+
-  '.dg{background:#10B981;}.dr{background:#EF4444;}.da{background:#F59E0B;}.dgr{background:#94A3B8;}.dp{background:#A78BFA;}'+
+  '.dg{background:#10B981;}.dr{background:#EF4444;}.da{background:#F59E0B;}.dgr{background:#94A3B8;}.dp{background:#A78BFA;}.ds{background:#F97316;}'+
   // Tipo gasto
   '.gt{background:#EFF6FF;border:1px solid #BFDBFE;border-radius:3px;padding:0 4px;'+
   'font-size:7px;font-weight:600;color:#2563EB;display:inline-block;white-space:nowrap;}'+
@@ -6967,9 +7021,9 @@ function _abrirReporteHTML(d){
   '</tr></thead><tbody>'+
   d.resumenPersonal.map(function(p,i){
     var heW=d.workerRows.find(function(w){return w.nombre===p.nombre;});
-    var bm={activo:'bg',descanso:'bp',vacaciones:'ba',falta:'br',inactivo:'bgr'};
-    var lm={activo:'Activo',descanso:'Descanso',vacaciones:'Vac.',falta:'Falta',inactivo:'Inact.'};
-    var dm={activo:'dg',descanso:'dp',vacaciones:'da',falta:'dr',inactivo:'dgr'};
+    var bm={activo:'bg',descanso:'bp',vacaciones:'ba',falta:'br',sancion:'bs',inactivo:'bgr'};
+    var lm={activo:'Activo',descanso:'Descanso',vacaciones:'Vac.',falta:'Falta',sancion:'Sanción',inactivo:'Inact.'};
+    var dm={activo:'dg',descanso:'dp',vacaciones:'da',falta:'dr',sancion:'ds',inactivo:'dgr'};
     var bg=i%2?'#FAFAFA':'#fff';
     var faltasDias=p.faltas||0;
     var vacDias=p.vacaciones||0;
