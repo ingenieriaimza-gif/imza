@@ -1564,7 +1564,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-09-login-codigo';
+var IMZA_BUILD='B-2026-10-09-login-codigo-2';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -9333,7 +9333,10 @@ window.addEventListener('pagehide',function(){
 // Detectar invitación ANTES de cargar sesión — así se limpia la sesión anterior
 // antes de que load() e initAuth() la encuentren y entren como el usuario equivocado
 checkInviteParam();
-load();updDates();rAll();
+// La pantalla de carga y la de login están al final del HTML: esperar a que existan
+// antes de decidir si entrar o pedir login (si no, el arranque se rompe y se queda en la carga).
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',load); else load();
+updDates();rAll();
 
 
 
