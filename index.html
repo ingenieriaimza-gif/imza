@@ -1564,7 +1564,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-09-login-codigo-2';
+var IMZA_BUILD='B-2026-10-09-sync-rapido';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -1818,6 +1818,7 @@ function _doRefreshRequest(startToken){
         if(data.refresh_token) localStorage.setItem('cp4_refresh_token',data.refresh_token);
         var expiresIn=Number(data.expires_in||3600);
         localStorage.setItem('cp4_token_exp',String(Date.now()+expiresIn*1000));
+        try{ if(_realtimeWs&&_realtimeWs.readyState===1) _realtimeWs.send(JSON.stringify({topic:'realtime:public:imza_data',event:'access_token',payload:{access_token:data.access_token},ref:'t'})); }catch(e){}
         return data.access_token;
       }
       // 400 = refresh token inválido/ya usado/revocado → la sesión murió de verdad.
@@ -2452,7 +2453,7 @@ function startLiveSync(){
     if(_isPushing) return;
     // Poll ligero: solo checa updated_at antes de bajar todo
     _quickCheck();
-  },3000);
+  },2000);
 }
 
 // Checa solo el updated_at — si cambió, hace pull completo
@@ -2484,7 +2485,7 @@ function startRealtime(){
     var wsUrl='wss://vcdwtlwnbztausmwzwla.supabase.co/realtime/v1/websocket?apikey='+SB_KEY+'&access_token='+wsToken+'&vsn=1.0.0';
     _realtimeWs=new WebSocket(wsUrl);
     _realtimeWs.onopen=function(){
-      _realtimeWs.send(JSON.stringify({topic:'realtime:public:imza_data',event:'phx_join',payload:{config:{postgres_changes:[{event:'UPDATE',schema:'public',table:'imza_data'}]}},ref:'1'}));
+      _realtimeWs.send(JSON.stringify({topic:'realtime:public:imza_data',event:'phx_join',payload:{config:{postgres_changes:[{event:'UPDATE',schema:'public',table:'imza_data'}]},access_token:(localStorage.getItem('cp4_auth_token')||SB_KEY)},ref:'1'}));
       if(_realtimeHb) clearInterval(_realtimeHb);
       _realtimeHb=setInterval(function(){ if(_realtimeWs&&_realtimeWs.readyState===1) _realtimeWs.send(JSON.stringify({topic:'phoenix',event:'heartbeat',payload:{},ref:'hb'})); },20000);
       updateSyncUI(true);
@@ -2496,7 +2497,6 @@ function startRealtime(){
         if(!isChange||_applyingCloudData) return;
         var dev=(msg.payload&&msg.payload.data&&msg.payload.data.record&&msg.payload.data.record.device)||'';
         if(dev&&dev===detectDevice()) return;
-        if(isSheetOpen()) return;
         // Reacción inmediata al WebSocket — pull completo de datos
         pullFromCloud().then(function(u){ if(u){ rAll(true); updateSyncUI(true); } });
       }catch(e){}
@@ -3483,7 +3483,7 @@ function isSheetOpen(){
 
 function isUserInteracting(){
   // Don't interrupt if sheet open or user interacted in last 3s
-  return isSheetOpen() || (Date.now()-_lastInteraction < 3000);
+  return isSheetOpen() || (Date.now()-_lastInteraction < 1200);
 }
 
 function rAll(fromSync){
