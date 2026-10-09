@@ -1564,7 +1564,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-06-1040-ausencias-modo-directo';
+var IMZA_BUILD='B-2026-10-09-login-codigo';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -1779,7 +1779,7 @@ function sbFetch(path, opts){
   return _doFetch(path, opts, token).catch(function(err){
     if((err&&err.message)==='UNAUTHORIZED'){
       return refreshAuthToken().then(function(newToken){
-        if(!newToken) throw new Error('no_token');
+        if(!newToken){ if(_refreshDead) forceRelogin(); throw new Error('no_token'); }
         return _doFetch(path, opts, newToken);
       });
     }
@@ -1797,45 +1797,45 @@ function sbFetch(path, opts){
 // concurrentes comparten una sola promesa (_refreshInFlight) en vez de
 // disparar una petición de renovación cada una.
 var _refreshInFlight=null;
-function refreshAuthToken(){
-  if(_refreshInFlight) return _refreshInFlight;
+var _refreshDead=false; // true solo si Supabase rechazó el refresh token (sesión revocada)
+function _doRefreshRequest(startToken){
+  // Si otra pestaña/ventana ya renovó mientras esperábamos, usar ese token y NO
+  // gastar otro refresh token (reusarlo hace que Supabase revoque toda la sesión).
+  var curTok=localStorage.getItem('cp4_auth_token');
+  var curExp=Number(localStorage.getItem('cp4_token_exp')||0);
+  if(curTok&&curTok!==startToken&&curExp>Date.now()+60*1000) return Promise.resolve(curTok);
   var refreshToken=localStorage.getItem('cp4_refresh_token');
   if(!refreshToken) return Promise.resolve(null);
-  _refreshInFlight=fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/token?grant_type=refresh_token',{
+  return fetch('https://vcdwtlwnbztausmwzwla.supabase.co/auth/v1/token?grant_type=refresh_token',{
     method:'POST',
     credentials:'omit',
     headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
     body:JSON.stringify({refresh_token:refreshToken})
-  }).then(function(res){ return res.json(); }).then(function(data){
-    if(data&&data.access_token){
-      localStorage.setItem('cp4_auth_token',data.access_token);
-      if(data.refresh_token) localStorage.setItem('cp4_refresh_token',data.refresh_token);
-      // Siempre actualizar la fecha de expiración
-      var expiresIn=Number(data.expires_in||3600);
-      localStorage.setItem('cp4_token_exp',String(Date.now()+expiresIn*1000));
-      // Actualizar sesión en Supabase con tokens frescos para el puente PWA
-      if(_currentUser&&_currentUser.email){
-        var ss=localStorage.getItem('cp4_session');
-        var sessionData=ss?JSON.parse(ss):{};
-        var sessionDataWithTokens=Object.assign({},sessionData,{
-          auth_token:data.access_token,
-          refresh_token:data.refresh_token||''
-        });
-        fetch(SB_URL+'/rest/v1/imza_sessions',{
-          method:'POST',
-          credentials:'omit',
-          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+data.access_token,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},
-          body:JSON.stringify({
-            device_id:_currentUser.email.toLowerCase(),
-            session_data:JSON.stringify(sessionDataWithTokens),
-            updated_at:new Date().toISOString()
-          })
-        }).catch(function(){});
+  }).then(function(res){
+    return res.json().catch(function(){ return {}; }).then(function(data){
+      if(data&&data.access_token){
+        localStorage.setItem('cp4_auth_token',data.access_token);
+        if(data.refresh_token) localStorage.setItem('cp4_refresh_token',data.refresh_token);
+        var expiresIn=Number(data.expires_in||3600);
+        localStorage.setItem('cp4_token_exp',String(Date.now()+expiresIn*1000));
+        return data.access_token;
       }
-      return data.access_token;
-    }
-    return null;
-  }).catch(function(){ return null; }).then(function(result){
+      // 400 = refresh token inválido/ya usado/revocado → la sesión murió de verdad.
+      // (429 o errores de red NO cuentan: se reintenta más tarde.)
+      if(res.status===400) _refreshDead=true;
+      return null;
+    });
+  }).catch(function(){ return null; });
+}
+function refreshAuthToken(){
+  if(_refreshInFlight) return _refreshInFlight;
+  var startToken=localStorage.getItem('cp4_auth_token');
+  var run=function(){ return _doRefreshRequest(startToken); };
+  // Candado compartido entre pestañas/ventanas del mismo navegador: solo una renueva a la vez.
+  var p=(navigator.locks&&navigator.locks.request)
+    ? navigator.locks.request('imza-token-refresh', run)
+    : run();
+  _refreshInFlight=Promise.resolve(p).catch(function(){ return null; }).then(function(result){
     _refreshInFlight=null;
     return result;
   });
@@ -2322,31 +2322,25 @@ function _doPushToCloud(_pt){
   var curDelProj=delKeys.filter(function(k){ return k.indexOf('proj_')===0; }).length;
   var curDelPers=delKeys.filter(function(k){ return k.indexOf('pers_')===0; }).length;
 
-  var maxSeen={proj:0,pers:0,act:0,delProj:0,delPers:0};
-  try{ maxSeen=Object.assign(maxSeen, JSON.parse(localStorage.getItem('cp4_max_seen')||'null')||{}); }catch(e){}
-
-  var projDrop=Math.max(0, maxSeen.proj-curProj);
-  var projNewDel=Math.max(0, curDelProj-maxSeen.delProj);
-  var persDrop=Math.max(0, maxSeen.pers-curPers);
-  var persNewDel=Math.max(0, curDelPers-maxSeen.delPers);
+  // Cada eliminación legítima mueve un elemento de la lista a S.deleted, así que
+  // (existentes + eliminados) nunca debe bajar. Si baja, algo se perdió por error.
+  var curProjTotal=curProj+curDelProj;
+  var curPersTotal=curPers+curDelPers;
+  var base={projTotal:0,persTotal:0,act:0};
+  try{ base=Object.assign(base, JSON.parse(localStorage.getItem('cp4_push_base')||'null')||{}); }catch(e){}
+  localStorage.removeItem('cp4_max_seen'); // formato anterior (causaba bloqueos falsos)
 
   var allEmptyNow=(curProj===0&&curPers===0&&curActDays===0);
-  var hadRealDataBefore=(maxSeen.proj>=3||maxSeen.pers>=3||maxSeen.act>=3);
-  var dropUnexplained=(projDrop>projNewDel+1)||(persDrop>persNewDel+1);
+  var hadRealDataBefore=(base.projTotal>=3||base.persTotal>=3||base.act>=3);
+  var dropUnexplained=(curProjTotal<base.projTotal-1)||(curPersTotal<base.persTotal-1);
 
   if((allEmptyNow&&hadRealDataBefore)||dropUnexplained){
-    console.error('[Sync] Push bloqueado — los datos disminuyeron sin suficientes registros de eliminación que lo justifiquen.',
-      {curProj:curProj,curPers:curPers,maxSeen:maxSeen,projDrop:projDrop,projNewDel:projNewDel,persDrop:persDrop,persNewDel:persNewDel});
-    toast('⚠️ Tus datos locales perdieron elementos sin un registro de eliminación — no se subió nada. Recarga la app.','err');
+    console.error('[Sync] Push bloqueado — datos perdidos sin registro de eliminación.',
+      {curProjTotal:curProjTotal,curPersTotal:curPersTotal,base:base});
+    _lastPushBlocked=true;
+    toast('⚠️ Se detectó pérdida de datos local — no se subió nada. Recarga la app.','err');
     clearTimeout(_pt); _isPushing=false;
     return false;
-  }
-  // Actualizar el máximo visto junto con el conteo de eliminaciones de ese momento
-  if(curProj>maxSeen.proj||curPers>maxSeen.pers||curActDays>maxSeen.act||curDelProj>maxSeen.delProj||curDelPers>maxSeen.delPers){
-    localStorage.setItem('cp4_max_seen',JSON.stringify({
-      proj:Math.max(curProj,maxSeen.proj), pers:Math.max(curPers,maxSeen.pers), act:Math.max(curActDays,maxSeen.act),
-      delProj:Math.max(curDelProj,maxSeen.delProj), delPers:Math.max(curDelPers,maxSeen.delPers)
-    }));
   }
 
   var device=detectDevice();
@@ -2374,6 +2368,7 @@ function _doPushToCloud(_pt){
   }).then(function(){
     clearTimeout(_pt);
     _isPushing=false;
+    localStorage.setItem('cp4_push_base',JSON.stringify({projTotal:curProjTotal,persTotal:curPersTotal,act:Math.max(curActDays,base.act)}));
     _lastSyncInfo={time:now,device:device,user:userName,action:action};
     addToHistory(now,userName,action);
     renderHistory();
@@ -2424,6 +2419,7 @@ function _syncUsersTableIfChanged(){
 }
 
 // ── SAVE ─────────────────────────────────────────────────────────────────────
+var _lastPushBlocked=false;
 function save(){
   if(!_isOnline){
     toast('Sin conexión — cambios no guardados','err');
@@ -2432,7 +2428,13 @@ function save(){
   // No registramos aquí — pushToCloud() ya agrega la entrada al changelog
   // después de confirmar el guardado exitoso (evita duplicados).
   pushToCloud().then(function(ok){
-    if(!ok) toast('Error al guardar — verifica tu conexión','err');
+    if(ok) return;
+    if(_lastPushBlocked){ _lastPushBlocked=false; return; }
+    if(_isPushing){ // había otro guardado en curso: reintentar al terminar
+      setTimeout(function(){ pushToCloud().then(function(ok2){ if(!ok2&&!_lastPushBlocked) toast('Error al guardar — verifica tu conexión','err'); _lastPushBlocked=false; }); },1500);
+      return;
+    }
+    toast('Error al guardar — verifica tu conexión','err');
   }).catch(function(){ toast('Error al guardar — verifica tu conexión','err'); });
 }
 
@@ -7624,6 +7626,7 @@ function restoreSnapshot(id){
         var clean={};
         for(var k in data){ if(k!=='_snapLabel'&&k!=='_v'&&k!=='_device') clean[k]=data[k]; }
         Object.assign(S,clean);
+        localStorage.removeItem('cp4_push_base');
         S.date=td();
         save();
         pushToCloud();
@@ -7689,6 +7692,7 @@ function handleImport(input){
           var currentUsers=S.users&&S.users.length?JSON.parse(JSON.stringify(S.users)):null;
           var currentHistorial=S.estadoHistorial||{};
           // Load all imported data
+          localStorage.removeItem('cp4_push_base');
           S.proyectos=data.proyectos||[];
           S.personal=data.personal||[];
           S.actividades=data.actividades||{};
@@ -7927,7 +7931,7 @@ var _sbClient=null;
 
 function getSbClient(){
   if(!_sbClient){
-    _sbClient=supabase.createClient('https://vcdwtlwnbztausmwzwla.supabase.co','sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY');
+    _sbClient=supabase.createClient('https://vcdwtlwnbztausmwzwla.supabase.co','sb_publishable_4wUoUgJMNQVIMNXTcidCgQ_PjYNYEIY',{auth:{autoRefreshToken:false,persistSession:false,detectSessionInUrl:true}});
   }
   return _sbClient;
 }
@@ -7937,7 +7941,8 @@ function enterApp(found, sessionData){
   localStorage.setItem('cp4_session',JSON.stringify(sessionData));
   // Renovar token proactivamente en cada entrada (silencioso, no bloquea)
   var hasRefresh=!!localStorage.getItem('cp4_refresh_token');
-  if(hasRefresh){
+  var _expE=Number(localStorage.getItem('cp4_token_exp')||0);
+  if(hasRefresh&&(!_expE||Date.now()>_expE-10*60*1000)){
     setTimeout(function(){
       refreshAuthToken().then(function(t){
         if(t) console.log('[Auth] Token renovado al entrar');
@@ -8061,7 +8066,7 @@ function initAuth(){
         var hasToken=!!localStorage.getItem('cp4_auth_token');
         var hasRefresh=!!localStorage.getItem('cp4_refresh_token');
         // needsRefresh: sin token, o token expira en menos de 12 horas
-        var needsRefresh=!hasToken||(tokenExp>0&&Date.now()>tokenExp-12*60*60*1000);
+        var needsRefresh=!hasToken||(tokenExp>0&&Date.now()>tokenExp-10*60*1000);
 
         function _enterWithSession(){
           // Cargar usuarios frescos en background sin bloquear entrada
@@ -8109,6 +8114,8 @@ function initAuth(){
   if(usersBk) try{ S.users=JSON.parse(usersBk); }catch(e){}
 
   function _checkRemoteSession(){
+    showLoginScreen(); return; // puente desactivado: el iPhone ahora entra con código de 6 dígitos
+
     var sessionUrl=_filterEmail
       ? SB_URL+'/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(_filterEmail)+'&select=session_data,updated_at&order=updated_at.desc&limit=5'
       : SB_URL+'/rest/v1/imza_sessions?select=session_data,updated_at&order=updated_at.desc&limit=20';
@@ -8137,6 +8144,8 @@ function initAuth(){
               if(newToken){
                 localStorage.setItem('cp4_auth_token',newToken);
                 localStorage.setItem('cp4_session',JSON.stringify(matchSession));
+                // Ya se usó: borrar el puente para que ningún otro dispositivo reutilice ese token
+                sbFetch('/rest/v1/imza_sessions?device_id=eq.'+encodeURIComponent(matchSession.email),{method:'DELETE',headers:{'Prefer':'return=minimal'}}).catch(function(){});
                 enterApp(matchSession, matchSession);
               } else {
                 showLoginScreen();
@@ -8238,24 +8247,7 @@ function handleMagicLinkCallback(){
     if(refreshToken) localStorage.setItem('cp4_refresh_token',refreshToken);
     localStorage.setItem('cp4_token_exp',String(Date.now()+expiresIn*1000));
 
-    function saveSession(at,rt){
-      sbFetch('/rest/v1/imza_sessions',{
-        method:'POST',
-        headers:{'Prefer':'resolution=merge-duplicates'},
-        body:JSON.stringify({
-          device_id:email,
-          session_data:JSON.stringify(Object.assign({},sessionData,{auth_token:at,refresh_token:rt})),
-          updated_at:new Date().toISOString()
-        })
-      }).catch(function(){});
-    }
-    if(refreshToken){
-      refreshAuthToken().then(function(newToken){
-        saveSession(newToken||accessToken,localStorage.getItem('cp4_refresh_token')||refreshToken);
-      }).catch(function(){ saveSession(accessToken,refreshToken); });
-    } else {
-      saveSession(accessToken,'');
-    }
+    // (Ya no se guardan llaves de sesión en imza_sessions: era inseguro y causaba cierres de sesión)
 
     window.history.replaceState(null,'',window.location.pathname);
     if(splash) splash.style.display='none';
@@ -8362,6 +8354,37 @@ function showLogin(){
   }
 }
 
+function verifyOtpCode(){
+  var inp=document.getElementById('login-otp-input');
+  var errEl=document.getElementById('login-otp-error');
+  var btn=document.getElementById('login-otp-btn');
+  var code=(inp&&inp.value||'').replace(/\D/g,'');
+  var email=window._otpEmail||((document.getElementById('login-email-input')||{}).value||'').trim().toLowerCase();
+  if(!email){ errEl.textContent='Vuelve a escribir tu correo'; return; }
+  if(code.length<6){ errEl.textContent='Escribe el código completo'; return; }
+  errEl.textContent=''; btn.disabled=true; btn.textContent='Verificando...';
+  fetch(SB_URL+'/auth/v1/verify',{
+    method:'POST', credentials:'omit',
+    headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({type:'email',email:email,token:code})
+  }).then(function(res){ return res.json().then(function(d){ return {ok:res.ok,d:d}; }); })
+  .then(function(r){
+    btn.disabled=false; btn.textContent='Entrar con código';
+    if(!r.ok||!r.d||!r.d.access_token){
+      errEl.textContent='Código incorrecto o vencido. Pide uno nuevo.';
+      return;
+    }
+    // Reutiliza el mismo flujo que el link del correo
+    window.location.hash='access_token='+encodeURIComponent(r.d.access_token)+
+      '&refresh_token='+encodeURIComponent(r.d.refresh_token||'')+
+      '&expires_in='+(r.d.expires_in||3600)+'&type=magiclink';
+    handleMagicLinkCallback();
+  }).catch(function(){
+    btn.disabled=false; btn.textContent='Entrar con código';
+    errEl.textContent='Sin conexión. Intenta de nuevo.';
+  });
+}
+
 function loginBack(){
   document.getElementById('login-step-sent').style.display='none';
   document.getElementById('login-step-email').style.display='block';
@@ -8429,6 +8452,7 @@ function sendMagicLink(){
 }
 
 function _doSendMagicLink(email,errEl,btn){
+  window._otpEmail=email;
   errEl.textContent='';
   if(btn){ btn.disabled=true; btn.textContent='Enviando...'; }
 
@@ -10115,7 +10139,7 @@ function inicioToggleDone(id){
   <!-- STEP 1: Enter email -->
   <div id="login-step-email" style="width:100%;max-width:300px;margin-top:20px">
     <div id="login-pwa-hint" style="display:none;background:rgba(100,170,255,0.1);border:1px solid rgba(100,170,255,0.25);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--blue);line-height:1.5;text-align:center">
-      📱 <b>iPhone:</b> Al tocar el link del correo se abrirá Safari. Después regresa a esta app desde tu pantalla de inicio.
+      📱 <b>iPhone:</b> te llegará un código por correo; escríbelo en esta misma app.
     </div>
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--txt3);margin-bottom:8px;text-align:center">Ingresa tu correo</div>
     <input id="login-email-input" type="email" inputmode="email" autocomplete="email" autocapitalize="off" autocorrect="off" placeholder="tu@correo.com" style="width:100%;box-sizing:border-box;padding:14px 16px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt);font-size:15px;font-family:inherit;outline:none;margin-bottom:12px">
@@ -10128,11 +10152,12 @@ function inicioToggleDone(id){
     <div style="font-size:48px;margin-bottom:16px">📬</div>
     <div style="font-size:16px;font-weight:800;color:var(--txt);margin-bottom:8px">Revisa tu correo</div>
     <div id="login-sent-msg" style="font-size:13px;color:var(--txt2);line-height:1.6;margin-bottom:16px"></div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--txt3);margin-bottom:8px">O escribe el código del correo</div>
+    <input id="login-otp-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456" style="width:100%;box-sizing:border-box;padding:14px 16px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt);font-size:22px;font-weight:800;letter-spacing:6px;text-align:center;font-family:inherit;outline:none;margin-bottom:8px">
+    <div id="login-otp-error" style="font-size:13px;color:var(--red);margin-bottom:8px;min-height:18px"></div>
+    <button id="login-otp-btn" onclick="verifyOtpCode()" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--gold);color:#000;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;margin-bottom:12px">Entrar con código</button>
     <div id="login-pwa-step2" style="display:none;background:rgba(245,207,85,0.1);border:1px solid rgba(245,207,85,0.25);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--gold);line-height:1.6;text-align:left">
-      <b>Pasos en iPhone:</b><br>
-      1. Toca el link en tu correo<br>
-      2. Se abrirá Safari — espera que cargue<br>
-      3. Regresa a esta app desde tu pantalla de inicio ↩
+      <b>En iPhone:</b> no toques el link — copia el código de 6 dígitos del correo y escríbelo aquí arriba.
     </div>
     <button onclick="loginBack()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt2);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">← Usar otro correo</button>
   </div>
