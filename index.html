@@ -642,7 +642,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v36';
+    const CACHE='imza-shell-v39';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1607,7 +1607,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-11-fotos-borrar-nube';
+var IMZA_BUILD='B-2026-10-11-fotos-reporte-nube';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -5394,6 +5394,7 @@ function _askImagesForReport(projId, callback){
         images.map(function(img,idx){
           return '<div style="position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid var(--line)">'+
             '<img src="'+(img.thumb||img.dataUrl)+'" style="width:100%;height:100%;object-fit:cover">'+
+            (img.uploading?'<div class="ph-ov up">Subiendo…</div>':(img.cloudErr?'<div class="ph-ov err">Solo en PDF</div>':(img.saved?'<div style="position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;font-weight:700;border-radius:6px;padding:1px 5px">☁️</div>':'')))+
             '<button onclick="_removeReportImg('+idx+')" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,0.6);border:none;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">×</button>'+
           '</div>';
         }).join('')+
@@ -5435,7 +5436,9 @@ function _askImagesForReport(projId, callback){
     files.forEach(function(file){
       var reader=new FileReader();
       reader.onload=function(e){
-        window._reportImages.push({dataUrl:e.target.result});
+        var item={dataUrl:e.target.result};
+        window._reportImages.push(item);
+        _reportImgToCloud(projId,file,item);
         pending--;
         if(pending===0) window._reportImgRender();
       };
@@ -5463,6 +5466,44 @@ function _askImagesForReport(projId, callback){
   overlay.appendChild(sheet);
   overlay.addEventListener('click',function(e){ if(e.target===overlay) window._closeImgDialog(); });
   document.body.appendChild(overlay);
+}
+
+// Fotos agregadas desde el reporte: se suben a Cloudinary y se guardan en la
+// actividad de HOY del proyecto (o, si no hay, en su actividad más reciente).
+function _reportTargetAct(projId){
+  var hoy=td();
+  var a=(S.actividades[hoy]||[]).find(function(x){return x.proyectoId===projId;});
+  if(a) return {a:a,date:hoy};
+  var dates=Object.keys(S.actividades).sort().reverse();
+  for(var i=0;i<dates.length;i++){
+    a=(S.actividades[dates[i]]||[]).find(function(x){return x.proyectoId===projId;});
+    if(a) return {a:a,date:dates[i]};
+  }
+  return null;
+}
+function _reportImgToCloud(projId,file,item){
+  if(!cldReady()) return;
+  if(_currentUser&&_currentUser.rol==='visor') return;
+  var t=_reportTargetAct(projId);
+  if(!t){ item.cloudErr=true; if(window._reportImgRender) window._reportImgRender(); toast('El proyecto no tiene actividades: la foto solo irá en este PDF','err'); return; }
+  item.uploading=true; item.caption=fmtD(t.date);
+  var aid=t.a.id, date=t.date;
+  var sub=(gcode(projId)||'proyecto').replace(/[^a-zA-Z0-9_\-]/g,'');
+  compressImage(file,1600,0.82)
+    .then(function(blob){ return cldUpload(blob,sub); })
+    .then(function(res){
+      item.uploading=false; item.saved=true;
+      if(!_pendFotos[aid]) _pendFotos[aid]={date:date,fotos:[]};
+      _pendFotos[aid].fotos.push(res);
+      _applyPendFotos(); _saveFotos(); rAll();
+      if(document.body.contains(window._reportImgOverlay)&&window._reportImgRender) window._reportImgRender();
+      toast('📷 Foto guardada en '+fmtD(date)+' · '+gpn(projId),'ok');
+    })
+    .catch(function(err){
+      item.uploading=false; item.cloudErr=true;
+      if(document.body.contains(window._reportImgOverlay)&&window._reportImgRender) window._reportImgRender();
+      toast('No se pudo guardar en la nube (sí irá en el PDF)','err');
+    });
 }
 
 function _doShareProj(projId, images){
