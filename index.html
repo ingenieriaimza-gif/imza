@@ -641,7 +641,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v33';
+    const CACHE='imza-shell-v34';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1606,7 +1606,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-09-fotos-en-tarjeta';
+var IMZA_BUILD='B-2026-10-10-fotos-cfg-fix';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -3037,9 +3037,13 @@ function cardAddFotos(input,aid,date){
 
 function cldFillCfg(){
   var c=cldCfg();
-  var a=document.getElementById('cld-cloud'); if(a&&document.activeElement!==a) a.value=c.cloud;
-  var b=document.getElementById('cld-preset'); if(b&&document.activeElement!==b) b.value=c.preset;
-  var d=document.getElementById('cld-folder'); if(d&&document.activeElement!==d) d.value=c.folder;
+  // Solo rellenar campos que el usuario NO ha tocado (evita borrar lo que está escribiendo)
+  [['cld-cloud',c.cloud],['cld-preset',c.preset],['cld-folder',c.folder]].forEach(function(p){
+    var el=document.getElementById(p[0]); if(!el) return;
+    if(!el._cldHook){ el._cldHook=true; el.addEventListener('input',function(){ el.dataset.dirty='1'; }); }
+    if(el.dataset.dirty==='1'||document.activeElement===el) return;
+    el.value=p[1];
+  });
   var st=document.getElementById('cld-status');
   if(st){ var ok=cldReady(); st.textContent=ok?'✓ Configurado':'Sin configurar'; st.className='b '+(ok?'bgr':'br'); st.style.fontSize='10px'; }
 }
@@ -3052,6 +3056,7 @@ function cldSaveCfg(){
   S.cloudinary={cloud:cloud,preset:preset,folder:folder,_upd:Date.now()};
   localStorage.setItem('cp4_cld_cloud',cloud); localStorage.setItem('cp4_cld_preset',preset); localStorage.setItem('cp4_cld_folder',folder);
   setAction('Configuró fotos (Cloudinary)');
+  ['cld-cloud','cld-preset','cld-folder'].forEach(function(id){ var el=document.getElementById(id); if(el) delete el.dataset.dirty; });
   save(); cldFillCfg();
   toast('Configuración de fotos guardada ✓','ok');
 }
