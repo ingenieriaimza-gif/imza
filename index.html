@@ -642,7 +642,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v39';
+    const CACHE='imza-shell-v42';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1594,7 +1594,7 @@ if('serviceWorker' in navigator){
 <div class="toast" id="toast"><div class="tdot"></div><span id="tmsg"></span></div>
 
 <!-- CONFIRM DIALOG -->
-<div id="confirm-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:300;display:none;align-items:flex-end;justify-content:center;padding:0 0 calc(16px + env(safe-area-inset-bottom,0px))">
+<div id="confirm-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:9600;display:none;align-items:flex-end;justify-content:center;padding:0 0 calc(16px + env(safe-area-inset-bottom,0px))">
   <div style="background:var(--card);border:1px solid var(--line2);border-radius:20px;width:calc(100% - 32px);max-width:400px;padding:24px 20px;animation:sup 0.25s cubic-bezier(0.32,0.72,0,1)">
     <div style="font-size:18px;font-weight:800;margin-bottom:8px" id="confirm-title">¿Eliminar?</div>
     <div style="font-size:14px;color:var(--txt2);margin-bottom:20px" id="confirm-msg">Esta acción no se puede deshacer.</div>
@@ -1607,7 +1607,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-11-fotos-reporte-nube';
+var IMZA_BUILD='B-2026-10-11-fotos-reporte-x-borra';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -2904,14 +2904,14 @@ function viewActFotos(aid,date,idx){
     canDel?{onDelete:function(i){ delActFoto(aid,date,a.fotos[i]&&a.fotos[i].url); }}:null);
 }
 
-function delActFoto(aid,date,url){
+function delActFoto(aid,date,url,onDone){
   if(_currentUser&&_currentUser.rol==='visor'){ toast('Sin permisos para eliminar','err'); return; }
   if(!url) return;
   confirmShow('¿Eliminar esta foto?','Se quitará de la evidencia de la actividad.',function(){
     var a=_findAct(aid,date); if(!a||!a.fotos) return;
     var n0=a.fotos.length;
     a.fotos=a.fotos.filter(function(f){ return f.url!==url; });
-    if(a.fotos.length===n0) return;
+    if(a.fotos.length===n0){ if(onDone) onDone(); return; }
     if(_pendFotos[aid]){
       _pendFotos[aid].fotos=_pendFotos[aid].fotos.filter(function(f){ return f.url!==url; });
       if(!_pendFotos[aid].fotos.length) delete _pendFotos[aid];
@@ -2920,6 +2920,7 @@ function delActFoto(aid,date,url){
     try{ markChanged('actividades'); }catch(e){}
     setAction('Eliminó foto de evidencia · '+gpn(a.proyectoId)+' · '+fmtDate(date));
     save(); rAll();
+    if(onDone) try{ onDone(); }catch(e){}
     var _f=(n0&&url)?url:'';
     cldDestroy([cldPidFromUrl(_f)]).then(function(r){
       if(r&&r.ok) toast('Foto eliminada (app y nube) ✓','ok');
@@ -2941,7 +2942,7 @@ function openPhotoViewer(list,idx,opts){
       (opts.onDelete?'<button class="phv-del" data-a="d">🗑️ Eliminar</button>':'')+
       (n>1?'<button class="phv-nav l" data-a="l">‹</button><button class="phv-nav r" data-a="r">›</button>':'')+
       '<img src="'+cldFit(f.url,1600)+'" alt="">'+
-      '<div class="phv-cap">'+(n>1?(i+1)+' / '+n+' · ':'')+(f.cap?histEsc(f.cap)+' · ':'')+'<a href="'+f.url+'" target="_blank" rel="noopener">Original</a></div>';
+      '<div class="phv-cap">'+[n>1?(i+1)+' / '+n:'', f.cap?histEsc(f.cap):'', /^https?:/.test(f.url)?'<a href="'+f.url+'" target="_blank" rel="noopener">Original</a>':''].filter(Boolean).join(' · ')+'</div>';
   }
   ov.addEventListener('click',function(e){
     var a=e.target.dataset&&e.target.dataset.a;
@@ -5371,7 +5372,7 @@ function _askImagesForReport(projId, callback){
     (S.actividades[date]||[]).forEach(function(a){
       if(a.proyectoId!==projId) return;
       (a.fotos||[]).forEach(function(f){
-        if(f.url) images.push({dataUrl:cldFit(f.url,1400), thumb:cldThumb(f.url,200), caption:fmtD(date), saved:true});
+        if(f.url) images.push({dataUrl:cldFit(f.url,1400), thumb:cldThumb(f.url,200), caption:fmtD(date), saved:true, aid:a.id, date:date, url:f.url});
       });
     });
   });
@@ -5392,10 +5393,10 @@ function _askImagesForReport(projId, callback){
       (images.length?
         '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;overflow-y:auto;max-height:220px">'+
         images.map(function(img,idx){
-          return '<div style="position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid var(--line)">'+
+          return '<div onclick="_viewReportImg('+idx+')" style="position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid var(--line);cursor:zoom-in">'+
             '<img src="'+(img.thumb||img.dataUrl)+'" style="width:100%;height:100%;object-fit:cover">'+
             (img.uploading?'<div class="ph-ov up">Subiendo…</div>':(img.cloudErr?'<div class="ph-ov err">Solo en PDF</div>':(img.saved?'<div style="position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;font-weight:700;border-radius:6px;padding:1px 5px">☁️</div>':'')))+
-            '<button onclick="_removeReportImg('+idx+')" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,0.6);border:none;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">×</button>'+
+            '<button onclick="event.stopPropagation();_removeReportImg('+idx+')" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,0.6);border:none;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">×</button>'+
           '</div>';
         }).join('')+
         '</div>':'')+
@@ -5447,10 +5448,28 @@ function _askImagesForReport(projId, callback){
     input.value='';
   };
 
-  window._removeReportImg=function(idx){
-    window._reportImages.splice(idx,1);
-    window._reportImgRender();
+  window._viewReportImg=function(idx){
+    var imgs=window._reportImages||[];
+    var list=imgs.map(function(im){ return {url:im.dataUrl, cap:im.caption||''}; });
+    var canDel=!(_currentUser&&_currentUser.rol==='visor');
+    openPhotoViewer(list, idx, canDel?{onDelete:function(i){ window._deleteReportImg(i); }}:null);
   };
+
+  // Borrar una foto del reporte (con confirmación). Si está en la nube, se borra de la actividad y de Cloudinary.
+  window._deleteReportImg=function(i){
+    var imgs=window._reportImages||[];
+    var im=imgs[i]; if(!im) return;
+    var drop=function(){ var k=imgs.indexOf(im); if(k!==-1) imgs.splice(k,1); window._reportImgRender(); };
+    if(im.uploading){ toast('Espera a que termine de subir','err'); return; }
+    if(im.saved&&im.aid&&im.url){
+      if(_currentUser&&_currentUser.rol==='visor'){ drop(); return; }
+      delActFoto(im.aid, im.date, im.url, drop);
+    } else {
+      confirmShow('¿Quitar esta foto?','No está guardada en la nube; solo se quitará de este reporte.',function(){ drop(); toast('Foto quitada del reporte','ok'); });
+    }
+  };
+
+  window._removeReportImg=function(idx){ window._deleteReportImg(idx); };
 
   window._closeImgDialog=function(){
     overlay.remove();
@@ -5492,7 +5511,7 @@ function _reportImgToCloud(projId,file,item){
   compressImage(file,1600,0.82)
     .then(function(blob){ return cldUpload(blob,sub); })
     .then(function(res){
-      item.uploading=false; item.saved=true;
+      item.uploading=false; item.saved=true; item.aid=aid; item.date=date; item.url=res.url;
       if(!_pendFotos[aid]) _pendFotos[aid]={date:date,fotos:[]};
       _pendFotos[aid].fotos.push(res);
       _applyPendFotos(); _saveFotos(); rAll();
