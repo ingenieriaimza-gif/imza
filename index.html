@@ -642,7 +642,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v42';
+    const CACHE='imza-shell-v43';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1607,7 +1607,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-11-fotos-reporte-x-borra';
+var IMZA_BUILD='B-2026-10-11-fotos-excluir';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -5394,7 +5394,9 @@ function _askImagesForReport(projId, callback){
         '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;overflow-y:auto;max-height:220px">'+
         images.map(function(img,idx){
           return '<div onclick="_viewReportImg('+idx+')" style="position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid var(--line);cursor:zoom-in">'+
-            '<img src="'+(img.thumb||img.dataUrl)+'" style="width:100%;height:100%;object-fit:cover">'+
+            '<img src="'+(img.thumb||img.dataUrl)+'" style="width:100%;height:100%;object-fit:cover;'+(img.excluded?'opacity:.25;filter:grayscale(1);':'')+'">'+
+            (img.excluded?'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;text-align:center;pointer-events:none">Fuera del PDF</div>':'')+
+            '<button onclick="event.stopPropagation();_toggleReportImg('+idx+')" title="'+(img.excluded?'Incluir en el PDF':'Dejar fuera del PDF')+'" style="position:absolute;right:4px;bottom:4px;height:24px;padding:0 7px;border-radius:12px;border:none;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;'+(img.excluded?'background:var(--gold);color:#000':'background:rgba(0,0,0,0.65);color:#fff')+'">'+(img.excluded?'＋ Incluir':'🚫 Omitir')+'</button>'+
             (img.uploading?'<div class="ph-ov up">Subiendo…</div>':(img.cloudErr?'<div class="ph-ov err">Solo en PDF</div>':(img.saved?'<div style="position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;font-weight:700;border-radius:6px;padding:1px 5px">☁️</div>':'')))+
             '<button onclick="event.stopPropagation();_removeReportImg('+idx+')" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,0.6);border:none;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">×</button>'+
           '</div>';
@@ -5419,7 +5421,7 @@ function _askImagesForReport(projId, callback){
       '<div style="display:flex;gap:10px">'+
         '<button onclick="_closeImgDialog()" style="flex:1;padding:14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt2);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">Omitir fotos</button>'+
         '<button onclick="_confirmReportImgs()" style="flex:1;padding:14px;border-radius:12px;border:none;background:var(--gold);color:#000;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">'+
-          (images.length?'Generar con '+images.length+' foto'+(images.length>1?'s':''):'Generar reporte')+
+          (function(){ var nInc=images.filter(function(x){return !x.excluded;}).length; return nInc?'Generar con '+nInc+' foto'+(nInc>1?'s':''):'Generar reporte'; })()+
         '</button>'+
       '</div>';
   }
@@ -5470,6 +5472,10 @@ function _askImagesForReport(projId, callback){
   };
 
   window._removeReportImg=function(idx){ window._deleteReportImg(idx); };
+  window._toggleReportImg=function(idx){
+    var im=(window._reportImages||[])[idx]; if(!im) return;
+    im.excluded=!im.excluded; window._reportImgRender();
+  };
 
   window._closeImgDialog=function(){
     overlay.remove();
@@ -5478,7 +5484,7 @@ function _askImagesForReport(projId, callback){
 
   window._confirmReportImgs=function(){
     overlay.remove();
-    window._reportImgCallback(window._reportImages||[]);
+    window._reportImgCallback((window._reportImages||[]).filter(function(x){ return !x.excluded; }));
   };
 
   render();
