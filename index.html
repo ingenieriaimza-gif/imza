@@ -645,7 +645,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v45';
+    const CACHE='imza-shell-v46';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1612,7 +1612,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-11-visor-zoom';
+var IMZA_BUILD='B-2026-10-11-proyecto-borra-fotos';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -3585,9 +3585,20 @@ function confirmCancel(){
   document.getElementById('confirm-overlay').style.display='none';
   _confirmCb=null;
 }
-function dProj(id){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permisos para eliminar','err');return;}markChanged('proyectos');const p=S.proyectos.find(x=>x.id===id);confirmShow('¿Eliminar proyecto?',p?'"'+p.nombre+'" será eliminado permanentemente.':'Esta acción no se puede deshacer.',()=>{var dP=S.proyectos.find(x=>x.id===id);
+function dProj(id){if(_currentUser&&_currentUser.rol==='visor'){toast('Sin permisos para eliminar','err');return;}markChanged('proyectos');const p=S.proyectos.find(x=>x.id===id);
+  // Fotos de evidencia de las actividades de este proyecto
+  var _pf=[];Object.keys(S.actividades).forEach(function(d){(S.actividades[d]||[]).forEach(function(a){if(a.proyectoId===id&&a.fotos&&a.fotos.length)_pf.push({a:a,n:a.fotos.length});});});
+  var _nf=_pf.reduce(function(s,x){return s+x.n;},0);
+  var _msg=(p?'"'+p.nombre+'" será eliminado permanentemente.':'Esta acción no se puede deshacer.')+(_nf?' También se borrarán sus '+_nf+' foto'+(_nf>1?'s':'')+' de evidencia de Cloudinary.':'');
+  confirmShow('¿Eliminar proyecto?',_msg,()=>{var dP=S.proyectos.find(x=>x.id===id);
     S.proyectos=S.proyectos.filter(x=>x.id!==id);
     recordDeleted('proj',id);
+    if(_nf){
+      var _pids=[];
+      _pf.forEach(function(x){ x.a.fotos.forEach(function(f){ _pids.push(f.pid||cldPidFromUrl(f.url)); }); x.a.fotos=[]; x.a._upd=Date.now(); if(_pendFotos[x.a.id]) delete _pendFotos[x.a.id]; });
+      try{ markChanged('actividades'); }catch(e){}
+      try{ cldDestroy(_pids).then(function(r){ if(r&&r.ok) toast('🗑️ '+_nf+' foto'+(_nf>1?'s':'')+' borrada'+(_nf>1?'s':'')+' de Cloudinary','ok'); }); }catch(e){}
+    }
     setAction('Eliminó proyecto · '+(dP?(dP.folio?'['+dP.folio+'] ':'')+dP.nombre:'')+(dP&&dP.lider?' · 👷 '+dP.lider:''));
     save();rAll();toast('Proyecto eliminado','ok');});}
 
