@@ -409,6 +409,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 .phv-x { position:absolute; top:calc(12px + env(safe-area-inset-top,0px)); right:14px; width:42px; height:42px; border-radius:50%; border:none; background:rgba(255,255,255,.14); color:#fff; font-size:26px; cursor:pointer; z-index:2; }
 .phv-nav { position:absolute; top:50%; transform:translateY(-50%); width:44px; height:44px; border-radius:50%; border:none; background:rgba(255,255,255,.14); color:#fff; font-size:28px; cursor:pointer; z-index:2; }
 .phv-nav.l { left:10px; } .phv-nav.r { right:10px; }
+.phv-del { position:absolute; top:calc(12px + env(safe-area-inset-top,0px)); left:14px; height:42px; padding:0 14px; border-radius:21px; border:none; background:rgba(255,107,107,.22); color:#ff8a8a; font-size:14px; font-weight:800; cursor:pointer; z-index:2; }
 .phv-cap { position:absolute; bottom:calc(16px + env(safe-area-inset-bottom,0px)); left:0; right:0; text-align:center; color:#ccc; font-size:13px; }
 .phv-cap a { color:var(--gold); font-weight:700; }
 
@@ -641,7 +642,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v34';
+    const CACHE='imza-shell-v35';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1606,7 +1607,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-10-fotos-cfg-fix';
+var IMZA_BUILD='B-2026-10-11-fotos-borrar';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -2898,10 +2899,33 @@ function viewActFotos(aid,date,idx){
   var a=(S.actividades[date]||[]).find(function(x){return x.id===aid;});
   if(!a||!a.fotos||!a.fotos.length) return;
   var cap=fmtD(date)+' · '+gpn(a.proyectoId);
-  openPhotoViewer(a.fotos.map(function(f){return Object.assign({cap:cap},f);}),idx);
+  var canDel=!(_currentUser&&_currentUser.rol==='visor');
+  openPhotoViewer(a.fotos.map(function(f){return Object.assign({cap:cap},f);}),idx,
+    canDel?{onDelete:function(i){ delActFoto(aid,date,a.fotos[i]&&a.fotos[i].url); }}:null);
 }
 
-function openPhotoViewer(list,idx){
+function delActFoto(aid,date,url){
+  if(_currentUser&&_currentUser.rol==='visor'){ toast('Sin permisos para eliminar','err'); return; }
+  if(!url) return;
+  confirmShow('¿Eliminar esta foto?','Se quitará de la evidencia de la actividad.',function(){
+    var a=_findAct(aid,date); if(!a||!a.fotos) return;
+    var n0=a.fotos.length;
+    a.fotos=a.fotos.filter(function(f){ return f.url!==url; });
+    if(a.fotos.length===n0) return;
+    if(_pendFotos[aid]){
+      _pendFotos[aid].fotos=_pendFotos[aid].fotos.filter(function(f){ return f.url!==url; });
+      if(!_pendFotos[aid].fotos.length) delete _pendFotos[aid];
+    }
+    a._upd=Date.now();
+    try{ markChanged('actividades'); }catch(e){}
+    setAction('Eliminó foto de evidencia · '+gpn(a.proyectoId)+' · '+fmtDate(date));
+    save(); rAll();
+    toast('Foto eliminada','ok');
+  });
+}
+
+function openPhotoViewer(list,idx,opts){
+  opts=opts||{};
   if(!list||!list.length) return;
   var i=Math.max(0,idx||0), n=list.length;
   var ov=document.createElement('div'); ov.id='ph-viewer';
@@ -2909,6 +2933,7 @@ function openPhotoViewer(list,idx){
   function draw(){
     var f=list[i];
     ov.innerHTML='<button class="phv-x" data-a="x">×</button>'+
+      (opts.onDelete?'<button class="phv-del" data-a="d">🗑️ Eliminar</button>':'')+
       (n>1?'<button class="phv-nav l" data-a="l">‹</button><button class="phv-nav r" data-a="r">›</button>':'')+
       '<img src="'+cldFit(f.url,1600)+'" alt="">'+
       '<div class="phv-cap">'+(n>1?(i+1)+' / '+n+' · ':'')+(f.cap?histEsc(f.cap)+' · ':'')+'<a href="'+f.url+'" target="_blank" rel="noopener">Original</a></div>';
@@ -2917,6 +2942,7 @@ function openPhotoViewer(list,idx){
     var a=e.target.dataset&&e.target.dataset.a;
     if(a==='l'){ i=(i-1+n)%n; draw(); }
     else if(a==='r'){ i=(i+1)%n; draw(); }
+    else if(a==='d'){ var di=i; ov.remove(); opts.onDelete(di); }
     else if(a==='x'||e.target===ov){ ov.remove(); }
   });
   var sx=null;
