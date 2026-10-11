@@ -642,7 +642,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v35';
+    const CACHE='imza-shell-v36';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -1607,7 +1607,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-11-fotos-borrar';
+var IMZA_BUILD='B-2026-10-11-fotos-borrar-nube';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -2920,7 +2920,12 @@ function delActFoto(aid,date,url){
     try{ markChanged('actividades'); }catch(e){}
     setAction('Eliminó foto de evidencia · '+gpn(a.proyectoId)+' · '+fmtDate(date));
     save(); rAll();
-    toast('Foto eliminada','ok');
+    var _f=(n0&&url)?url:'';
+    cldDestroy([cldPidFromUrl(_f)]).then(function(r){
+      if(r&&r.ok) toast('Foto eliminada (app y nube) ✓','ok');
+      else if(r&&r.status===503) toast('Foto quitada de la app · falta configurar el borrado en la nube','err');
+      else toast('Foto quitada de la app · se borrará de la nube al reintentar','ok');
+    });
   });
 }
 
@@ -3061,6 +3066,50 @@ function cardAddFotos(input,aid,date){
   });
 }
 
+// ── Borrado real en Cloudinary vía Supabase Edge Function ──────────────
+function cldPidFromUrl(url){
+  if(!url) return '';
+  var m=String(url).match(/\/upload\/(?:[^\/]*,[^\/]*\/)*(?:v\d+\/)?(.+?)(?:\.[a-zA-Z0-9]+)?$/);
+  return m?decodeURIComponent(m[1]):'';
+}
+function _cldDelQ(){ try{ return JSON.parse(localStorage.getItem('cp4_cld_delq')||'[]'); }catch(e){ return []; } }
+function _cldDelQSet(q){ try{ localStorage.setItem('cp4_cld_delq',JSON.stringify(q.slice(-200))); }catch(e){} }
+var _cldDelBusy=false;
+function cldDestroy(pids){
+  var q=_cldDelQ();
+  (pids||[]).forEach(function(p){ if(p&&p.indexOf('imza/')===0&&q.indexOf(p)===-1) q.push(p); });
+  _cldDelQSet(q);
+  return _cldFlushDel();
+}
+function _cldFlushDel(){
+  var q=_cldDelQ();
+  if(!q.length||_cldDelBusy||!_isOnline) return Promise.resolve(null);
+  _cldDelBusy=true;
+  var batch=q.slice(0,30);
+  var call=function(tok){
+    return fetch(SB_URL+'/functions/v1/cloudinary-delete',{
+      method:'POST',credentials:'omit',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
+      body:JSON.stringify({public_ids:batch})
+    });
+  };
+  var tok=localStorage.getItem('cp4_auth_token')||'';
+  return call(tok).then(function(r){
+    if(r.status===401) return refreshAuthToken().then(function(t){ return t?call(t):r; });
+    return r;
+  }).then(function(r){
+    return r.json().catch(function(){return {};}).then(function(d){
+      if(!r.ok){ if(r.status===403||r.status===400){ _cldDelQSet(_cldDelQ().filter(function(p){return batch.indexOf(p)===-1;})); } return {ok:false,status:r.status,error:d.error}; }
+      var res=d.results||{};
+      var done=batch.filter(function(p){ return res[p]==='ok'||res[p]==='not found'; });
+      _cldDelQSet(_cldDelQ().filter(function(p){ return done.indexOf(p)===-1; }));
+      return {ok:done.length===batch.length,results:res};
+    });
+  }).catch(function(){ return {ok:false,status:0}; })
+  .finally(function(){ _cldDelBusy=false; });
+}
+setTimeout(function(){ try{ if(_currentUser) _cldFlushDel(); }catch(e){} },15000);
+
 function cldFillCfg(){
   var c=cldCfg();
   // Solo rellenar campos que el usuario NO ha tocado (evita borrar lo que está escribiendo)
@@ -3095,7 +3144,7 @@ function cldTest(){
   var x=c.getContext('2d'); x.fillStyle='#f5cf55'; x.fillRect(0,0,8,8);
   toast('Probando subida…','ok');
   c.toBlob(function(b){
-    cldUpload(b,'prueba').then(function(){ toast('✓ Cloudinary funciona — recuerda Guardar','ok'); })
+    cldUpload(b,'prueba').then(function(res){ toast('✓ Cloudinary funciona — recuerda Guardar','ok'); if(res&&res.pid) setTimeout(function(){ cldDestroy([res.pid]); },1500); })
       .catch(function(e){ toast('Falló: '+String(e.message||e).slice(0,70),'err'); })
       .finally(function(){ S.cloudinary=prev; });
   },'image/png');
@@ -3769,6 +3818,7 @@ function dAct(id,date){
     var dAct2=(S.actividades[date]||[]).find(function(a){ return a.id===id; });
     S.actividades[date]=(S.actividades[date]||[]).filter(a=>a.id!==id);
     recordDeleted('act',id);
+    if(dAct2&&dAct2.fotos&&dAct2.fotos.length){ try{ cldDestroy(dAct2.fotos.map(function(f){ return f.pid||cldPidFromUrl(f.url); })); }catch(e){} }
     _lastSaveType='act_delete'; _lastSaveItem=dAct2; _lastSaveExtra={date:date};
     var _dPNom=dAct2?gpn(dAct2.proyectoId):'';var _dDate=date||'';
     setAction('Eliminó actividad · '+_dPNom+(_dDate?' · '+fmtDate(_dDate):''));
