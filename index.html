@@ -642,7 +642,7 @@ html,body { height:100%; width:100%; font-family:-apple-system,'SF Pro Display',
 // Solo cachea el shell de la app. NUNCA cachea Supabase.
 if('serviceWorker' in navigator){
   const swCode=`
-    const CACHE='imza-shell-v43';
+    const CACHE='imza-shell-v44';
     const NEVER_CACHE=['supabase.co','supabase.com','vcdwtlwnbztausmwzwla'];
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add(self.location.href.replace(/\\/sw\\.js$/,'')).catch(()=>{})));
@@ -797,6 +797,7 @@ if('serviceWorker' in navigator){
 
     <!-- INICIO -->
     <div id="s-inicio" class="screen active">
+      <div id="cld-usage-alert" style="display:none;margin-bottom:6px"></div>
       <div class="sec"><div class="sec-lbl">Resumen del día</div></div>
       <div class="stats" style="margin-bottom:10px">
         <div class="sbox" style="cursor:pointer" onclick="toggleStBox('proj')">
@@ -1061,6 +1062,7 @@ if('serviceWorker' in navigator){
           <span id="cld-status" class="b" style="font-size:10px">—</span>
         </div>
         <div style="font-size:12px;color:var(--txt2);margin-bottom:14px;line-height:1.5">Las fotos de las actividades se suben a tu cuenta de Cloudinary. Usa un <b>upload preset sin firmar (Unsigned)</b>. Esta configuración se comparte con todos los usuarios.</div>
+        <div id="cld-usage-cfg" style="display:none;margin-bottom:14px"></div>
         <div class="fg"><label class="fl">Cloud name</label><input type="text" class="fi" id="cld-cloud" placeholder="ej. dxyz12345" autocapitalize="off" autocorrect="off"></div>
         <div class="fg"><label class="fl">Upload preset (unsigned)</label><input type="text" class="fi" id="cld-preset" placeholder="ej. imza_unsigned" autocapitalize="off" autocorrect="off"></div>
         <div class="fg"><label class="fl">Carpeta</label><input type="text" class="fi" id="cld-folder" placeholder="imza" autocapitalize="off" autocorrect="off"></div>
@@ -1607,7 +1609,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-11-fotos-excluir';
+var IMZA_BUILD='B-2026-10-11-cld-alerta-uso';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -3110,6 +3112,63 @@ function _cldFlushDel(){
   .finally(function(){ _cldDelBusy=false; });
 }
 setTimeout(function(){ try{ if(_currentUser) _cldFlushDel(); }catch(e){} },15000);
+
+// ── Alerta de consumo de Cloudinary (solo admin) ───────────────────────
+var CLD_WARN_PCT=70, CLD_CRIT_PCT=90, CLD_CHECK_EVERY=6*3600*1000;
+function _cldUsageCache(){ try{ return JSON.parse(localStorage.getItem('cp4_cld_usage')||'null'); }catch(e){ return null; } }
+function cldCheckUsage(force){
+  if(!_currentUser||_currentUser.rol!=='admin'||!_isOnline) return Promise.resolve(null);
+  var c=_cldUsageCache();
+  if(!force&&c&&c.ts&&Date.now()-c.ts<CLD_CHECK_EVERY){ cldRenderUsage(); return Promise.resolve(c.data); }
+  var call=function(tok){
+    return fetch(SB_URL+'/functions/v1/cloudinary-usage',{method:'POST',credentials:'omit',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+tok,'Content-Type':'application/json'},body:'{}'});
+  };
+  return call(localStorage.getItem('cp4_auth_token')||'').then(function(r){
+    if(r.status===401) return refreshAuthToken().then(function(t){ return t?call(t):r; });
+    return r;
+  }).then(function(r){ return r.json().catch(function(){return {};}).then(function(d){
+    if(!r.ok||!d.credits){ if(force) toast('No se pudo consultar Cloudinary'+(d.error?' ('+d.error+')':''),'err'); return null; }
+    try{ localStorage.setItem('cp4_cld_usage',JSON.stringify({ts:Date.now(),data:d})); }catch(e){}
+    cldRenderUsage();
+    var pct=Number(d.credits.used_percent||0);
+    var lvl=pct>=CLD_CRIT_PCT?2:(pct>=CLD_WARN_PCT?1:0);
+    var lastLvl=Number(localStorage.getItem('cp4_cld_alert_lvl')||0);
+    if(lvl>lastLvl) toast((lvl===2?'🚨':'⚠️')+' Cloudinary al '+Math.round(pct)+'% de créditos — revisa la cuenta','err');
+    try{ localStorage.setItem('cp4_cld_alert_lvl',String(lvl)); }catch(e){}
+    if(force) toast('Cloudinary: '+Math.round(pct)+'% de créditos usados','ok');
+    return d;
+  }); }).catch(function(){ return null; });
+}
+function _fmtGB(b){ if(b==null) return '—'; var g=b/1073741824; return g>=1?g.toFixed(2)+' GB':(b/1048576).toFixed(1)+' MB'; }
+function cldRenderUsage(){
+  var c=_cldUsageCache(); var d=c&&c.data;
+  var box=document.getElementById('cld-usage-alert'), cfg=document.getElementById('cld-usage-cfg');
+  if(!d||!d.credits){ if(box) box.style.display='none'; if(cfg) cfg.style.display='none'; return; }
+  var pct=Number(d.credits.used_percent||0), used=Number(d.credits.usage||0), lim=Number(d.credits.limit||0);
+  var lvl=pct>=CLD_CRIT_PCT?2:(pct>=CLD_WARN_PCT?1:0);
+  var clr=lvl===2?'var(--red,#ff6b6b)':(lvl===1?'var(--gold)':'var(--green,#34d399)');
+  var bar='<div style="height:8px;border-radius:4px;background:var(--card2);overflow:hidden;margin:8px 0 6px"><div style="height:100%;width:'+Math.min(100,pct).toFixed(1)+'%;background:'+clr+'"></div></div>';
+  var det='<div style="font-size:11px;color:var(--txt3)">Almacenamiento '+_fmtGB(d.storage)+' · Transferencia '+_fmtGB(d.bandwidth)+' · '+(d.transformations||0).toLocaleString()+' transf.'+(d.resources!=null?' · '+d.resources.toLocaleString()+' archivos':'')+'<br>Actualizado: '+new Date(c.ts).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})+'</div>';
+  if(cfg){
+    cfg.style.display='';
+    cfg.innerHTML='<div style="background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:12px;font-weight:800;color:var(--txt)">Créditos del mes</div>'+
+      '<div style="font-size:13px;font-weight:800;color:'+clr+'">'+used.toFixed(2)+' / '+lim+' · '+Math.round(pct)+'%</div></div>'+bar+det+
+      '<button class="bfull bghost" style="margin-top:10px;padding:9px;font-size:12px" onclick="cldCheckUsage(true)">🔄 Revisar ahora</button></div>';
+  }
+  if(box){
+    if(!lvl||!_currentUser||_currentUser.rol!=='admin'){ box.style.display='none'; return; }
+    box.style.display='';
+    box.innerHTML='<div style="margin-top:16px;border:1.5px solid '+clr+';background:'+(lvl===2?'rgba(255,107,107,.08)':'rgba(245,207,85,.08)')+';border-radius:16px;padding:14px">'+
+      '<div style="font-size:14px;font-weight:800;color:'+clr+'">'+(lvl===2?'🚨 Cloudinary casi lleno':'⚠️ Revisa tu cuenta de Cloudinary')+'</div>'+
+      '<div style="font-size:12px;color:var(--txt2);margin-top:4px;line-height:1.45">Llevas <b>'+used.toFixed(1)+' de '+lim+' créditos</b> ('+Math.round(pct)+'%) este mes. '+(lvl===2?'Si llegas al 100% Cloudinary puede pedirte subir de plan o pausar la cuenta.':'Conviene revisar el consumo y borrar fotos que ya no sirvan.')+'</div>'+bar+det+
+      '<div style="display:flex;gap:8px;margin-top:10px">'+
+        '<a href="https://console.cloudinary.com/" target="_blank" rel="noopener" class="bfull bgold" style="flex:1;text-align:center;text-decoration:none;padding:10px;font-size:13px">Abrir Cloudinary</a>'+
+        '<button class="bfull bghost" style="flex:1;padding:10px;font-size:13px" onclick="cldCheckUsage(true)">🔄 Revisar</button>'+
+      '</div></div>';
+  }
+}
 
 function cldFillCfg(){
   var c=cldCfg();
@@ -8342,7 +8401,7 @@ function runDiag(){
 }
 
 function rCfgStats(){
-  try{ cldFillCfg(); }catch(e){}
+  try{ cldFillCfg(); cldRenderUsage(); }catch(e){}
   rUsersConfig();
   // Show diag panel for admin only
   var diagWrap=document.getElementById('diag-wrap');
@@ -9148,6 +9207,7 @@ function applyRoleRestrictions(){
   if(noAdminEl) noAdminEl.style.display = isAdmin ? 'none' : 'block';
   if(adminAlEl) adminAlEl.style.display = isAdmin ? 'block' : 'none';
   if(isAdmin) inicioRenderAlertas();
+  if(isAdmin) setTimeout(function(){ cldCheckUsage(false); },4000);
   // WebSocket Realtime para actualizaciones instantáneas + polling ligero cada 3s como respaldo
   startRealtime();
   startLiveSync();
