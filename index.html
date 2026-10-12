@@ -1612,7 +1612,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-12-pdf-fotos-iphone';
+var IMZA_BUILD='B-2026-10-12-pdf-fotos-iphone2';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -5124,7 +5124,7 @@ function _printBlob(pdfName, blob, bigFrame){
 function _printHtmlNow(pdfName, htmlContent, bigFrame){
   var _isMob=/Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent||'')||window.navigator.standalone===true||
     (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches&&('ontouchstart' in window));
-  if(_isMob && /<img\b/i.test(htmlContent)){ _printPreviewMobile(pdfName, htmlContent); return; }
+  if(_isMob){ _printPreviewMobile(pdfName, htmlContent); return; }
   {
 
     var prev=document.getElementById('__print_frame__');
@@ -5796,18 +5796,23 @@ function _askImagesForReport(projId, callback){
   };
 
   window._closeImgDialog=function(){
+    if(!document.body.contains(overlay)) return;
     overlay.remove();
     window._reportImgCallback([]);
   };
 
   window._confirmReportImgs=function(){
+    if(!document.body.contains(overlay)) return;
     overlay.remove();
-    window._reportImgCallback((window._reportImages||[]).filter(function(x){ return !x.excluded; }));
+    var _sel=(window._reportImages||[]).filter(function(x){ return !x.excluded && (x.dataUrl||x.url); });
+    _sel.forEach(function(x){ if(!x.dataUrl&&x.url) x.dataUrl=cldFit(x.url,1400); });
+    toast('Generando reporte con '+_sel.length+' foto'+(_sel.length===1?'':'s')+'…','ok');
+    window._reportImgCallback(_sel);
   };
 
   render();
   overlay.appendChild(sheet);
-  overlay.addEventListener('click',function(e){ if(e.target===overlay) window._closeImgDialog(); });
+  // Tocar fuera del panel ya NO genera el reporte sin fotos (en iPhone pasaba por accidente)
   document.body.appendChild(overlay);
 }
 
