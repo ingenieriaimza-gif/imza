@@ -1612,7 +1612,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-12-pdf-con-fotos';
+var IMZA_BUILD='B-2026-10-12-pdf-fotos-pwa';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -5103,6 +5103,8 @@ function _waitFrameImages(doc, ms){
       var imgs=Array.prototype.slice.call(doc.images||[]);
       imgs.forEach(function(im){ try{ im.loading='eager'; }catch(e){} });
       var pend=imgs.filter(function(im){ return !im.complete; });
+      var decodeAll=function(){ return Promise.all(imgs.map(function(im){ return (im.decode?im.decode():Promise.resolve()).catch(function(){}); })); };
+      var _res=res; res=function(){ var t2=setTimeout(_res,5000); decodeAll().then(function(){ clearTimeout(t2); _res(); }); };
       if(!pend.length){ res(); return; }
       var left=pend.length, t=setTimeout(res, ms||15000);
       pend.forEach(function(im){ var f=function(){ if(--left<=0){ clearTimeout(t); res(); } }; im.addEventListener('load',f,{once:true}); im.addEventListener('error',f,{once:true}); });
@@ -5118,6 +5120,9 @@ function _printBlob(pdfName, blob, bigFrame){
   reader.readAsText(blob);
 }
 function _printHtmlNow(pdfName, htmlContent, bigFrame){
+  var _isMob=/Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent||'')||window.navigator.standalone===true||
+    (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches&&('ontouchstart' in window));
+  if(_isMob && /<img\b/i.test(htmlContent)){ _printPreviewMobile(pdfName, htmlContent); return; }
   {
 
     var prev=document.getElementById('__print_frame__');
@@ -5158,6 +5163,40 @@ function _printHtmlNow(pdfName, htmlContent, bigFrame){
       setTimeout(function(){ if(fr.parentNode) fr.remove(); }, 60000);
     };
   }
+}
+
+// En celular / PWA: el reporte se muestra en una vista previa VISIBLE (así el
+// navegador sí dibuja las fotos) y se imprime con un botón (gesto del usuario).
+function _printPreviewMobile(pdfName, htmlContent){
+  var old=document.getElementById('__print_prev__'); if(old) old.remove();
+  var ov=document.createElement('div');
+  ov.id='__print_prev__';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:#0F172A;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);';
+  var bar=document.createElement('div');
+  bar.style.cssText='display:flex;gap:8px;align-items:center;padding:10px 12px;background:#0F172A;';
+  bar.innerHTML='<button id="__pp_close" style="padding:10px 14px;border-radius:10px;border:1px solid #334155;background:#1E293B;color:#fff;font-weight:700;font-family:inherit;font-size:14px">✕ Cerrar</button>'+
+    '<div id="__pp_msg" style="flex:1;color:#94A3B8;font-size:12px;text-align:center">Cargando fotos…</div>'+
+    '<button id="__pp_print" disabled style="padding:10px 14px;border-radius:10px;border:none;background:#2563EB;color:#fff;font-weight:800;font-family:inherit;font-size:14px;opacity:.5">🖨️ Guardar PDF</button>';
+  var fr=document.createElement('iframe');
+  fr.style.cssText='flex:1;width:100%;border:none;background:#fff;';
+  fr.srcdoc=htmlContent;
+  ov.appendChild(bar); ov.appendChild(fr); document.body.appendChild(ov);
+  var orig=document.title;
+  function close(){ document.title=orig; ov.remove(); }
+  bar.querySelector('#__pp_close').onclick=close;
+  var btn=bar.querySelector('#__pp_print'), msg=bar.querySelector('#__pp_msg');
+  btn.onclick=function(){
+    document.title=pdfName;
+    try{ fr.contentWindow.focus(); fr.contentWindow.print(); }catch(e){ try{ window.print(); }catch(e2){} }
+    setTimeout(function(){ document.title=orig; },15000);
+  };
+  fr.onload=function(){
+    _waitFrameImages(fr.contentDocument,20000).then(function(){
+      // forzar que se dibuje todo: recorrer el documento una vez
+      try{ var d=fr.contentWindow; var h=fr.contentDocument.body.scrollHeight; d.scrollTo(0,h); setTimeout(function(){ d.scrollTo(0,0); },100); }catch(e){}
+      setTimeout(function(){ btn.disabled=false; btn.style.opacity='1'; msg.textContent='Listo · toca Guardar PDF'; },400);
+    });
+  };
 }
 
 // ── Función auxiliar para abrir reporte HTML desde historial ─────────────────
