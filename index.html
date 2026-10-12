@@ -1612,7 +1612,7 @@ if('serviceWorker' in navigator){
 
 <script>
 // STATE
-var IMZA_BUILD='B-2026-10-11-proyecto-borra-actividades';
+var IMZA_BUILD='B-2026-10-12-pdf-con-fotos';
 let S={date:td(),proyectos:[],personal:[],actividades:{},estadoHistorial:{},eAId:null,eADate:null};
 let selW=[],aCurStep=1;
 
@@ -5069,10 +5069,56 @@ function togH(head){
 }
 
 // ── Helper: imprime reporte sin mostrar URL en footer ─────────────────────────
+// Descarga las fotos remotas (Cloudinary) y las incrusta en el HTML como data URL,
+// para que el PDF no dependa de que terminen de cargar justo al imprimir.
+function _inlineReportImages(html){
+  var re=/(<img\b[^>]*?\bsrc=")(https?:\/\/[^"]+)(")/gi, urls={}, m;
+  while((m=re.exec(html))) urls[m[2].replace(/&amp;/g,'&')]=true;
+  var list=Object.keys(urls);
+  if(!list.length) return Promise.resolve(html);
+  toast('📷 Preparando '+list.length+' foto'+(list.length>1?'s':'')+' para el PDF…','ok');
+  var map={};
+  function one(u){
+    return new Promise(function(res){
+      var done=false, t=setTimeout(function(){ done=true; res(); },20000);
+      fetch(u,{mode:'cors',cache:'force-cache'}).then(function(r){ if(!r.ok) throw 0; return r.blob(); })
+        .then(function(b){ return new Promise(function(ok,ko){ var fr=new FileReader(); fr.onload=function(){ok(fr.result);}; fr.onerror=ko; fr.readAsDataURL(b); }); })
+        .then(function(d){ if(!done){ map[u]=d; clearTimeout(t); res(); } })
+        .catch(function(){ if(!done){ clearTimeout(t); res(); } });
+    });
+  }
+  // de 4 en 4 para no saturar la conexión
+  var i=0;
+  function next(){ if(i>=list.length) return Promise.resolve(); var batch=list.slice(i,i+4); i+=4; return Promise.all(batch.map(one)).then(next); }
+  return next().then(function(){
+    var fails=list.length-Object.keys(map).length;
+    if(fails) toast('⚠️ '+fails+' foto'+(fails>1?'s':'')+' no se pudo'+(fails>1?'ieron':'')+' descargar; revisa tu conexión','err');
+    return html.replace(re,function(all,a,u,c){ var k=u.replace(/&amp;/g,'&'); return map[k]?a+map[k]+c:all; });
+  });
+}
+
+function _waitFrameImages(doc, ms){
+  return new Promise(function(res){
+    try{
+      var imgs=Array.prototype.slice.call(doc.images||[]);
+      imgs.forEach(function(im){ try{ im.loading='eager'; }catch(e){} });
+      var pend=imgs.filter(function(im){ return !im.complete; });
+      if(!pend.length){ res(); return; }
+      var left=pend.length, t=setTimeout(res, ms||15000);
+      pend.forEach(function(im){ var f=function(){ if(--left<=0){ clearTimeout(t); res(); } }; im.addEventListener('load',f,{once:true}); im.addEventListener('error',f,{once:true}); });
+    }catch(e){ res(); }
+  });
+}
+
 function _printBlob(pdfName, blob, bigFrame){
   var reader=new FileReader();
   reader.onload=function(e){
-    var htmlContent=e.target.result;
+    _inlineReportImages(e.target.result).then(function(htmlContent){ _printHtmlNow(pdfName, htmlContent, bigFrame); });
+  };
+  reader.readAsText(blob);
+}
+function _printHtmlNow(pdfName, htmlContent, bigFrame){
+  {
 
     var prev=document.getElementById('__print_frame__');
     if(prev) prev.remove();
@@ -5100,17 +5146,18 @@ function _printBlob(pdfName, blob, bigFrame){
         // pequeña espera: le da tiempo al navegador (Safari en particular) de
         // aplicar por completo cualquier ajuste de tamaño hecho por scripts
         // dentro del documento antes de que decida cuántas hojas necesita.
-        setTimeout(function(){
-          try{ fr.contentWindow.print(); }catch(e2){}
-        }, 150);
+        _waitFrameImages(fr.contentDocument).then(function(){
+          setTimeout(function(){
+            try{ fr.contentWindow.print(); }catch(e2){}
+          }, 150);
+        });
         var restore=function(){ document.title=orig; };
         window.addEventListener('focus', restore, {once:true});
         setTimeout(restore, 15000);
       }catch(err){}
       setTimeout(function(){ if(fr.parentNode) fr.remove(); }, 60000);
     };
-  };
-  reader.readAsText(blob);
+  }
 }
 
 // ── Función auxiliar para abrir reporte HTML desde historial ─────────────────
